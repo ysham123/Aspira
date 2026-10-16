@@ -1,229 +1,398 @@
-// Zero-dependency Procedural WebAudio Sci-Fi Sound Synthesizer + JARVIS TTS Engine
+// Luxury Ambient Harmonic Sound Design Engine + Local Neural TTS Bridge (Kokoro-82M / MLX / macOS Neural)
 
 class StarkSoundEngine {
   private ctx: AudioContext | null = null;
+  private masterGain: GainNode | null = null;
+  private warmFilter: BiquadFilterNode | null = null;
+  private cachedVoice: SpeechSynthesisVoice | null = null;
+
   public muted = false;
   public voiceEnabled = true;
+  public localTtsEndpoint = ''; // Optional local Kokoro-82M / mlx-audio / Orpheus endpoint
 
-  private ensureContext(): AudioContext | null {
+  constructor() {
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      const loadVoices = () => {
+        const voices = window.speechSynthesis.getVoices();
+        if (voices.length > 0) {
+          this.cachedVoice =
+            voices.find((v) =>
+              /Ava \(Premium\)|Zoe \(Premium\)|Daniel|Oliver|Samantha|Arthur|Google UK English/i.test(
+                v.name
+              )
+            ) ||
+            voices.find((v) => v.lang.startsWith('en')) ||
+            null;
+        }
+      };
+      loadVoices();
+      window.speechSynthesis.onvoiceschanged = loadVoices;
+    }
+  }
+
+  private ensureContext(): { ctx: AudioContext; out: AudioNode } | null {
     if (this.muted) return null;
     if (!this.ctx && typeof window !== 'undefined') {
-      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      const AudioCtx =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       if (AudioCtx) {
         this.ctx = new AudioCtx();
+
+        // Master Luxury Acoustic Bus: Warm 24dB/oct Low-Pass + Stereo Ambient Diffusion + Soft Limiter
+        this.masterGain = this.ctx.createGain();
+        this.masterGain.gain.value = 0.85;
+
+        this.warmFilter = this.ctx.createBiquadFilter();
+        this.warmFilter.type = 'lowpass';
+        this.warmFilter.frequency.value = 3800;
+        this.warmFilter.Q.value = 0.707;
+
+        const compressor = this.ctx.createDynamicsCompressor();
+        compressor.threshold.value = -14;
+        compressor.knee.value = 18;
+        compressor.ratio.value = 3;
+        compressor.attack.value = 0.005;
+        compressor.release.value = 0.18;
+
+        // Subtle Stereo Ambient Diffusion Send
+        const delayL = this.ctx.createDelay();
+        const delayR = this.ctx.createDelay();
+        delayL.delayTime.value = 0.023;
+        delayR.delayTime.value = 0.037;
+
+        const wetFilter = this.ctx.createBiquadFilter();
+        wetFilter.type = 'lowpass';
+        wetFilter.frequency.value = 1650;
+
+        const wetGain = this.ctx.createGain();
+        wetGain.gain.value = 0.16;
+
+        this.masterGain.connect(this.warmFilter);
+        this.warmFilter.connect(compressor);
+        compressor.connect(this.ctx.destination);
+
+        this.warmFilter.connect(delayL);
+        delayL.connect(delayR);
+        delayR.connect(wetFilter);
+        wetFilter.connect(wetGain);
+        wetGain.connect(compressor);
       }
     }
+
     if (this.ctx && this.ctx.state === 'suspended') {
       this.ctx.resume().catch(() => {});
     }
-    return this.ctx;
+
+    if (!this.ctx || !this.masterGain) return null;
+    return { ctx: this.ctx, out: this.masterGain };
   }
 
-  // Crisp high-tech acoustic impulse ping when a clap is detected
+  // Subtle VisionOS-style Frosted Glass Tactile UI Tick
+  public playGlassTick(pitchMultiplier = 1) {
+    const bus = this.ensureContext();
+    if (!bus) return;
+    const { ctx, out } = bus;
+
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(1180 * pitchMultiplier, now);
+    osc.frequency.exponentialRampToValueAtTime(640 * pitchMultiplier, now + 0.035);
+
+    gain.gain.setValueAtTime(0.001, now);
+    gain.gain.linearRampToValueAtTime(0.045, now + 0.003);
+    gain.gain.exponentialRampToValueAtTime(0.0005, now + 0.04);
+
+    osc.connect(gain);
+    gain.connect(out);
+    osc.start(now);
+    osc.stop(now + 0.045);
+  }
+
+  // VisionOS Modal Glass Droplet when a Clap Impulse is detected
   public playClapImpulse(count: 1 | 2 = 1) {
-    const ctx = this.ensureContext();
-    if (!ctx) return;
+    const bus = this.ensureContext();
+    if (!bus) return;
+    const { ctx, out } = bus;
 
     const now = ctx.currentTime;
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
+    const fundamentals = count === 1 ? [528, 1320] : [264, 792, 1584];
 
-    osc.type = 'sine';
-    const baseFreq = count === 1 ? 880 : 1320;
-    osc.frequency.setValueAtTime(baseFreq, now);
-    osc.frequency.exponentialRampToValueAtTime(baseFreq * 1.5, now + 0.09);
-
-    gain.gain.setValueAtTime(0.22, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
-
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start(now);
-    osc.stop(now + 0.15);
-  }
-
-  // Tactical Amber Biometric Lockdown sequence
-  public playAmberLockdown() {
-    const ctx = this.ensureContext();
-    if (!ctx) return;
-
-    const now = ctx.currentTime;
-    [440, 554.37, 659.25, 880].forEach((freq, idx) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = 'triangle';
-      osc.frequency.setValueAtTime(freq, now + idx * 0.07);
-      gain.gain.setValueAtTime(0.16, now + idx * 0.07);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.07 + 0.25);
-
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start(now + idx * 0.07);
-      osc.stop(now + idx * 0.07 + 0.26);
-    });
-  }
-
-  // Harmonic Arc Reactor spin-up chord on Passkey Verification
-  public playPasskeyVerified() {
-    const ctx = this.ensureContext();
-    if (!ctx) return;
-
-    const now = ctx.currentTime;
-    // Sub-bass reactor thrum + harmonic cyan chord
-    const freqs = [110, 220, 329.63, 440, 659.25, 880, 1174.66];
-    freqs.forEach((freq, idx) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = idx < 2 ? 'sawtooth' : 'sine';
-      osc.frequency.setValueAtTime(freq * 0.5, now);
-      osc.frequency.exponentialRampToValueAtTime(freq, now + 0.38);
-
-      gain.gain.setValueAtTime(0.001, now);
-      gain.gain.linearRampToValueAtTime(idx < 2 ? 0.12 : 0.09, now + 0.15);
-      gain.gain.exponentialRampToValueAtTime(0.0008, now + 1.15);
-
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start(now);
-      osc.stop(now + 1.2);
-    });
-  }
-
-  // Crimson Intruder / Voiceprint mismatch klaxon
-  public playIntruderAlert() {
-    const ctx = this.ensureContext();
-    if (!ctx) return;
-
-    const now = ctx.currentTime;
-    for (let i = 0; i < 3; i++) {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = 'sawtooth';
-      osc.frequency.setValueAtTime(290, now + i * 0.22);
-      osc.frequency.linearRampToValueAtTime(195, now + i * 0.22 + 0.18);
-
-      gain.gain.setValueAtTime(0.2, now + i * 0.22);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.22 + 0.2);
-
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start(now + i * 0.22);
-      osc.stop(now + i * 0.22 + 0.21);
-    }
-  }
-
-  // Model Core Ignition (each model has its own harmonic signature)
-  public playCoreWake(harmonicHz = 432) {
-    const ctx = this.ensureContext();
-    if (!ctx) return;
-
-    const now = ctx.currentTime;
-    const osc = ctx.createOscillator();
-    const osc2 = ctx.createOscillator();
-    const gain = ctx.createGain();
-
-    osc.type = 'sine';
-    osc2.type = 'triangle';
-    osc.frequency.setValueAtTime(harmonicHz * 0.5, now);
-    osc.frequency.exponentialRampToValueAtTime(harmonicHz * 1.5, now + 0.28);
-
-    osc2.frequency.setValueAtTime(harmonicHz, now);
-    osc2.frequency.exponentialRampToValueAtTime(harmonicHz * 2, now + 0.28);
-
-    gain.gain.setValueAtTime(0.18, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.34);
-
-    osc.connect(gain);
-    osc2.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start(now);
-    osc2.start(now);
-    osc.stop(now + 0.35);
-    osc2.stop(now + 0.35);
-  }
-
-  // Model Core Cryo-Sleep power-down
-  public playCoreSleep() {
-    const ctx = this.ensureContext();
-    if (!ctx) return;
-
-    const now = ctx.currentTime;
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(620, now);
-    osc.frequency.exponentialRampToValueAtTime(140, now + 0.28);
-
-    gain.gain.setValueAtTime(0.14, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
-
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start(now);
-    osc.stop(now + 0.31);
-  }
-
-  // Mechanical holographic geometry morph sound when switching Spatial Modes
-  public playModeMorph() {
-    const ctx = this.ensureContext();
-    if (!ctx) return;
-
-    const now = ctx.currentTime;
-    [320, 480, 720, 960].forEach((f, idx) => {
+    fundamentals.forEach((freq, idx) => {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.type = 'sine';
-      osc.frequency.setValueAtTime(f, now + idx * 0.045);
-      gain.gain.setValueAtTime(0.1, now + idx * 0.045);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.045 + 0.14);
+      osc.frequency.setValueAtTime(freq, now);
+      osc.frequency.exponentialRampToValueAtTime(freq * 1.03, now + 0.14);
+
+      const peakGain = idx === 0 ? 0.14 : 0.06;
+      gain.gain.setValueAtTime(0.001, now);
+      gain.gain.linearRampToValueAtTime(peakGain, now + 0.005);
+      gain.gain.exponentialRampToValueAtTime(0.0008, now + 0.18);
 
       osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start(now + idx * 0.045);
-      osc.stop(now + idx * 0.045 + 0.15);
+      gain.connect(out);
+      osc.start(now);
+      osc.stop(now + 0.19);
     });
   }
 
-  // Particle beam synergy pulse
-  public playSynergyBeam() {
-    const ctx = this.ensureContext();
-    if (!ctx) return;
+  // OpenAI Realtime / Gemini Live Warm Suspended Ninth Awakening Swell
+  public playAmberLockdown() {
+    const bus = this.ensureContext();
+    if (!bus) return;
+    const { ctx, out } = bus;
+
+    const now = ctx.currentTime;
+    const chord = [146.83, 220.0, 261.63, 329.63, 392.0]; // Dmin9 warm ambient chord
+
+    const swellFilter = ctx.createBiquadFilter();
+    swellFilter.type = 'lowpass';
+    swellFilter.frequency.setValueAtTime(280, now);
+    swellFilter.frequency.exponentialRampToValueAtTime(1850, now + 0.28);
+    swellFilter.frequency.exponentialRampToValueAtTime(640, now + 0.85);
+    swellFilter.connect(out);
+
+    chord.forEach((freq, idx) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = idx === 0 ? 'triangle' : 'sine';
+      osc.frequency.setValueAtTime(freq, now + idx * 0.025);
+
+      gain.gain.setValueAtTime(0.001, now + idx * 0.025);
+      gain.gain.linearRampToValueAtTime(idx === 0 ? 0.09 : 0.055, now + idx * 0.025 + 0.09);
+      gain.gain.exponentialRampToValueAtTime(0.0008, now + 0.85);
+
+      osc.connect(gain);
+      gain.connect(swellFilter);
+      osc.start(now + idx * 0.025);
+      osc.stop(now + 0.88);
+    });
+  }
+
+  // Luxury Lydian Maj9 Studio Unlock Bloom on Passkey Verification
+  public playPasskeyVerified() {
+    const bus = this.ensureContext();
+    if (!bus) return;
+    const { ctx, out } = bus;
+
+    const now = ctx.currentTime;
+    const freqs = [130.81, 261.63, 329.63, 392.0, 493.88, 587.33, 739.99]; // Cmaj9(#11)
+
+    const bloomFilter = ctx.createBiquadFilter();
+    bloomFilter.type = 'lowpass';
+    bloomFilter.frequency.setValueAtTime(340, now);
+    bloomFilter.frequency.exponentialRampToValueAtTime(3400, now + 0.55);
+    bloomFilter.frequency.exponentialRampToValueAtTime(1100, now + 1.35);
+    bloomFilter.connect(out);
+
+    freqs.forEach((freq, idx) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = idx < 2 ? 'triangle' : 'sine';
+      const startOffset = idx * 0.022;
+
+      osc.frequency.setValueAtTime(freq * 0.995, now + startOffset);
+      osc.frequency.exponentialRampToValueAtTime(freq, now + startOffset + 0.22);
+
+      gain.gain.setValueAtTime(0.001, now + startOffset);
+      gain.gain.linearRampToValueAtTime(idx === 0 ? 0.11 : 0.055, now + startOffset + 0.12);
+      gain.gain.exponentialRampToValueAtTime(0.0006, now + 1.35);
+
+      osc.connect(gain);
+      gain.connect(bloomFilter);
+      osc.start(now + startOffset);
+      osc.stop(now + 1.4);
+    });
+  }
+
+  // Deep Sub-Bass Muted Security Pulse (Calm, authoritative — no harsh klaxon)
+  public playIntruderAlert() {
+    const bus = this.ensureContext();
+    if (!bus) return;
+    const { ctx, out } = bus;
+
+    const now = ctx.currentTime;
+    const darkFilter = ctx.createBiquadFilter();
+    darkFilter.type = 'lowpass';
+    darkFilter.frequency.setValueAtTime(420, now);
+    darkFilter.connect(out);
+
+    for (let i = 0; i < 2; i++) {
+      const offset = i * 0.2;
+      [110, 116.54].forEach((freq) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(freq, now + offset);
+        osc.frequency.exponentialRampToValueAtTime(freq * 0.86, now + offset + 0.16);
+
+        gain.gain.setValueAtTime(0.001, now + offset);
+        gain.gain.linearRampToValueAtTime(0.11, now + offset + 0.015);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + offset + 0.18);
+
+        osc.connect(gain);
+        gain.connect(darkFilter);
+        osc.start(now + offset);
+        osc.stop(now + offset + 0.19);
+      });
+    }
+  }
+
+  // Agent Core Awakening (Warm Harmonic Fifth Bloom)
+  public playCoreWake(harmonicHz = 432) {
+    const bus = this.ensureContext();
+    if (!bus) return;
+    const { ctx, out } = bus;
+
+    const now = ctx.currentTime;
+    [harmonicHz * 0.5, harmonicHz, harmonicHz * 1.498].forEach((f, idx) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(f * 0.98, now);
+      osc.frequency.exponentialRampToValueAtTime(f, now + 0.18);
+
+      gain.gain.setValueAtTime(0.001, now);
+      gain.gain.linearRampToValueAtTime(idx === 1 ? 0.08 : 0.045, now + 0.04);
+      gain.gain.exponentialRampToValueAtTime(0.0008, now + 0.36);
+
+      osc.connect(gain);
+      gain.connect(out);
+      osc.start(now);
+      osc.stop(now + 0.38);
+    });
+  }
+
+  // Agent Core Sleep (Gentle Downward Octave Filter Dim)
+  public playCoreSleep() {
+    const bus = this.ensureContext();
+    if (!bus) return;
+    const { ctx, out } = bus;
 
     const now = ctx.currentTime;
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(520, now);
-    osc.frequency.linearRampToValueAtTime(1040, now + 0.18);
-    osc.frequency.linearRampToValueAtTime(780, now + 0.4);
 
-    gain.gain.setValueAtTime(0.14, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.42);
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(392, now);
+    osc.frequency.exponentialRampToValueAtTime(196, now + 0.26);
+
+    gain.gain.setValueAtTime(0.001, now);
+    gain.gain.linearRampToValueAtTime(0.075, now + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0008, now + 0.28);
 
     osc.connect(gain);
-    gain.connect(ctx.destination);
+    gain.connect(out);
     osc.start(now);
-    osc.stop(now + 0.44);
+    osc.stop(now + 0.3);
   }
 
-  // Synthesized JARVIS/ARCHON Voice Output
-  public speak(text: string, onEnd?: () => void) {
-    if (!this.voiceEnabled || this.muted || typeof window === 'undefined' || !('speechSynthesis' in window)) {
+  // Silky Pentatonic Glass Cascade when switching Studio Views
+  public playModeMorph() {
+    const bus = this.ensureContext();
+    if (!bus) return;
+    const { ctx, out } = bus;
+
+    const now = ctx.currentTime;
+    [392.0, 587.33, 880.0].forEach((f, idx) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(f, now + idx * 0.035);
+
+      gain.gain.setValueAtTime(0.001, now + idx * 0.035);
+      gain.gain.linearRampToValueAtTime(0.05, now + idx * 0.035 + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0008, now + idx * 0.035 + 0.16);
+
+      osc.connect(gain);
+      gain.connect(out);
+      osc.start(now + idx * 0.035);
+      osc.stop(now + idx * 0.035 + 0.17);
+    });
+  }
+
+  // Soft Harmonic Shimmer Pulse during Multi-Agent Synthesis
+  public playSynergyBeam() {
+    const bus = this.ensureContext();
+    if (!bus) return;
+    const { ctx, out } = bus;
+
+    const now = ctx.currentTime;
+    [440, 659.25].forEach((f, idx) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(f, now);
+      osc.frequency.exponentialRampToValueAtTime(f * 1.125, now + 0.28);
+
+      gain.gain.setValueAtTime(0.001, now);
+      gain.gain.linearRampToValueAtTime(idx === 0 ? 0.065 : 0.04, now + 0.04);
+      gain.gain.exponentialRampToValueAtTime(0.0008, now + 0.32);
+
+      osc.connect(gain);
+      gain.connect(out);
+      osc.start(now);
+      osc.stop(now + 0.34);
+    });
+  }
+
+  // Natural Voice Synthesis: tries Local Neural TTS Bridge (/api/tts -> Kokoro-82M / mlx-audio) first,
+  // and falls back seamlessly to pre-warmed macOS Neural Voices.
+  public async speak(text: string, onEnd?: () => void) {
+    if (!this.voiceEnabled || this.muted || typeof window === 'undefined') {
       onEnd?.();
       return;
     }
+
+    if (this.localTtsEndpoint) {
+      try {
+        const res = await fetch('/api/tts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            text,
+            endpoint: this.localTtsEndpoint,
+          }),
+        });
+        if (res.ok && res.headers.get('content-type')?.includes('audio')) {
+          const blob = await res.blob();
+          const url = URL.createObjectURL(blob);
+          const audio = new Audio(url);
+          audio.onended = () => {
+            URL.revokeObjectURL(url);
+            onEnd?.();
+          };
+          await audio.play();
+          return;
+        }
+      } catch {
+        // Fallback to native neural speechSynthesis
+      }
+    }
+
+    if (!('speechSynthesis' in window)) {
+      onEnd?.();
+      return;
+    }
+
     try {
       window.speechSynthesis.cancel();
       const utterance = new SpeechSynthesisUtterance(text);
       const voices = window.speechSynthesis.getVoices();
-      const preferred =
-        voices.find((v) => /Daniel|Oliver|Arthur|Alex|Google UK English Male/i.test(v.name)) ||
+      const selected =
+        this.cachedVoice ||
+        voices.find((v) =>
+          /Ava|Zoe|Daniel|Oliver|Samantha|Arthur|Google UK English/i.test(v.name)
+        ) ||
         voices.find((v) => v.lang.startsWith('en'));
-      if (preferred) utterance.voice = preferred;
-      utterance.pitch = 0.94;
-      utterance.rate = 1.06;
-      utterance.volume = 0.95;
+      if (selected) utterance.voice = selected;
+      utterance.pitch = 0.98;
+      utterance.rate = 1.02;
+      utterance.volume = 0.88;
       utterance.onend = () => onEnd?.();
       utterance.onerror = () => onEnd?.();
       window.speechSynthesis.speak(utterance);

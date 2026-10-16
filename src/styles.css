@@ -1,10 +1,31 @@
 @import "tailwindcss";
 
 :root {
-  --hud-cyan: #00f0ff;
-  --hud-amber: #ff9e00;
-  --hud-crimson: #ff2a6d;
-  --hud-emerald: #00ff9d;
+  /* Obsidian Matte & Specular Glass Hierarchy */
+  --bg-void: #06070a;
+  --bg-canvas: #090a0f;
+  --surface-glass-1: rgba(17, 19, 26, 0.68);
+  --surface-glass-2: rgba(22, 25, 34, 0.82);
+  --surface-glass-3: rgba(30, 34, 46, 0.94);
+  --surface-code: #07080c;
+
+  /* Hairline Borders & Specular Highlights */
+  --border-subtle: rgba(255, 255, 255, 0.07);
+  --border-strong: rgba(255, 255, 255, 0.14);
+  --border-focus: rgba(255, 255, 255, 0.24);
+  --specular-top: inset 0 1px 0 0 rgba(255, 255, 255, 0.09);
+  --shadow-ambient: 0 20px 50px -12px rgba(0, 0, 0, 0.72), 0 0 1px 1px rgba(255, 255, 255, 0.05);
+
+  /* Typography Ink Hierarchy */
+  --text-primary: #f3f4f6;
+  --text-secondary: #9ca3af;
+  --text-muted: #64748b;
+
+  /* Tier-1 AI Lab Signature Accents */
+  --accent-argon: #6e8efb;
+  --accent-claude: #d97757;
+  --accent-grok: #f43f5e;
+  --accent-gpt: #10a37f;
 }
 
 * {
@@ -14,54 +35,78 @@
 body {
   margin: 0;
   padding: 0;
-  background-color: #02060d;
-  color: #e2f8ff;
-  font-family: 'Rajdhani', -apple-system, BlinkMacSystemFont, sans-serif;
+  background-color: var(--bg-canvas);
+  color: var(--text-primary);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   overflow: hidden;
+  -webkit-font-smoothing: antialiased;
 }
 
-/* Holographic Scanline & Vignette Overlay */
-.hud-grid-bg {
+.font-display {
+  font-family: 'Plus Jakarta Sans', 'Inter', sans-serif;
+  letter-spacing: -0.02em;
+}
+
+.font-serif-editorial {
+  font-family: 'Instrument Serif', Georgia, serif;
+  letter-spacing: -0.015em;
+}
+
+.font-mono-tech {
+  font-family: 'JetBrains Mono', monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Whisper-soft Aurora Radial Backdrop (Zero Grids, Zero Scanlines) */
+.aspira-canvas-bg {
+  background-color: var(--bg-canvas);
   background-image:
-    radial-gradient(circle at 50% 48%, rgba(0, 240, 255, 0.11) 0%, rgba(2, 6, 13, 0.92) 70%),
-    linear-gradient(rgba(0, 240, 255, 0.035) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(0, 240, 255, 0.035) 1px, transparent 1px);
-  background-size: 100% 100%, 38px 38px, 38px 38px;
+    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(110, 142, 251, 0.11), transparent 70%),
+    radial-gradient(ellipse 60% 45% at 85% 105%, rgba(217, 119, 87, 0.07), transparent 70%),
+    radial-gradient(ellipse 60% 45% at 15% 105%, rgba(16, 163, 127, 0.06), transparent 70%);
 }
 
-.hud-scanlines::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background: repeating-linear-gradient(
-    to bottom,
-    transparent 0px,
-    transparent 2px,
-    rgba(0, 240, 255, 0.02) 3px
-  );
-  z-index: 30;
+/* Flagship Specular Glass Surfaces */
+.aspira-glass {
+  background: var(--surface-glass-1);
+  backdrop-filter: blur(28px);
+  -webkit-backdrop-filter: blur(28px);
+  border: 1px solid var(--border-subtle);
+  box-shadow: var(--specular-top), var(--shadow-ambient);
 }
 
-/* Sci-Fi Angled HUD Panel Corners */
-.hud-panel {
-  box-shadow:
-    0 0 24px rgba(0, 240, 255, 0.08),
-    inset 0 0 18px rgba(0, 240, 255, 0.05);
+.aspira-glass-elevated {
+  background: var(--surface-glass-2);
+  backdrop-filter: blur(32px);
+  -webkit-backdrop-filter: blur(32px);
+  border: 1px solid var(--border-strong);
+  box-shadow: var(--specular-top), var(--shadow-ambient);
 }
 
-/* Custom sleek scrollbars */
+.aspira-card-interactive {
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(255, 255, 255, 0.065);
+  box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.05);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.aspira-card-interactive:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.13);
+}
+
+/* Refined Subtle Scrollbars */
 ::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
+  width: 4px;
+  height: 4px;
 }
 ::-webkit-scrollbar-track {
-  background: rgba(2, 10, 22, 0.6);
+  background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(0, 240, 255, 0.35);
+  background: rgba(255, 255, 255, 0.12);
   border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 240, 255, 0.65);
+  background: rgba(255, 255, 255, 0.25);
 }

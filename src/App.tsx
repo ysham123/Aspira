@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Activity,
-  Cpu,
+  ArrowUp,
   Eye,
   Flame,
   FolderGit2,
@@ -9,13 +8,10 @@ import {
   Lock,
   Mic,
   Orbit,
-  Power,
-  Send,
   Sliders,
   Sparkles,
   Volume2,
   VolumeX,
-  Zap,
 } from 'lucide-react';
 import {
   BUILTIN_MODEL_PLUGINS,
@@ -69,11 +65,11 @@ export const App: React.FC = () => {
     }
   });
 
-  // 3. TRANSFORMATIVE SPATIAL MODE & SYNERGY MODE
+  // 3. TRANSFORMATIVE STUDIO VIEW & SYNERGY MODE
   const [spatialMode, setSpatialMode] = useState<SpatialMode>('nexus');
   const [synergyMode, setSynergyMode] = useState<SynergyMode>('fusion');
   const [selectedCapability, setSelectedCapability] = useState<CapabilityDefinition>(
-    CAPABILITY_MATRIX[4] // 3D Code Synthesis & AST Refactoring (Overlapping)
+    CAPABILITY_MATRIX[0] // Code Architecture & AST Refactoring (Overlapping)
   );
   const [latestResult, setLatestResult] = useState<SynergyExecutionResult | null>(null);
   const [isExecuting, setIsExecuting] = useState(false);
@@ -90,7 +86,7 @@ export const App: React.FC = () => {
     dominantPitchHz: 144,
     spectralCentroidHz: 1180,
     voiceBiometricMatch: 96.8,
-    spectrumBins: Array(24).fill(14),
+    spectrumBins: Array(24).fill(10),
   });
   const [liveTranscript, setLiveTranscript] = useState('');
   const [webcamEnabled, setWebcamEnabled] = useState(false);
@@ -103,14 +99,14 @@ export const App: React.FC = () => {
   const [soundMuted, setSoundMuted] = useState(false);
   const [vaultModalOpen, setVaultModalOpen] = useState(false);
   const [macTelemetry, setMacTelemetry] = useState<MacTelemetry>({
-    hostname: 'STARK-MACOS-NODE',
+    hostname: 'MacBook-Pro',
     platform: 'Darwin arm64',
-    cpuModel: 'Apple Silicon Neural Engine',
-    cpuCores: 12,
+    cpuModel: 'Apple M2 Pro',
+    cpuCores: 10,
     cpuUsagePercent: 18,
     memoryUsedGB: 14.2,
-    memoryTotalGB: 32,
-    memoryPercent: 44,
+    memoryTotalGB: 16,
+    memoryPercent: 88,
     uptimeHours: 42.5,
   });
 
@@ -119,12 +115,12 @@ export const App: React.FC = () => {
   const passkeysRef = useRef(passkeyProfiles);
   passkeysRef.current = passkeyProfiles;
 
-  // Trigger Amber Biometric Passkey Challenge after Clap-Clap + "Wake up, I'm back"
+  // Trigger Passkey Resonance Challenge after Clap-Clap + "Wake up, I'm back"
   const handleTriggerWakeChallenge = useCallback(() => {
     soundEngine.playAmberLockdown();
     setBootState('amber_challenge');
     soundEngine.speak(
-      'Welcome back, Sir. Biometric lock active. State your passkey.'
+      'Welcome back. Acoustic signature recognized. Please state your passkey.'
     );
   }, []);
 
@@ -142,7 +138,7 @@ export const App: React.FC = () => {
         soundEngine.playIntruderAlert();
         setBootState('intruder');
         soundEngine.speak(
-          'Access denied. Voiceprint or passkey phrase mismatch. Exocortex locked.'
+          'Passkey or voiceprint unverified. Studio remains locked.'
         );
         return;
       }
@@ -160,9 +156,9 @@ export const App: React.FC = () => {
       setSpatialMode(matchedProfile.targetMode);
       setBootState('ignited');
       setAwayBriefingBanner(
-        `[${matchedProfile.name}] Verified (${acousticTelemetry.voiceBiometricMatch}% Voiceprint Match). Woke ${matchedProfile.wakeModels
-          .map((m) => m.toUpperCase())
-          .join(' + ')}.`
+        `${matchedProfile.name} verified (${acousticTelemetry.voiceBiometricMatch}% vocal match) · Woke ${matchedProfile.wakeModels
+          .map((m) => m.charAt(0).toUpperCase() + m.slice(1))
+          .join(' + ')}`
       );
       soundEngine.speak(matchedProfile.greetingSpeech);
     },
@@ -194,14 +190,14 @@ export const App: React.FC = () => {
     [selectedCapability, models, awakeModelIds, synergyMode, apiKeys]
   );
 
-  // Initialize Initial Synergy Demo Result so the HUD has rich live telemetry immediately upon ignition
+  // Initialize Initial Synergy Result
   useEffect(() => {
     handleRunDirective(
-      'Synthesize multi-model spatial HUD architecture & verify real-time capability overlap'
+      'Synthesize multi-agent spatial studio architecture & verify capability overlap across awake models'
     );
   }, []);
 
-  // Poll Real macOS System Telemetry from Local Server
+  // Poll Real macOS System Telemetry
   useEffect(() => {
     const fetchTelemetry = () => {
       fetch('/api/telemetry')
@@ -216,7 +212,7 @@ export const App: React.FC = () => {
     return () => clearInterval(timer);
   }, []);
 
-  // Initialize Acoustic Sentinel Engine (Double-Clap + Vocal Frequency Biometrics)
+  // Initialize Acoustic Sentinel Engine
   const startAcousticMic = useCallback(async () => {
     if (!sentinelRef.current) {
       const engine = new AcousticSentinelEngine();
@@ -272,7 +268,6 @@ export const App: React.FC = () => {
 
         if (!clean) return;
 
-        // 1. In Sentinel State: check for "wake up" or "i'm back"
         if (
           bootStateRef.current === 'sentinel' &&
           (clean.includes('wake up') || clean.includes("i'm back") || clean.includes('im back'))
@@ -281,7 +276,6 @@ export const App: React.FC = () => {
           return;
         }
 
-        // 2. In Amber Challenge State: check if phrase matches any Passkey
         if (bootStateRef.current === 'amber_challenge') {
           const matched = passkeysRef.current.find((p) =>
             clean.includes(p.phrase.toLowerCase())
@@ -292,7 +286,6 @@ export const App: React.FC = () => {
           return;
         }
 
-        // 3. In Ignited State: voice control for models & modes
         if (bootStateRef.current === 'ignited' && event.results[event.results.length - 1]?.isFinal) {
           if (clean.includes('ghost protocol') || clean.includes('go to sleep')) {
             handleVerifyPasskey('ghost protocol');
@@ -305,13 +298,13 @@ export const App: React.FC = () => {
           } else if (clean.includes('wake up gpt')) {
             setAwakeModelIds((prev) => Array.from(new Set([...prev, 'gpt'])));
             soundEngine.playCoreWake(639);
-          } else if (clean.includes('forge mode')) {
+          } else if (clean.includes('workbench') || clean.includes('forge mode')) {
             setSpatialMode('forge');
             soundEngine.playModeMorph();
-          } else if (clean.includes('overwatch mode')) {
+          } else if (clean.includes('vision') || clean.includes('overwatch')) {
             setSpatialMode('overwatch');
             soundEngine.playModeMorph();
-          } else if (clean.includes('war room')) {
+          } else if (clean.includes('pulse') || clean.includes('war room')) {
             setSpatialMode('warroom');
             soundEngine.playModeMorph();
           }
@@ -345,7 +338,7 @@ export const App: React.FC = () => {
     };
   }, [handleTriggerWakeChallenge, handleVerifyPasskey, models]);
 
-  // Toggle Awake / Cryo-Sleep State of any Individual Model Core
+  // Toggle Awake / Sleep State of any Individual Model
   const toggleModelAwake = (model: ModelPluginManifest) => {
     setAwakeModelIds((prev) => {
       const exists = prev.includes(model.id);
@@ -359,13 +352,11 @@ export const App: React.FC = () => {
     });
   };
 
-  // Switch Spatial Mode with mechanical HUD servo audio
   const switchSpatialMode = (mode: SpatialMode) => {
     soundEngine.playModeMorph();
     setSpatialMode(mode);
   };
 
-  // Handle Webcam Air-Gesture Triggers
   const handleAirGestureTrigger = (gesture: 'wake_all' | 'cycle_mode' | 'fusion_pulse') => {
     if (gesture === 'wake_all') {
       soundEngine.playPasskeyVerified();
@@ -375,13 +366,13 @@ export const App: React.FC = () => {
       const next = order[(order.indexOf(spatialMode) + 1) % order.length];
       switchSpatialMode(next);
     } else if (gesture === 'fusion_pulse') {
-      handleRunDirective('Air-Gesture Triggered Multi-Model Fusion Scan');
+      handleRunDirective('Air-Gesture Triggered Multi-Agent Synthesis');
     }
   };
 
   return (
-    <div className="relative w-screen h-screen overflow-hidden hud-grid-bg hud-scanlines flex flex-col justify-between p-3.5 select-none">
-      {/* 3D HOLOGRAPHIC REACTOR & MORPHING GEOMETRY STAGE */}
+    <div className="relative w-screen h-screen overflow-hidden aspira-canvas-bg flex flex-col justify-between p-4 select-none">
+      {/* 3D BIOLUMINESCENT FLUID AURORA ORB & CONSTELLATION STAGE */}
       <ThreeHologramStage
         spatialMode={spatialMode}
         synergyMode={synergyMode}
@@ -393,7 +384,7 @@ export const App: React.FC = () => {
         handCursor={handCursor}
       />
 
-      {/* SENTINEL STANDBY / AMBER PASSKEY CHALLENGE / CRIMSON INTRUDER OVERLAY */}
+      {/* AMBIENT VOICE & CLAP LOCK SCREEN */}
       {bootState !== 'ignited' && (
         <AcousticBootOverlay
           bootState={bootState}
@@ -406,15 +397,21 @@ export const App: React.FC = () => {
             soundEngine.playIntruderAlert();
             setBootState('intruder');
             soundEngine.speak(
-              'Intruder alert. Vocal harmonic mismatch detected. Locking all neural cores.'
+              'Passkey or voiceprint unverified. Studio remains locked.'
             );
           }}
           onResetToSentinel={() => setBootState('sentinel')}
           onStartMic={startAcousticMic}
+          onCalibrateVoice={() => {
+            sentinelRef.current?.enrollCurrentVoice(
+              acousticTelemetry.dominantPitchHz,
+              acousticTelemetry.spectralCentroidHz
+            );
+          }}
         />
       )}
 
-      {/* PLUG & PLAY VAULT MODAL (Passkey Editor, Voiceprint Calibrator, API Keys, Hot-Plug Models) */}
+      {/* RAYCAST / LINEAR STUDIO SETTINGS VAULT */}
       <PlugAndPlayVaultModal
         open={vaultModalOpen}
         onClose={() => setVaultModalOpen(false)}
@@ -444,7 +441,7 @@ export const App: React.FC = () => {
           sentinelRef.current?.getEnrolledVoiceprint() || {
             pitchHz: 145,
             centroidHz: 1180,
-            enrolledAt: 'Default Stark Profile',
+            enrolledAt: 'Default Studio Profile',
           }
         }
         currentPitchHz={acousticTelemetry.dominantPitchHz}
@@ -459,44 +456,37 @@ export const App: React.FC = () => {
       />
 
       {/* =====================================================================
-          TOP TACTICAL VISOR HEADER (System Telemetry + 4 Morphing Mode Tabs)
+          LAYER 1: FLOATING TOP GLASS NAVIGATION BAR
          ===================================================================== */}
-      <header className="relative z-20 flex items-center justify-between gap-3 hud-panel rounded-xl border border-cyan-500/35 bg-[#030b17]/85 px-4 py-2 backdrop-blur-md">
-        {/* Brand & Host Telemetry */}
+      <header className="relative z-20 flex items-center justify-between gap-4 aspira-glass rounded-2xl px-4 py-2">
+        {/* Left: Aspira Wordmark & Quiet System Pill */}
         <div className="flex items-center gap-3">
-          <div className="relative flex items-center justify-center w-9 h-9 rounded-full border border-cyan-400 bg-cyan-500/15 shadow-[0_0_15px_rgba(0,240,255,0.35)]">
-            <Orbit className="w-5 h-5 text-cyan-300 animate-spin" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="font-['Orbitron'] text-sm font-black tracking-widest text-white">
-                A.R.C.H.O.N. <span className="text-cyan-400 font-normal">// EXOCORTEX OS</span>
-              </h1>
-              <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-400/40">
-                OPEN-SOURCE PLUG & PLAY
-              </span>
-            </div>
-            <div className="flex items-center gap-3 text-[10px] font-mono text-slate-300">
-              <span>HOST: {macTelemetry.hostname}</span>
-              <span className="text-cyan-300">CPU: {macTelemetry.cpuUsagePercent}%</span>
-              <span className="text-amber-300">
-                RAM: {macTelemetry.memoryUsedGB}/{macTelemetry.memoryTotalGB} GB
-              </span>
-              <span className="text-emerald-300">
-                VOICEPRINT: {acousticTelemetry.voiceBiometricMatch}%
-              </span>
+          <div className="w-7 h-7 rounded-xl bg-gradient-to-tr from-[#6E8EFB] via-[#A777E3] to-[#D97757] p-[1px]">
+            <div className="w-full h-full rounded-[11px] bg-[#090A0F] flex items-center justify-center">
+              <Sparkles className="w-3.5 h-3.5 text-[#93ADFF]" />
             </div>
           </div>
+          <span className="font-display text-sm font-semibold tracking-tight text-white">
+            Aspira
+          </span>
+          <span className="hidden md:inline-flex items-center gap-2 font-mono-tech text-[11px] text-slate-400 px-2.5 py-0.5 rounded-full bg-white/[0.03] border border-white/[0.06]">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+            <span>{macTelemetry.cpuModel}</span>
+            <span>·</span>
+            <span>{macTelemetry.cpuUsagePercent}% CPU</span>
+            <span>·</span>
+            <span>{acousticTelemetry.voiceBiometricMatch}% Voice</span>
+          </span>
         </div>
 
-        {/* 4 TRANSFORMATIVE SPATIAL MODE TABS */}
-        <nav className="flex items-center gap-1.5 bg-black/50 p-1 rounded-lg border border-cyan-500/25">
+        {/* Center: 4 Segmented Studio Views */}
+        <nav className="flex items-center gap-1 bg-white/[0.03] p-1 rounded-xl border border-white/[0.06]">
           {(
             [
-              { id: 'nexus', label: '1. Pantheon Nexus', icon: Orbit },
-              { id: 'forge', label: '2. 3D Code Forge', icon: FolderGit2 },
-              { id: 'overwatch', label: '3. Overwatch Visor', icon: Eye },
-              { id: 'warroom', label: '4. Global War Room', icon: Flame },
+              { id: 'nexus', label: 'Studio', icon: Orbit },
+              { id: 'forge', label: 'Workbench', icon: FolderGit2 },
+              { id: 'overwatch', label: 'Live Vision', icon: Eye },
+              { id: 'warroom', label: 'Global Pulse', icon: Flame },
             ] as { id: SpatialMode; label: string; icon: any }[]
           ).map((tab) => {
             const Icon = tab.icon;
@@ -505,9 +495,9 @@ export const App: React.FC = () => {
               <button
                 key={tab.id}
                 onClick={() => switchSpatialMode(tab.id)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-['Orbitron'] font-bold tracking-wider uppercase transition cursor-pointer ${
+                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-medium transition cursor-pointer ${
                   active
-                    ? 'bg-cyan-500/25 text-cyan-200 border border-cyan-300 shadow-[0_0_15px_rgba(0,240,255,0.3)]'
+                    ? 'bg-white/[0.12] text-white border border-white/[0.12] shadow-sm'
                     : 'text-slate-400 hover:text-white border border-transparent'
                 }`}
               >
@@ -518,14 +508,17 @@ export const App: React.FC = () => {
           })}
         </nav>
 
-        {/* Right Controls: Plug & Play Vault, Audio Toggle, Lock Sentinel */}
+        {/* Right: Studio Settings, Audio Toggle, Standby Lock */}
         <div className="flex items-center gap-2">
           <button
-            onClick={() => setVaultModalOpen(true)}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/35 border border-amber-400/60 text-xs font-mono text-amber-200 cursor-pointer"
+            onClick={() => {
+              soundEngine.playGlassTick();
+              setVaultModalOpen(true);
+            }}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl aspira-card-interactive text-xs font-medium text-slate-200 cursor-pointer"
           >
-            <Sliders className="w-3.5 h-3.5" />
-            <span>Passkeys & Plugins</span>
+            <Sliders className="w-3.5 h-3.5 text-[#6E8EFB]" />
+            <span>Models & Keys</span>
           </button>
 
           <button
@@ -534,10 +527,14 @@ export const App: React.FC = () => {
               setSoundMuted(next);
               soundEngine.muted = next;
             }}
-            title="Toggle Sci-Fi Synth & JARVIS Voice"
-            className="p-1.5 rounded-lg bg-slate-900/90 hover:bg-slate-800 border border-cyan-500/30 text-cyan-300 cursor-pointer"
+            title="Toggle Ambient Harmonic Audio & Voice"
+            className="p-2 rounded-xl aspira-card-interactive text-slate-300 hover:text-white cursor-pointer"
           >
-            {soundMuted ? <VolumeX className="w-4 h-4 text-rose-400" /> : <Volume2 className="w-4 h-4" />}
+            {soundMuted ? (
+              <VolumeX className="w-3.5 h-3.5 text-rose-400" />
+            ) : (
+              <Volume2 className="w-3.5 h-3.5 text-slate-300" />
+            )}
           </button>
 
           <button
@@ -545,34 +542,33 @@ export const App: React.FC = () => {
               soundEngine.playCoreSleep();
               setBootState('sentinel');
             }}
-            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-rose-500/20 hover:bg-rose-500/35 border border-rose-400/50 text-xs font-mono text-rose-200 cursor-pointer"
+            title="Return to Ambient Acoustic Standby"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl aspira-card-interactive text-xs text-slate-300 hover:text-white cursor-pointer"
           >
             <Lock className="w-3.5 h-3.5" />
-            <span>Sentinel Lock</span>
+            <span className="hidden sm:inline">Standby</span>
           </button>
         </div>
       </header>
 
-      {/* Optional Away-Mission Briefing Toast after Passkey Unlock */}
+      {/* Subtle Unlock Notification Pill */}
       {awayBriefingBanner && (
-        <div className="relative z-20 flex items-center justify-between px-4 py-1.5 rounded-lg bg-emerald-950/75 border border-emerald-400/50 text-xs font-mono text-emerald-200">
-          <div className="flex items-center gap-2">
-            <KeyRound className="w-3.5 h-3.5 text-emerald-400" />
-            <span>{awayBriefingBanner}</span>
-          </div>
+        <div className="relative z-20 mx-auto mt-2 flex items-center gap-3 px-4 py-1 rounded-full aspira-glass text-xs text-slate-200">
+          <KeyRound className="w-3.5 h-3.5 text-emerald-400" />
+          <span>{awayBriefingBanner}</span>
           <button
             onClick={() => setAwayBriefingBanner(null)}
-            className="text-[10px] text-emerald-300 hover:underline cursor-pointer"
+            className="text-[11px] text-slate-400 hover:text-white cursor-pointer"
           >
-            DISMISS
+            Dismiss
           </button>
         </div>
       )}
 
       {/* =====================================================================
-          MAIN TRANSFORMATIVE WORKSPACE STAGE
+          LAYER 2: TRANSFORMATIVE STUDIO STAGE
          ===================================================================== */}
-      <main className="relative z-10 flex-1 my-2.5 overflow-hidden">
+      <main className="relative z-10 flex-1 my-3 overflow-hidden">
         <SpatialModeDeck
           spatialMode={spatialMode}
           synergyMode={synergyMode}
@@ -584,7 +580,6 @@ export const App: React.FC = () => {
           selectedCapability={selectedCapability}
           onSelectCapability={(cap) => {
             setSelectedCapability(cap);
-            soundEngine.playClapImpulse(1);
           }}
           models={models}
           awakeModelIds={awakeModelIds}
@@ -595,119 +590,62 @@ export const App: React.FC = () => {
       </main>
 
       {/* =====================================================================
-          BOTTOM DECK: 4 ORBITAL MODEL CORES + WEBCAM RIG + COMMAND CONSOLE
+          LAYER 3: 2-TIER FLOATING AGENT CONSTELLATION DOCK + UNIFIED COMPOSER
          ===================================================================== */}
-      <footer className="relative z-20 grid grid-cols-12 gap-3 items-stretch">
-        {/* 4 Selective Wake / Cryo-Sleep Model Core Cards (ARGON, CLAUDE, GROK, GPT) */}
-        <div className="col-span-6 grid grid-cols-4 gap-2">
-          {models.slice(0, 4).map((model) => {
+      <footer className="relative z-20 max-w-5xl w-full mx-auto flex flex-col gap-2">
+        {/* TIER A: Tactile Agent Constellation Pill Dock */}
+        <div className="flex items-center justify-center flex-wrap gap-2">
+          {models.map((model) => {
             const isAwake = awakeModelIds.includes(model.id);
             return (
-              <div
+              <button
                 key={model.id}
+                type="button"
                 onClick={() => toggleModelAwake(model)}
                 style={{
-                  borderColor: isAwake ? model.accentHex : 'rgba(100,116,139,0.3)',
-                  boxShadow: isAwake ? `0 0 20px rgba(${model.glowRgb}, 0.22)` : 'none',
+                  borderColor: isAwake ? `${model.accentHex}66` : 'rgba(255,255,255,0.07)',
+                  backgroundColor: isAwake
+                    ? 'rgba(22, 25, 34, 0.85)'
+                    : 'rgba(15, 17, 23, 0.55)',
                 }}
-                className={`hud-panel rounded-lg border p-2.5 transition cursor-pointer flex flex-col justify-between ${
-                  isAwake ? 'bg-[#041122]/90' : 'bg-[#020710]/70 opacity-60 hover:opacity-90'
-                }`}
+                className="flex items-center gap-2.5 px-3.5 py-2 rounded-xl border backdrop-blur-xl transition-all cursor-pointer group"
               >
-                <div>
-                  <div className="flex items-center justify-between gap-1 mb-1">
+                <span
+                  style={{
+                    backgroundColor: isAwake ? model.accentHex : '#475569',
+                    boxShadow: isAwake ? `0 0 10px ${model.accentHex}` : 'none',
+                  }}
+                  className="w-2 h-2 rounded-full transition"
+                />
+                <div className="text-left">
+                  <div className="flex items-center gap-1.5">
                     <span
-                      style={{ color: isAwake ? model.accentHex : '#94a3b8' }}
-                      className="font-['Orbitron'] text-xs font-black tracking-wider"
+                      className={`text-xs font-semibold ${
+                        isAwake ? 'text-white' : 'text-slate-400 group-hover:text-slate-200'
+                      }`}
                     >
                       {model.codeName}
                     </span>
-                    <span
-                      className={`inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[9px] font-mono uppercase ${
-                        isAwake
-                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/40'
-                          : 'bg-slate-800 text-slate-400'
-                      }`}
-                    >
-                      <Power className="w-2.5 h-2.5" />
-                      {isAwake ? 'AWAKE' : 'SLEEP'}
+                    <span className="font-mono-tech text-[10px] text-slate-400">
+                      {isAwake ? `${model.tokensPerSec} tok/s` : 'Sleep'}
                     </span>
                   </div>
-                  <div className="text-[10px] font-mono text-slate-300 truncate">
-                    {model.family}
-                  </div>
-                  <div className="text-[9px] text-slate-400 line-clamp-2 mt-1 leading-tight">
-                    {model.apexSuperpower}
-                  </div>
                 </div>
-
-                <div className="mt-2 pt-1.5 border-t border-white/10 flex items-center justify-between text-[9px] font-mono">
-                  <span style={{ color: model.accentHex }}>{model.contextWindow}</span>
-                  <span className="text-slate-400">
-                    {isAwake ? `${model.tokensPerSec} tok/s` : '0 tok/s'}
-                  </span>
-                </div>
-              </div>
+              </button>
             );
           })}
-        </div>
 
-        {/* Center-Right: Universal Multi-Model Command & Voice Console */}
-        <div className="col-span-3 hud-panel rounded-lg border border-cyan-500/35 bg-[#030b17]/90 p-2.5 backdrop-blur-md flex flex-col justify-between">
-          <div className="flex items-center justify-between text-[10px] font-mono text-cyan-300">
-            <span className="flex items-center gap-1">
-              <Mic className="w-3 h-3 text-cyan-400 animate-pulse" />
-              VOICE / DIRECTIVE BUS
-            </span>
-            <button
-              onClick={() => {
-                soundEngine.playPasskeyVerified();
-                setAwakeModelIds(models.map((m) => m.id));
-              }}
-              className="text-amber-300 hover:underline cursor-pointer"
-            >
-              ⚡ Wake All 4 (House Party)
-            </button>
-          </div>
-
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (!commandInput.trim()) return;
-              handleRunDirective(commandInput);
-              setCommandInput('');
+          <button
+            type="button"
+            onClick={() => {
+              soundEngine.playPasskeyVerified();
+              setAwakeModelIds(models.map((m) => m.id));
             }}
-            className="my-1.5 flex gap-1.5"
+            className="px-3 py-2 rounded-xl aspira-card-interactive text-xs font-medium text-slate-300 hover:text-white cursor-pointer"
           >
-            <input
-              type="text"
-              value={commandInput}
-              onChange={(e) => setCommandInput(e.target.value)}
-              placeholder={`Task ${awakeModelIds
-                .map((id) => id.toUpperCase())
-                .join(' + ')} (or speak)...`}
-              className="flex-1 px-2.5 py-1.5 rounded bg-black/75 border border-cyan-500/40 text-xs font-mono text-white focus:outline-none focus:border-cyan-300"
-            />
-            <button
-              type="submit"
-              disabled={isExecuting}
-              className="px-3 py-1.5 rounded bg-cyan-500/30 hover:bg-cyan-500/45 border border-cyan-300 text-cyan-100 text-xs font-mono font-bold uppercase cursor-pointer flex items-center gap-1"
-            >
-              <Send className="w-3 h-3" />
-              Run
-            </button>
-          </form>
+            Wake All
+          </button>
 
-          <div className="flex items-center justify-between text-[9px] font-mono text-slate-400">
-            <span className="truncate">
-              MIC: {liveTranscript ? `"${liveTranscript}"` : 'Clap or speak any directive...'}
-            </span>
-            <span className="text-cyan-300">RMS:{acousticTelemetry.rmsLevel}%</span>
-          </div>
-        </div>
-
-        {/* Right: Tri-Modal Webcam Optical Hand/Face Rig */}
-        <div className="col-span-3">
           <WebcamSensorOverlay
             enabled={webcamEnabled}
             onToggle={() => setWebcamEnabled((v) => !v)}
@@ -716,6 +654,49 @@ export const App: React.FC = () => {
             onAirGestureTrigger={handleAirGestureTrigger}
           />
         </div>
+
+        {/* TIER B: Raycast / Claude / Gemini Unified Command & Voice Composer Bar */}
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!commandInput.trim()) return;
+            handleRunDirective(commandInput);
+            setCommandInput('');
+          }}
+          className="aspira-glass-elevated rounded-2xl px-4 py-2.5 flex items-center gap-3"
+        >
+          <div className="flex items-center gap-2 text-xs text-slate-400 shrink-0">
+            <Mic className="w-4 h-4 text-[#6E8EFB] animate-pulse" />
+            <span className="hidden sm:inline font-mono-tech text-[11px] text-slate-300">
+              {awakeModelIds
+                .map((id) => id.charAt(0).toUpperCase() + id.slice(1))
+                .join(' + ') || 'Solo'}
+            </span>
+          </div>
+
+          <input
+            type="text"
+            value={commandInput}
+            onChange={(e) => setCommandInput(e.target.value)}
+            placeholder={
+              liveTranscript
+                ? `Voice: “${liveTranscript}” — or type a directive...`
+                : `Ask ${awakeModelIds
+                    .map((id) => id.charAt(0).toUpperCase() + id.slice(1))
+                    .join(' + ')} anything, or speak a command...`
+            }
+            className="flex-1 bg-transparent text-xs sm:text-sm text-white placeholder:text-slate-400 focus:outline-none"
+          />
+
+          <button
+            type="submit"
+            disabled={isExecuting}
+            className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl bg-white text-black hover:bg-white/90 text-xs font-semibold transition cursor-pointer disabled:opacity-50"
+          >
+            <span>{isExecuting ? 'Synthesizing...' : 'Run'}</span>
+            <ArrowUp className="w-3.5 h-3.5" />
+          </button>
+        </form>
       </footer>
     </div>
   );
