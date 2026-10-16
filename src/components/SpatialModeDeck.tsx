@@ -99,6 +99,12 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
   const [expandedTurnId, setExpandedTurnId] = useState<string | null>(null);
   const [newMemoryInput, setNewMemoryInput] = useState('');
   const [newMemoryCategory, setNewMemoryCategory] = useState<LivingMemoryItem['category']>('goal');
+  const selectedModelNames = models
+    .filter((model) => awakeModelIds.includes(model.id))
+    .map((model) => model.codeName);
+  const emptyConversationIntro = selectedModelNames.length > 0
+    ? `${selectedModelNames.join(' + ')} ${selectedModelNames.length === 1 ? 'is' : 'are'} ready. Ask a question or describe a task; local actions can run without a model.`
+    : 'Select a provider below to chat. Local actions such as opening an app or checking Git can run without a model.';
 
   // Workbench state
   const [fsNodes, setFsNodes] = useState<FsNode[]>([]);
@@ -239,7 +245,7 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
                 </div>
                 <p className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Aspira · agent workspace</p>
                 <h2 className="mt-3 max-w-xl text-3xl font-medium leading-tight tracking-tight text-white sm:text-4xl">What would you like to work on?</h2>
-                <p className="mt-3 max-w-lg text-sm leading-6 text-slate-400">Connect a provider to chat. Local actions such as opening an app or checking Git can run without a model.</p>
+                <p className="mt-3 max-w-lg text-sm leading-6 text-slate-400">{emptyConversationIntro}</p>
                 <div className="mt-7 grid gap-2 sm:grid-cols-2">
                   {[
                     { title: 'Understand this workspace', prompt: 'Summarize this workspace and tell me what I should work on next.' },

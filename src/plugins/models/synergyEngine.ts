@@ -40,7 +40,8 @@ async function fetchModelStream(
   roleDesc: string,
   apiKeys: Record<string, string>,
   conversationHistory: ConversationMessageContext[],
-  executeActions: boolean
+  executeActions: boolean,
+  signal?: AbortSignal
 ): Promise<{
   source: 'SUBSCRIPTION_OAUTH' | 'LIVE_API' | 'LOCAL_OLLAMA' | 'UNAVAILABLE';
   text: string;
@@ -70,6 +71,7 @@ async function fetchModelStream(
         conversationHistory,
         executeActions,
       }),
+      signal,
     });
 
     if (res.ok) {
@@ -110,6 +112,9 @@ async function fetchModelStream(
       responseMs: Math.round(performance.now() - startedAt),
     };
   } catch {
+    if (signal?.aborted) {
+      throw new DOMException('The request was stopped.', 'AbortError');
+    }
     const responseMs = Math.round(performance.now() - startedAt);
     return {
       source: 'UNAVAILABLE',
@@ -128,6 +133,7 @@ export async function runPantheonSynergy(params: {
   awakeModels: ModelPluginManifest[];
   apiKeys: Record<string, string>;
   conversationHistory?: ConversationMessageContext[];
+  signal?: AbortSignal;
   onMemoriesUpdated?: (memories: LivingMemoryItem[]) => void;
 }): Promise<SynergyExecutionResult> {
   const {
@@ -137,6 +143,7 @@ export async function runPantheonSynergy(params: {
     awakeModels,
     apiKeys,
     conversationHistory = [],
+    signal,
     onMemoriesUpdated,
   } = params;
 
@@ -157,11 +164,13 @@ export async function runPantheonSynergy(params: {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ modelId: 'local', prompt, executeActions: true }),
+        signal,
       });
       data = await response.json();
     } catch {
       data.error = 'Could not reach Aspira’s local action service.';
     }
+    if (signal?.aborted) throw new DOMException('The request was stopped.', 'AbortError');
     const executedActions = Array.isArray(data.executedActions) ? data.executedActions : [];
     if (Array.isArray(data.memories) && onMemoriesUpdated) onMemoriesUpdated(data.memories);
     const localActionCompleted = data.source === 'LOCAL_ACTIONS' &&
@@ -207,7 +216,8 @@ export async function runPantheonSynergy(params: {
       role,
       apiKeys,
       conversationHistory,
-      idx === 0 // Lead agent executes macOS/web/file/memory actions
+      idx === 0, // Lead agent executes macOS/web/file/memory actions
+      signal
     );
 
     if (idx === 0 && result.memories && onMemoriesUpdated) {
@@ -232,6 +242,7 @@ export async function runPantheonSynergy(params: {
   });
 
   const allStreams = await Promise.all(streamPromises);
+  if (signal?.aborted) throw new DOMException('The request was stopped.', 'AbortError');
   const responseStreams = allStreams.filter((stream) => stream.source !== 'UNAVAILABLE');
   const executedActions = allStreams.flatMap((stream) => stream.executedActions || []);
   const failedStreams = allStreams.filter((stream) => stream.source === 'UNAVAILABLE');

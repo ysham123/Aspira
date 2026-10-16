@@ -7,6 +7,7 @@ import {
   Mic,
   Orbit,
   Sliders,
+  Square,
   Sparkles,
   Volume2,
 } from 'lucide-react';
@@ -92,6 +93,7 @@ export const App: React.FC = () => {
   const [routines, setRoutines] = useState<LocalPlaybook[]>([]);
   const [subscriptionStatuses, setSubscriptionStatuses] = useState<Record<string, SubscriptionStatus>>({});
   const [isExecuting, setIsExecuting] = useState(false);
+  const [canCancelRequest, setCanCancelRequest] = useState(false);
   const [commandInput, setCommandInput] = useState('');
   const [awayBriefingBanner, setAwayBriefingBanner] = useState<string | null>(null);
   const [unlockPhrase, setUnlockPhrase] = useState('');
@@ -108,6 +110,8 @@ export const App: React.FC = () => {
   duplexVoiceRef.current = duplexVoiceActive;
   const conversationTurnsRef = useRef(conversationTurns);
   conversationTurnsRef.current = conversationTurns;
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const defaultModelSelectionAppliedRef = useRef(false);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const voiceStreamRef = useRef<MediaStream | null>(null);
   const voiceChunksRef = useRef<Blob[]>([]);
@@ -120,6 +124,24 @@ export const App: React.FC = () => {
       soundEngine.onSpeakingStateChange = undefined;
     };
   }, []);
+
+  // Start with one provider only after Aspira confirms a usable local connection.
+  useEffect(() => {
+    if (defaultModelSelectionAppliedRef.current) return;
+    if (awakeModelIds.length > 0) {
+      defaultModelSelectionAppliedRef.current = true;
+      return;
+    }
+
+    const connectedModel = models.find((model) =>
+      Boolean(apiKeys[model.id]) || subscriptionStatuses[model.id]?.authStatus === 'signed_in' ||
+      model.endpointConfig?.providerType === 'openai_compatible'
+    );
+    if (!connectedModel) return;
+
+    defaultModelSelectionAppliedRef.current = true;
+    setAwakeModelIds([connectedModel.id]);
+  }, [models, awakeModelIds, apiKeys, subscriptionStatuses]);
 
   useEffect(() => {
     try {
@@ -221,62 +243,6 @@ export const App: React.FC = () => {
     return true;
   }, [passkeyProfiles]);
 
-  // Execute a Conversational Turn & Real Host Actions across Awake Models
-  const handleRunDirective = useCallback(
-    async (
-      promptText: string,
-      modality: 'voice' | 'text' | 'routine' = 'text',
-      speakReplyAloud = true
-    ) => {
-      const cleanPrompt = promptText.trim();
-      const cap = selectedCapability;
-      if (!cleanPrompt) return;
-
-      setIsExecuting(true);
-
-      const awakeModelsList = models.filter((m) => awakeModelIds.includes(m.id));
-      const activeList = awakeModelsList;
-
-      // Build multi-turn conversation history for LLM context
-      const historyContext: ConversationMessageContext[] = [];
-      for (const t of conversationTurnsRef.current.slice(-5)) {
-        historyContext.push({ role: 'user', text: t.userText });
-        historyContext.push({
-          role: 'assistant',
-          speaker: t.result.modelStreams[0]?.codeName || 'Aspira',
-          text: t.result.synthesizedOutput,
-        });
-      }
-
-      const result = await runPantheonSynergy({
-        prompt: cleanPrompt,
-        capabilityId: cap.id,
-        synergyMode: 'fusion',
-        awakeModels: activeList,
-        apiKeys,
-        conversationHistory: historyContext,
-        onMemoriesUpdated: (updated) => setMemories(updated),
-      });
-
-      const newTurn: ConversationTurn = {
-        id: `turn-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        userText: cleanPrompt,
-        inputModality: modality,
-        result,
-      };
-
-      setLatestResult(result);
-      setConversationTurns((prev) => [...prev, newTurn]);
-      setIsExecuting(false);
-
-      if (result.spokenReply && speakReplyAloud && (modality === 'voice' || duplexVoiceRef.current)) {
-        soundEngine.speak(result.spokenReply);
-      }
-    },
-    [models, awakeModelIds, apiKeys]
-  );
-
   const appendLocalNotice = useCallback((prompt: string, headline: string, message: string) => {
     const result: SynergyExecutionResult = {
       id: `syn-local-${Date.now()}`,
@@ -306,6 +272,78 @@ export const App: React.FC = () => {
       result,
     }]);
   }, [selectedCapability]);
+
+  // Execute a Conversational Turn & Real Host Actions across Awake Models
+  const handleRunDirective = useCallback(
+    async (
+      promptText: string,
+      modality: 'voice' | 'text' | 'routine' = 'text',
+      speakReplyAloud = true
+    ) => {
+      const cleanPrompt = promptText.trim();
+      const cap = selectedCapability;
+      if (!cleanPrompt) return;
+
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
+      setCanCancelRequest(true);
+      setIsExecuting(true);
+      try {
+        const activeList = models.filter((m) => awakeModelIds.includes(m.id));
+
+        // Build multi-turn conversation history for LLM context
+        const historyContext: ConversationMessageContext[] = [];
+        for (const t of conversationTurnsRef.current.slice(-5)) {
+          historyContext.push({ role: 'user', text: t.userText });
+          historyContext.push({
+            role: 'assistant',
+            speaker: t.result.modelStreams[0]?.codeName || 'Aspira',
+            text: t.result.synthesizedOutput,
+          });
+        }
+
+        const result = await runPantheonSynergy({
+          prompt: cleanPrompt,
+          capabilityId: cap.id,
+          synergyMode: 'fusion',
+          awakeModels: activeList,
+          apiKeys,
+          conversationHistory: historyContext,
+          signal: controller.signal,
+          onMemoriesUpdated: (updated) => setMemories(updated),
+        });
+        if (controller.signal.aborted) return;
+
+        const newTurn: ConversationTurn = {
+          id: `turn-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          userText: cleanPrompt,
+          inputModality: modality,
+          result,
+        };
+
+        setLatestResult(result);
+        setConversationTurns((prev) => [...prev, newTurn]);
+
+        if (result.spokenReply && speakReplyAloud && (modality === 'voice' || duplexVoiceRef.current)) {
+          soundEngine.speak(result.spokenReply);
+        }
+      } catch (error) {
+        if (!controller.signal.aborted) {
+          appendLocalNotice(
+            cleanPrompt,
+            'Request failed',
+            error instanceof Error ? error.message : 'Aspira could not complete this request.'
+          );
+        }
+      } finally {
+        if (abortControllerRef.current === controller) abortControllerRef.current = null;
+        setCanCancelRequest(false);
+        setIsExecuting(false);
+      }
+    },
+    [models, awakeModelIds, apiKeys, appendLocalNotice]
+  );
 
   // Run a user-triggered local playbook.
   const handleRunRoutine = useCallback(
@@ -506,6 +544,7 @@ export const App: React.FC = () => {
 
   // Toggle Awake / Sleep State of any Individual Model
   const toggleModelAwake = (model: ModelPluginManifest) => {
+    defaultModelSelectionAppliedRef.current = true;
     setAwakeModelIds((prev) => {
       const exists = prev.includes(model.id);
       if (exists) {
@@ -783,6 +822,7 @@ export const App: React.FC = () => {
           <button
             type="button"
             onClick={() => {
+              defaultModelSelectionAppliedRef.current = true;
               setAwakeModelIds(models.map((m) => m.id));
             }}
             className="px-3 py-2 rounded-xl aspira-card-interactive text-xs font-medium text-slate-300 hover:text-white cursor-pointer"
@@ -830,14 +870,26 @@ export const App: React.FC = () => {
             className="flex-1 bg-transparent text-xs sm:text-sm text-white placeholder:text-slate-400 focus:outline-none"
           />
 
-          <button
-            type="submit"
-            disabled={isExecuting}
-            className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl bg-white text-black hover:bg-white/90 text-xs font-semibold transition cursor-pointer disabled:opacity-50"
-          >
-            <span>{isExecuting ? 'Acting...' : 'Send'}</span>
-            <ArrowUp className="w-3.5 h-3.5" />
-          </button>
+          {isExecuting && canCancelRequest ? (
+            <button
+              type="button"
+              onClick={() => abortControllerRef.current?.abort()}
+              title="Stop the agent response. A local action already started may still finish."
+              className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl border border-rose-400/25 bg-rose-400/10 text-rose-200 hover:bg-rose-400/20 text-xs font-semibold transition cursor-pointer"
+            >
+              <Square className="h-3 w-3 fill-current" />
+              <span>Stop</span>
+            </button>
+          ) : (
+            <button
+              type="submit"
+              disabled={isExecuting}
+              className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl bg-white text-black hover:bg-white/90 text-xs font-semibold transition cursor-pointer disabled:opacity-50"
+            >
+              <span>{isExecuting ? 'Acting...' : 'Send'}</span>
+              <ArrowUp className="w-3.5 h-3.5" />
+            </button>
+          )}
         </form>
       </footer>
     </div>

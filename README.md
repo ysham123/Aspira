@@ -24,17 +24,17 @@ Aspira can call these command-line tools when they are installed and signed in o
 | Provider | CLI | Connection notes |
 | --- | --- | --- |
 | Google models | Antigravity CLI (`agy`) | Sign in through the CLI. Aspira calls its documented headless prompt mode with sandboxing and plan mode. |
-| Anthropic | Claude Code (`claude`) | Sign in through Claude Code. Aspira uses print mode with plan permissions. |
+| Anthropic | Claude Code (`claude`) | Sign in through Claude Code. Aspira uses print mode with plan permissions and caps MCP startup at 5 seconds by default. Set `MCP_TIMEOUT` in Aspira's environment to choose a different cap. |
 | OpenAI | Codex CLI (`codex`) | Sign in with ChatGPT. Aspira invokes `codex exec` in read-only mode. |
 | xAI | Grok Build (`grok`) | Sign in through Grok Build. Aspira uses its headless prompt mode. |
 
-The **Connections** screen shows which CLI binaries it can find. For Claude Code, Aspira asks the CLI for a signed-in status without reading credential files. Other providers are confirmed only when a real request succeeds. A desktop or web-app login is not treated as an active model connection.
+The **Connections** screen shows which CLI binaries it can find. For Claude Code, Aspira asks the CLI for a signed-in status without reading credential files. Other providers are confirmed only when a real request succeeds. A desktop or web-app login is not treated as an active model connection. When it finds a signed-in provider, Aspira selects that one provider for the first conversation; you can switch or add models from the bottom dock.
 
 You can also add an OpenAI-compatible endpoint in **Settings → Agents & Hot-Plug**. For example, an Ollama server can run locally at `http://127.0.0.1:11434/v1`. Aspira does not silently substitute a different model when the selected provider is unavailable.
 
 ## What works today
 
-The chat supports provider responses and a small set of explicit local actions. Try `Run git status`, `Check my Mac memory and battery`, `Read README.md`, `Open Calculator`, or `Create a file called notes.md with ...`. The local tool registry also supports opening a URL, a local notification, public quick lookups, and saving context when you explicitly ask Aspira to remember something. Workspace files stay inside the project directory, and terminal actions use an exact read-only allowlist.
+The chat supports provider responses and a small set of explicit local actions. Try `Run git status and tell me whether there are changes`, `Check my Mac memory and battery`, `Read README.md`, `Open Calculator`, or `Create a file called notes.md with ...`. The local tool registry also supports opening a URL, a local notification, public quick lookups, and saving context when you explicitly ask Aspira to remember something. Workspace files stay inside the project directory, and terminal actions use an exact read-only allowlist. While a provider is responding, **Stop** cancels the request and terminates the provider CLI; a local action that already started may still finish.
 
 The action layer is still an explicit intent parser, not a general model tool-calling loop. It does not run arbitrary shell commands, edit arbitrary existing files, or run playbooks on a schedule. Requests outside the supported action set need a connected model for a conversational answer.
 

@@ -30,6 +30,12 @@ const CHILD_ENV = {
   PATH: ENHANCED_PATH,
   HOME: homeDir,
 };
+// A stalled personal MCP server should not block every chat turn. Preserve a
+// user's explicit Claude Code timeout; otherwise skip slow MCP startup after 5s.
+const CLAUDE_CHILD_ENV = {
+  ...CHILD_ENV,
+  MCP_TIMEOUT: process.env.MCP_TIMEOUT || '5000',
+};
 
 if (!fs.existsSync(dataDir)) {
   fs.mkdirSync(dataDir, { recursive: true });
@@ -139,20 +145,34 @@ export function detectSubscriptions() {
 }
 
 // Run a CLI binary safely with argument array (no shell injection) and timeout
-function runCliProcess(binary, args, timeoutMs = 16000) {
+function runCliProcess(binary, args, timeoutMs = 16000, signal, env = CHILD_ENV) {
   return new Promise((resolve, reject) => {
     let stdout = '';
     let stderr = '';
+    let settled = false;
     const child = spawn(binary, args, {
       cwd: rootDir,
-      env: CHILD_ENV,
+      env,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
 
+    const finish = (callback, value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', onAbort);
+      callback(value);
+    };
+    const onAbort = () => {
+      child.kill('SIGTERM');
+      finish(reject, Object.assign(new Error('Provider request stopped.'), { name: 'AbortError' }));
+    };
     const timer = setTimeout(() => {
       child.kill('SIGTERM');
-      reject(new Error(`Subscription CLI timed out after ${timeoutMs}ms`));
+      finish(reject, new Error(`Subscription CLI timed out after ${timeoutMs}ms`));
     }, timeoutMs);
+    signal?.addEventListener('abort', onAbort, { once: true });
+    if (signal?.aborted) onAbort();
 
     child.stdout.on('data', (chunk) => {
       stdout += chunk.toString();
@@ -161,42 +181,52 @@ function runCliProcess(binary, args, timeoutMs = 16000) {
       stderr += chunk.toString();
     });
     child.on('error', (err) => {
-      clearTimeout(timer);
-      reject(err);
+      finish(reject, err);
     });
     child.on('close', (code) => {
-      clearTimeout(timer);
       if (code === 0 && stdout.trim()) {
-        resolve(stdout.trim());
+        finish(resolve, stdout.trim());
       } else {
-        reject(new Error(stderr.trim() || `Exited with code ${code}`));
+        finish(reject, new Error(stderr.trim() || `Exited with code ${code}`));
       }
     });
   });
 }
 
-function runCliStatus(binary, args, timeoutMs = 7000) {
+function runCliStatus(binary, args, timeoutMs = 7000, signal) {
   return new Promise((resolve, reject) => {
     let stdout = '';
+    let settled = false;
     const child = spawn(binary, args, {
       cwd: rootDir,
       env: CHILD_ENV,
       stdio: ['ignore', 'pipe', 'ignore'],
     });
+    const finish = (callback, value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', onAbort);
+      callback(value);
+    };
+    const onAbort = () => {
+      child.kill('SIGTERM');
+      finish(reject, Object.assign(new Error('Provider request stopped.'), { name: 'AbortError' }));
+    };
     const timer = setTimeout(() => {
       child.kill('SIGTERM');
-      reject(new Error('Provider status check timed out.'));
+      finish(reject, new Error('Provider status check timed out.'));
     }, timeoutMs);
+    signal?.addEventListener('abort', onAbort, { once: true });
+    if (signal?.aborted) onAbort();
     child.stdout.on('data', (chunk) => {
       if (stdout.length < 20000) stdout += chunk.toString();
     });
     child.on('error', (error) => {
-      clearTimeout(timer);
-      reject(error);
+      finish(reject, error);
     });
     child.on('close', (code) => {
-      clearTimeout(timer);
-      resolve({ stdout, code });
+      finish(resolve, { stdout, code });
     });
   });
 }
@@ -232,7 +262,7 @@ function summarizeProviderFailure(providerName, error) {
 }
 
 // Execute inference with a provider subscription, without reading its credential store.
-async function runSubscriptionInference(modelId, fullPrompt, subs) {
+async function runSubscriptionInference(modelId, fullPrompt, subs, signal) {
   let error = null;
   const timeoutMs = 90000;
   // Run the supported Antigravity CLI headless; never read its credential store.
@@ -241,10 +271,12 @@ async function runSubscriptionInference(modelId, fullPrompt, subs) {
       const out = await runCliProcess(
         subs.argon.cliPath,
         ['--sandbox', '--mode', 'plan', '-p', fullPrompt, '--output-format', 'text', '--print-timeout', '90s'],
-        timeoutMs
+        timeoutMs,
+        signal
       );
       if (out) return { text: out, badge: 'ANTIGRAVITY_CLI' };
     } catch (err) {
+      if (signal?.aborted) throw err;
       error = summarizeProviderFailure('Antigravity', err);
     }
   }
@@ -253,23 +285,27 @@ async function runSubscriptionInference(modelId, fullPrompt, subs) {
   if (modelId === 'claude' && subs.claude?.cliPath) {
     try {
       try {
-        const status = await runCliStatus(subs.claude.cliPath, ['auth', 'status', '--json']);
+        const status = await runCliStatus(subs.claude.cliPath, ['auth', 'status', '--json'], 7000, signal);
         const auth = JSON.parse(status.stdout || '{}');
         if (auth.loggedIn === false) {
           return { error: 'Claude Code is signed out. Use Settings → Connections → Open CLI sign-in, then retry.' };
         }
-      } catch {
+      } catch (err) {
+        if (signal?.aborted) throw err;
         // Continue to a real request; report its result if the status check is unavailable.
       }
       const out = await runCliProcess(
         subs.claude.cliPath,
         ['-p', fullPrompt, '--output-format', 'text', '--permission-mode', 'plan', '--max-turns', '1'],
-        timeoutMs
+        timeoutMs,
+        signal,
+        CLAUDE_CHILD_ENV
       );
       if (out) {
         return { text: out, badge: 'CLAUDE_SUBSCRIPTION' };
       }
     } catch (err) {
+      if (signal?.aborted) throw err;
       error = summarizeProviderFailure('Claude Code', err);
     }
   }
@@ -291,12 +327,14 @@ async function runSubscriptionInference(modelId, fullPrompt, subs) {
           '--max-turns',
           '1',
         ],
-        timeoutMs
+        timeoutMs,
+        signal
       );
       if (out) {
         return { text: out, badge: 'GROK_SUBSCRIPTION' };
       }
     } catch (err) {
+      if (signal?.aborted) throw err;
       error = summarizeProviderFailure('Grok Build', err);
     }
   }
@@ -319,7 +357,8 @@ async function runSubscriptionInference(modelId, fullPrompt, subs) {
           tmpOut,
           fullPrompt,
         ],
-        timeoutMs
+        timeoutMs,
+        signal
       );
       if (fs.existsSync(tmpOut)) {
         const text = fs.readFileSync(tmpOut, 'utf8').trim();
@@ -329,6 +368,7 @@ async function runSubscriptionInference(modelId, fullPrompt, subs) {
         }
       }
     } catch (err) {
+      if (signal?.aborted) throw err;
       error = summarizeProviderFailure('Codex', err);
       try {
         if (fs.existsSync(tmpOut)) fs.unlinkSync(tmpOut);
@@ -898,11 +938,16 @@ async function detectAndRunNaturalActions(prompt, leadAgent = 'argon') {
   }
 
   // 6. Run Terminal / Git / System Command
-  const cmdMatch = prompt.match(
-    /\b(?:run|execute)\s+`?((?:git|ls|df|uptime|whoami|date|find|cat|head|ps|pmset)[^`]*?)`?$/i
+  const quotedCommand = prompt.match(/\b(?:run|execute)\s+`([^`]+)`/i);
+  const plainCommand = prompt.match(
+    /\b(?:run|execute)\s+((?:git|ls|df|uptime|whoami|date|find|cat|head|ps|pmset|pwd|node|npm|python3|sw_vers)\b[\s\S]*)/i
   );
-  if (cmdMatch) {
-    actions.push(await executeAgentTool('shell_exec', { command: cmdMatch[1].trim() }));
+  const requestedCommand = (quotedCommand?.[1] || plainCommand?.[1] || '')
+    .trim()
+    .split(/\s+(?:and|then)\s+(?=(?:tell|show|explain|summarize|report|describe|let|whether|if|what|why|how|can|could|please)\b)/i)[0]
+    .trim();
+  if (requestedCommand) {
+    actions.push(await executeAgentTool('shell_exec', { command: requestedCommand }));
   } else if (/\b(?:git status|repo status|what changed in git)\b/i.test(lower)) {
     actions.push(await executeAgentTool('shell_exec', { command: 'git status -s && git log -n 3 --oneline' }));
   } else if (/\b(?:battery|power|cpu|memory|ram|system health|hardware|mac status|system status|subscriptions)\b/i.test(lower)) {
@@ -1359,6 +1404,14 @@ app.get('/api/voice/status', async (_req, res) => {
 // 5. SUBSCRIPTION-FIRST + ACTION-EXECUTING MULTI-AGENT DISPATCH (/api/dispatch)
 // ============================================================================
 app.post('/api/dispatch', async (req, res) => {
+  const requestAbort = new AbortController();
+  req.once('aborted', () => requestAbort.abort());
+  res.once('close', () => {
+    if (!res.writableFinished) requestAbort.abort();
+  });
+  const providerFetch = (input, init = {}) =>
+    fetch(input, { ...init, signal: requestAbort.signal });
+
   const {
     modelId,
     prompt,
@@ -1375,6 +1428,7 @@ app.post('/api/dispatch', async (req, res) => {
   if (executeActions && prompt) {
     executedActions = await detectAndRunNaturalActions(prompt, modelId);
   }
+  if (requestAbort.signal.aborted) return;
 
   // 2. Load saved user context for the selected provider prompt
   const memories = loadMemories().slice(0, 8);
@@ -1441,7 +1495,7 @@ app.post('/api/dispatch', async (req, res) => {
       unavailableReason = `${modelId} CLI did not return a response. Sign in or refresh its session, then try again.`;
     }
     if (!apiKeys[modelId]) {
-      const subOut = await runSubscriptionInference(modelId, combinedPromptForCli, subs);
+      const subOut = await runSubscriptionInference(modelId, combinedPromptForCli, subs, requestAbort.signal);
       if (subOut?.text) {
         return res.json({
           source: 'SUBSCRIPTION_OAUTH',
@@ -1461,7 +1515,7 @@ app.post('/api/dispatch', async (req, res) => {
     // ========================================================================
     const geminiKey = apiKeys.argon || process.env.GEMINI_API_KEY;
     if (modelId === 'argon' && geminiKey) {
-      const r = await fetch(
+      const r = await providerFetch(
         `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`,
         {
           method: 'POST',
@@ -1489,7 +1543,7 @@ app.post('/api/dispatch', async (req, res) => {
 
     const claudeKey = apiKeys.claude || process.env.ANTHROPIC_API_KEY;
     if (modelId === 'claude' && claudeKey) {
-      const r = await fetch('https://api.anthropic.com/v1/messages', {
+      const r = await providerFetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1521,7 +1575,7 @@ app.post('/api/dispatch', async (req, res) => {
 
     const grokKey = apiKeys.grok || process.env.XAI_API_KEY;
     if (modelId === 'grok' && grokKey) {
-      const r = await fetch('https://api.x.ai/v1/chat/completions', {
+      const r = await providerFetch('https://api.x.ai/v1/chat/completions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1553,7 +1607,7 @@ app.post('/api/dispatch', async (req, res) => {
 
     const gptKey = apiKeys.gpt || process.env.OPENAI_API_KEY;
     if (modelId === 'gpt' && gptKey) {
-      const r = await fetch('https://api.openai.com/v1/chat/completions', {
+      const r = await providerFetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1591,7 +1645,7 @@ app.post('/api/dispatch', async (req, res) => {
       const headers = { 'Content-Type': 'application/json' };
       if (customKey) headers.Authorization = `Bearer ${customKey}`;
 
-      const r = await fetch(`${endpointConfig.baseUrl.replace(/\/$/, '')}/chat/completions`, {
+      const r = await providerFetch(`${endpointConfig.baseUrl.replace(/\/$/, '')}/chat/completions`, {
         method: 'POST',
         headers,
         body: JSON.stringify({
@@ -1619,8 +1673,11 @@ app.post('/api/dispatch', async (req, res) => {
     }
 
   } catch (error) {
+    if (requestAbort.signal.aborted) return;
     unavailableReason = error instanceof Error ? error.message : unavailableReason;
   }
+
+  if (requestAbort.signal.aborted) return;
 
   return res.status(503).json({
     source: 'UNAVAILABLE',
