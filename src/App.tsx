@@ -955,6 +955,14 @@ export const App: React.FC = () => {
           </div>
 
           <div className="flex shrink-0 items-center gap-2">
+            <div className="aspira-model-count hidden lg:flex" aria-live="polite">
+              <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
+              <span>
+                {awakeModelIds.length === 0
+                  ? 'No model selected'
+                  : `${awakeModelIds.length} ${awakeModelIds.length === 1 ? 'model' : 'models'} selected`}
+              </span>
+            </div>
             <button
               type="button"
               onClick={() => setVaultModalOpen(true)}
@@ -1017,6 +1025,7 @@ export const App: React.FC = () => {
           onExecuteDirectAction={handleExecuteDirectAction}
           isExecuting={isExecuting}
           onRunPrompt={(prompt) => handleRunDirective(prompt, 'text', true)}
+          onOpenConnections={() => setVaultModalOpen(true)}
           duplexVoiceActive={duplexVoiceActive}
           onToggleDuplexVoice={toggleVoiceInput}
           isAgentSpeaking={isAgentSpeaking}

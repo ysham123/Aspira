@@ -58,6 +58,7 @@ interface SpatialModeDeckProps {
   onExecuteDirectAction: (tool: string, args: Record<string, unknown>, label: string) => void;
   isExecuting: boolean;
   onRunPrompt: (prompt: string) => void;
+  onOpenConnections: () => void;
   duplexVoiceActive: boolean;
   onToggleDuplexVoice: () => void;
   isAgentSpeaking: boolean;
@@ -89,6 +90,7 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
   onExecuteDirectAction,
   isExecuting,
   onRunPrompt,
+  onOpenConnections,
   duplexVoiceActive,
   onToggleDuplexVoice,
   isAgentSpeaking,
@@ -97,9 +99,10 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
 }) => {
   const [rightRailTab, setRightRailTab] = useState<'memory' | 'routines' | 'tools'>('memory');
   const [contextExpanded, setContextExpanded] = useState(() =>
-    typeof window !== 'undefined' && window.innerWidth >= 1280
+    typeof window !== 'undefined' && window.innerWidth >= 1536
   );
   const [expandedTurnId, setExpandedTurnId] = useState<string | null>(null);
+  const [showJumpToLatest, setShowJumpToLatest] = useState(false);
   const [newMemoryInput, setNewMemoryInput] = useState('');
   const [newMemoryCategory, setNewMemoryCategory] = useState<LivingMemoryItem['category']>('goal');
   const selectedModelNames = models
@@ -130,25 +133,57 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
   const [runningTerminal, setRunningTerminal] = useState(false);
 
   useEffect(() => {
-    const wideLayout = window.matchMedia('(min-width: 1280px)');
-    const collapseOnNarrowLayout = () => {
+    const wideLayout = window.matchMedia('(min-width: 1536px)');
+    const collapseOnLaptopLayout = () => {
       if (!wideLayout.matches) setContextExpanded(false);
     };
-    collapseOnNarrowLayout();
-    wideLayout.addEventListener('change', collapseOnNarrowLayout);
-    return () => wideLayout.removeEventListener('change', collapseOnNarrowLayout);
+    collapseOnLaptopLayout();
+    wideLayout.addEventListener('change', collapseOnLaptopLayout);
+    return () => wideLayout.removeEventListener('change', collapseOnLaptopLayout);
   }, []);
 
+  const conversationScrollRef = useRef<HTMLDivElement | null>(null);
   const chatEndRef = useRef<HTMLDivElement | null>(null);
+  const followLatestRef = useRef(true);
+  const previousConversationFirstTurnRef = useRef<string | undefined>(conversationTurns[0]?.id);
+
+  const handleConversationScroll = () => {
+    const scrollContainer = conversationScrollRef.current;
+    if (!scrollContainer) return;
+    const isAtLatest = scrollContainer.scrollHeight - scrollContainer.scrollTop - scrollContainer.clientHeight < 96;
+    setShowJumpToLatest(!isAtLatest);
+    // Only user scrolling changes the follow preference. Content growing while
+    // a reply streams should not make an already-following conversation detach.
+    followLatestRef.current = isAtLatest;
+  };
+
+  const jumpToLatest = () => {
+    const scrollContainer = conversationScrollRef.current;
+    if (!scrollContainer) return;
+    followLatestRef.current = true;
+    setShowJumpToLatest(false);
+    scrollContainer.scrollTo({ top: scrollContainer.scrollHeight, behavior: 'smooth' });
+  };
 
   useEffect(() => {
-    const scrollContainer = chatEndRef.current?.parentElement;
+    const scrollContainer = conversationScrollRef.current;
+    const firstTurnId = conversationTurns[0]?.id;
+    if (previousConversationFirstTurnRef.current !== firstTurnId) {
+      previousConversationFirstTurnRef.current = firstTurnId;
+      followLatestRef.current = true;
+      setShowJumpToLatest(false);
+    }
     if (conversationTurns.length === 0 && !isExecuting) {
       if (scrollContainer) scrollContainer.scrollTop = 0;
+      followLatestRef.current = true;
+      setShowJumpToLatest(false);
       return;
     }
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-  }, [conversationTurns.length, isExecuting]);
+    if (followLatestRef.current) {
+      scrollContainer?.scrollTo({ top: scrollContainer.scrollHeight, behavior: 'smooth' });
+      setShowJumpToLatest(false);
+    }
+  }, [conversationTurns.length, conversationTurns[0]?.id, isExecuting]);
 
   useEffect(() => {
     if (spatialMode === 'forge' && fsNodes.length === 0) {
@@ -233,11 +268,11 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
   // ==========================================================================
   if (spatialMode === 'nexus') {
     return (
-      <div className="flex h-full w-full min-w-0 gap-4 overflow-hidden">
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-hidden">
+      <div className="aspira-studio-layout flex h-full w-full min-w-0 gap-4 overflow-hidden">
+        <div className="aspira-conversation-column flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-hidden">
           <div className="flex shrink-0 items-end justify-between gap-4 px-1">
             <div>
-              <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">Personal workspace</p>
+              <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-slate-500">Conversation</p>
               <h1 className="mt-1 text-2xl font-semibold tracking-tight text-white">Studio</h1>
               <p className="mt-1 text-xs text-slate-400">Conversation, connected models, and local actions in one place.</p>
             </div>
@@ -264,12 +299,22 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
           </div>
 
           {/* Multi-Turn Conversational Timeline */}
-          <div className="aspira-conversation-surface flex flex-1 flex-col gap-5 overflow-y-auto p-6 custom-scrollbar">
+          <div
+            ref={conversationScrollRef}
+            onScroll={handleConversationScroll}
+            className="aspira-conversation-surface flex flex-1 flex-col gap-5 overflow-y-auto p-6 custom-scrollbar"
+          >
             {conversationTurns.length === 0 && (
               <div className="aspira-empty-state mx-auto flex w-full max-w-2xl flex-col justify-start py-4">
-                <p className="aspira-empty-eyebrow text-xs font-semibold uppercase tracking-[0.16em] text-indigo-300">Aspira Studio</p>
-                <h2 className="aspira-empty-title mt-3 max-w-xl text-3xl font-semibold leading-tight tracking-tight text-white sm:text-4xl">What can I help you move forward?</h2>
+                <p className="aspira-empty-eyebrow text-[11px] font-semibold uppercase tracking-[0.14em] text-indigo-300">Your workspace is ready</p>
+                <h2 className="aspira-empty-title mt-3 max-w-xl text-3xl font-semibold leading-tight tracking-tight text-white sm:text-4xl">What are you working on?</h2>
                 <p className="aspira-empty-intro mt-3 max-w-lg text-sm leading-6 text-slate-400">{emptyConversationIntro}</p>
+                {selectedModelNames.length === 0 && (
+                  <button type="button" className="aspira-empty-connect" onClick={onOpenConnections}>
+                    <Plus className="h-4 w-4" aria-hidden="true" />
+                    Connect a provider
+                  </button>
+                )}
                 <div className="aspira-empty-prompts mt-5 grid gap-2 sm:grid-cols-2">
                   {[
                     { title: 'Get oriented', detail: 'Review this project and suggest a next step.', prompt: 'Summarize this workspace and tell me what I should work on next.' },
@@ -292,7 +337,7 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
               return (
                 <div
                   key={turn.id}
-                  className="flex flex-col gap-3 pb-5 border-b border-white/[0.06] last:border-b-0 last:pb-1"
+                  className="aspira-turn flex flex-col gap-3 pb-5 border-b border-white/[0.06] last:border-b-0 last:pb-1"
                 >
                   {/* 1. User Conversational Turn Bubble */}
                   <div className="flex items-start justify-end gap-3">
@@ -365,6 +410,10 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
 
                   {/* 3. Multi-Agent Conversational Reply Card */}
                   <div className="aspira-response-card flex flex-col gap-3 p-4">
+                    <div className="aspira-response-byline">
+                      <span className="aspira-assistant-mark" aria-hidden="true"><Sparkles className="h-3.5 w-3.5" /></span>
+                      <span>Aspira</span>
+                    </div>
                     <div className="flex items-center justify-between gap-2 flex-wrap">
                       <div className="flex items-center gap-2 flex-wrap">
                         {turn.result.modelStreams.map((stream) => {
@@ -518,10 +567,25 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
             })}
 
             {isExecuting && (
-              <div className="rounded-2xl bg-indigo-500/10 border border-indigo-400/25 p-4 flex items-center gap-3 text-indigo-200 text-xs animate-pulse">
-                <Sparkles className="w-4 h-4 animate-spin" />
-                <span>{awakeModelIds.length ? `Contacting ${awakeModelIds.map((id) => id.toUpperCase()).join(' + ')}…` : 'Running your request…'}</span>
+              <div className="aspira-progress-state" role="status" aria-live="polite">
+                <span className="aspira-progress-indicator" aria-hidden="true" />
+                <span>
+                  {awakeModelIds.length
+                    ? `Thinking with ${awakeModelIds.map((id) => models.find((model) => model.id === id)?.codeName || id).join(' and ')}…`
+                    : 'Running your request…'}
+                </span>
               </div>
+            )}
+
+            {showJumpToLatest && conversationTurns.length > 0 && (
+              <button
+                type="button"
+                className="aspira-jump-to-latest"
+                onClick={jumpToLatest}
+                aria-label="Jump to the latest message"
+              >
+                Jump to latest <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
+              </button>
             )}
 
             <div ref={chatEndRef} />
@@ -533,15 +597,17 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
           id="workspace-context-rail"
           aria-label="Workspace context, routines, and local tools"
           className={contextExpanded
-            ? 'aspira-context-rail fixed inset-x-3 bottom-28 z-40 flex max-h-[58vh] flex-col gap-3 overflow-hidden rounded-[24px] border border-white/10 bg-white p-3 shadow-2xl xl:relative xl:inset-auto xl:z-10 xl:h-full xl:w-[330px] xl:max-h-none xl:shrink-0 xl:rounded-none xl:border-0 xl:bg-transparent xl:p-0 xl:shadow-none'
+            ? 'aspira-context-rail fixed inset-x-3 bottom-28 z-40 flex max-h-[58vh] flex-col gap-3 overflow-hidden rounded-[24px] border border-white/10 bg-white p-3 shadow-2xl 2xl:relative 2xl:inset-auto 2xl:z-10 2xl:h-full 2xl:w-[330px] 2xl:max-h-none 2xl:shrink-0 2xl:rounded-none 2xl:border-0 2xl:bg-transparent 2xl:p-0 2xl:shadow-none'
             : 'hidden'}
         >
           {/* Segmented Switcher */}
           <div className="aspira-glass aspira-context-tabs rounded-2xl p-1.5 flex items-center gap-1 shrink-0">
             <button
+              type="button"
               onClick={() => {
                 setRightRailTab('memory');
               }}
+              aria-pressed={rightRailTab === 'memory'}
               className={`flex-1 py-2 rounded-xl text-xs font-medium flex items-center justify-center gap-1.5 transition-all ${
                 rightRailTab === 'memory'
                   ? 'bg-white/[0.1] text-white border border-white/[0.12]'
@@ -549,12 +615,14 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
               }`}
             >
               <Brain className="w-3.5 h-3.5 text-indigo-400" />
-              Saved context ({memories.length})
+              <span className="aspira-context-tab-label">Memory</span><span className="aspira-context-tab-count">{memories.length}</span>
             </button>
             <button
+              type="button"
               onClick={() => {
                 setRightRailTab('routines');
               }}
+              aria-pressed={rightRailTab === 'routines'}
               className={`flex-1 py-2 rounded-xl text-xs font-medium flex items-center justify-center gap-1.5 transition-all ${
                 rightRailTab === 'routines'
                   ? 'bg-white/[0.1] text-white border border-white/[0.12]'
@@ -562,12 +630,14 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
               }`}
             >
               <Zap className="w-3.5 h-3.5 text-amber-400" />
-              Routines ({routines.length})
+              <span className="aspira-context-tab-label">Routines</span><span className="aspira-context-tab-count">{routines.length}</span>
             </button>
             <button
+              type="button"
               onClick={() => {
                 setRightRailTab('tools');
               }}
+              aria-pressed={rightRailTab === 'tools'}
               className={`flex-1 py-2 rounded-xl text-xs font-medium flex items-center justify-center gap-1.5 transition-all ${
                 rightRailTab === 'tools'
                   ? 'bg-white/[0.1] text-white border border-white/[0.12]'
@@ -575,7 +645,7 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
               }`}
             >
               <Layers className="w-3.5 h-3.5 text-emerald-400" />
-              Local tools
+              <span className="aspira-context-tab-label">Tools</span>
             </button>
             <button
               onClick={() => setContextExpanded(false)}
@@ -586,7 +656,7 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
 
           {/* TAB 1: Saved local context */}
           {rightRailTab === 'memory' && (
-            <div className="aspira-glass rounded-3xl p-4 flex-1 flex flex-col gap-3 overflow-hidden">
+            <div className="aspira-glass aspira-context-panel rounded-3xl p-4 flex-1 flex flex-col gap-3 overflow-hidden">
               <div className="flex items-center justify-between">
                 <div>
                   <div className="text-[11px] font-semibold uppercase tracking-wider text-indigo-300">
@@ -606,7 +676,7 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
                   onAddMemory(newMemoryInput.trim(), newMemoryCategory);
                   setNewMemoryInput('');
                 }}
-                className="flex flex-col gap-2 bg-white/[0.03] border border-white/[0.07] rounded-2xl p-2.5"
+                className="aspira-memory-form flex flex-col gap-2 bg-white/[0.03] border border-white/[0.07] rounded-2xl p-2.5"
               >
                 <div className="aspira-memory-category-row flex items-center gap-1.5">
                   {(['goal', 'task', 'preference', 'project', 'insight'] as const).map((cat) => (
@@ -646,7 +716,7 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
                 {memories.map((mem) => (
                   <div
                     key={mem.id}
-                    className="rounded-2xl p-3.5 bg-white/[0.025] border border-white/[0.07] hover:border-white/[0.14] transition-all flex flex-col gap-2"
+                    className="aspira-memory-card rounded-2xl p-3.5 bg-white/[0.025] border border-white/[0.07] hover:border-white/[0.14] transition-all flex flex-col gap-2"
                   >
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-1.5">
@@ -700,7 +770,7 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
 
           {/* TAB 2: User-triggered local playbooks */}
           {rightRailTab === 'routines' && (
-            <div className="aspira-glass rounded-3xl p-4 flex-1 flex flex-col gap-3 overflow-y-auto custom-scrollbar">
+            <div className="aspira-glass aspira-context-panel rounded-3xl p-4 flex-1 flex flex-col gap-3 overflow-y-auto custom-scrollbar">
               <div>
                 <div className="text-[11px] font-semibold uppercase tracking-wider text-amber-300">
                   Local playbooks
@@ -763,7 +833,7 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
 
           {/* TAB 3: ACTIONS AVAILABLE THROUGH ASPIRA'S LOCAL BRIDGE */}
           {rightRailTab === 'tools' && (
-            <div className="aspira-glass rounded-3xl p-4 flex-1 flex flex-col gap-3 overflow-y-auto custom-scrollbar">
+            <div className="aspira-glass aspira-context-panel rounded-3xl p-4 flex-1 flex flex-col gap-3 overflow-y-auto custom-scrollbar">
               <div>
                 <div className="text-[11px] font-semibold uppercase tracking-wider text-emerald-300">Local actions</div>
                 <p className="mt-1 text-[11px] leading-5 text-slate-400">Aspira runs these directly on this Mac when your request matches. Provider CLIs currently receive text prompts in a restricted planning mode.</p>

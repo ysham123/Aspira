@@ -1207,6 +1207,16 @@ select:focus-visible {
   }
 }
 
+@media (min-width: 721px) and (max-width: 1535px) {
+  .aspira-shell .aspira-context-rail {
+    right: 12px;
+    left: auto;
+    width: min(360px, calc(100vw - 24px));
+    bottom: 140px;
+    max-height: min(58vh, calc(100dvh - 220px));
+  }
+}
+
 @media (max-width: 490px) {
   .aspira-mobile-nav {
     max-width: none;
@@ -1336,6 +1346,480 @@ select:focus-visible {
   .aspira-empty-prompt > span + span {
     font-size: 9px;
     line-height: 1.3;
+  }
+}
+
+/* Conversation-first studio polish. Keep the visual language quiet and let
+   active models, replies, and actions carry the color. */
+.aspira-model-count {
+  min-height: 34px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 11px;
+  border: 1px solid rgba(31, 36, 44, 0.08);
+  border-radius: 11px;
+  background: #f8f8f6;
+  color: #73757e;
+  font-size: 11px;
+  font-weight: 550;
+}
+
+.aspira-model-count svg {
+  color: #6b63bd;
+}
+
+.aspira-shell > .aspira-app-content > footer {
+  align-items: center;
+}
+
+.aspira-shell .aspira-composer {
+  width: min(100%, 900px);
+}
+
+.aspira-studio-layout {
+  gap: 16px;
+}
+
+.aspira-conversation-column {
+  gap: 14px;
+}
+
+.aspira-shell .aspira-conversation-surface {
+  position: relative;
+  padding: clamp(20px, 2.2vw, 32px);
+  border-color: rgba(31, 36, 44, 0.07);
+  border-radius: 24px;
+  background: #fff;
+  box-shadow: 0 16px 40px -35px rgba(30, 34, 42, 0.24);
+}
+
+.aspira-jump-to-latest {
+  position: sticky;
+  z-index: 4;
+  bottom: 10px;
+  display: inline-flex;
+  min-height: 38px;
+  align-items: center;
+  justify-content: center;
+  align-self: flex-end;
+  gap: 7px;
+  margin-top: -46px;
+  margin-bottom: 8px;
+  padding: 0 12px;
+  border: 1px solid #e4e2f1;
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.97);
+  box-shadow: 0 6px 18px -12px rgba(36, 35, 58, 0.25);
+  color: #5d56a8;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.aspira-jump-to-latest:hover {
+  border-color: #c9c6e7;
+  background: #faf9ff;
+}
+
+.aspira-empty-state {
+  padding-top: clamp(24px, 5vh, 58px);
+  padding-bottom: clamp(20px, 4vh, 44px);
+}
+
+.aspira-empty-eyebrow {
+  color: #7770bb;
+  letter-spacing: 0.11em;
+}
+
+.aspira-empty-title {
+  max-width: 600px;
+  color: #24252a;
+  letter-spacing: -0.045em;
+  line-height: 1.08;
+}
+
+.aspira-empty-intro {
+  max-width: 520px;
+  color: #71737d;
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.aspira-empty-connect {
+  display: inline-flex;
+  min-height: 40px;
+  align-items: center;
+  align-self: flex-start;
+  gap: 8px;
+  margin-top: 18px;
+  padding: 0 12px;
+  border: 1px solid #dddbee;
+  border-radius: 11px;
+  background: #f8f7fd;
+  color: #5f58aa;
+  font-size: 12px;
+  font-weight: 600;
+  transition: background 140ms ease, border-color 140ms ease;
+}
+
+.aspira-empty-connect:hover {
+  border-color: #c9c6e7;
+  background: #f0effa;
+}
+
+.aspira-empty-prompts {
+  max-width: 620px;
+  gap: 10px;
+}
+
+.aspira-shell .aspira-empty-prompt {
+  min-height: 76px;
+  padding: 13px 14px;
+  border-color: #e8e8e5;
+  border-radius: 14px;
+  background: #fcfcfb;
+  box-shadow: none;
+  transition: background 140ms ease, border-color 140ms ease, transform 140ms ease;
+}
+
+.aspira-shell .aspira-empty-prompt:hover {
+  border-color: #cfcde8;
+  background: #faf9ff;
+  box-shadow: 0 8px 20px -18px rgba(74, 68, 180, 0.32);
+}
+
+.aspira-turn {
+  border-color: #ededea;
+}
+
+.aspira-shell .aspira-user-message {
+  max-width: min(88%, 720px);
+  border-color: #e8e7f0;
+  border-radius: 17px 17px 5px 17px;
+  background: #f5f4fa;
+  color: #30303a;
+  padding: 12px 15px;
+}
+
+.aspira-shell .aspira-response-card {
+  gap: 12px;
+  padding: 2px 0 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.aspira-response-byline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #3e4048;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.aspira-assistant-mark {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border: 1px solid #e8e6f5;
+  border-radius: 8px;
+  background: #f6f5fc;
+  color: #6a62ba;
+}
+
+.aspira-shell .aspira-response-card > .aspira-markdown {
+  color: #3f4048;
+  font-size: 14px;
+  line-height: 1.72;
+}
+
+.aspira-context-tabs {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid #e8e8e5;
+  border-radius: 16px;
+  background: #f6f6f3;
+  box-shadow: none;
+}
+
+.aspira-context-tabs > button {
+  display: flex;
+  min-width: 0;
+  min-height: 42px;
+  flex: 1 1 0;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 6px 7px;
+  border: 1px solid transparent;
+  border-radius: 11px;
+  color: #6f717a;
+  font-size: 11px;
+  font-weight: 560;
+  white-space: nowrap;
+  transition: color 140ms ease, background 140ms ease, border-color 140ms ease;
+}
+
+.aspira-context-tabs > button:hover {
+  color: #35363d;
+  background: #fff;
+}
+
+.aspira-context-tabs > button[aria-pressed="true"] {
+  border-color: #e6e5e2;
+  background: #fff;
+  color: #303139;
+  box-shadow: 0 2px 5px rgba(30, 34, 42, 0.035);
+}
+
+.aspira-context-tabs > button svg {
+  width: 14px;
+  height: 14px;
+  color: #7770bb;
+}
+
+.aspira-context-tab-count {
+  color: #9698a0;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.aspira-context-rail .aspira-context-panel {
+  min-width: 0;
+  border: 1px solid #e8e8e5;
+  border-radius: 20px;
+  background: #fff;
+  box-shadow: 0 10px 28px -28px rgba(30, 34, 42, 0.25);
+}
+
+.aspira-memory-form {
+  min-width: 0;
+  border-color: #e8e8e5;
+  border-radius: 15px;
+  background: #fafaf8;
+}
+
+.aspira-memory-category-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.aspira-memory-category-row > button {
+  min-width: 0;
+  min-height: 31px;
+  padding: 4px 6px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: #747680;
+  font-size: 9px;
+  letter-spacing: 0.04em;
+}
+
+.aspira-memory-form-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+}
+
+.aspira-memory-form-row input {
+  width: 100%;
+  min-width: 0;
+  height: 38px;
+  padding: 0 9px;
+  border: 1px solid #e5e5e1;
+  border-radius: 10px;
+  background: #fff;
+  font-size: 11px;
+}
+
+.aspira-memory-form-row button {
+  min-height: 38px;
+  justify-content: center;
+  padding-inline: 10px;
+  border-color: #e2e0f2;
+  border-radius: 10px;
+  background: #f5f4fb;
+  color: #5c55a2;
+  white-space: nowrap;
+}
+
+.aspira-memory-card {
+  min-width: 0;
+  border-color: #ecece9;
+  border-radius: 15px;
+  background: #fcfcfb;
+}
+
+.aspira-memory-card button[title^="Click to cycle status"] {
+  min-height: 24px;
+  padding: 3px 8px;
+  border-radius: 8px;
+  font-size: 9px;
+  line-height: 1.15;
+  letter-spacing: 0.025em;
+}
+
+.aspira-shell .aspira-composer {
+  min-height: 76px;
+  border-color: #e4e4e0;
+  border-radius: 19px;
+  box-shadow: 0 14px 36px -30px rgba(30, 34, 42, 0.25), 0 2px 6px rgba(30, 34, 42, 0.025);
+}
+
+.aspira-shell .aspira-composer:focus-within {
+  border-color: #c7c4e4;
+  box-shadow: 0 0 0 3px rgba(98, 88, 201, 0.065), 0 14px 36px -30px rgba(30, 34, 42, 0.25);
+}
+
+.aspira-progress-state {
+  display: flex;
+  min-height: 48px;
+  align-items: center;
+  gap: 11px;
+  padding: 12px 15px;
+  border: 1px solid #e8e7f3;
+  border-radius: 15px;
+  background: #faf9fd;
+  color: #656379;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.aspira-progress-indicator {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  border-radius: 2px;
+  background: #7770bd;
+  box-shadow: 0 0 0 3px rgba(119, 112, 189, 0.1);
+  animation: aspira-progress-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes aspira-progress-pulse {
+  50% { opacity: 0.4; }
+}
+
+.aspira-composer-toolbar {
+  min-height: 32px;
+}
+
+.aspira-provider-summary {
+  min-height: 36px;
+}
+
+.aspira-composer-inputrow {
+  min-height: 42px;
+}
+
+@media (max-width: 1279px) {
+  .aspira-context-tabs > button {
+    min-height: 44px;
+  }
+}
+
+@media (min-width: 1536px) {
+  .aspira-shell .aspira-app-content:has(> main .aspira-context-rail:not(.hidden)) > footer {
+    align-items: flex-start;
+  }
+
+  .aspira-shell .aspira-app-content:has(> main .aspira-context-rail:not(.hidden)) > footer .aspira-composer {
+    width: min(calc(100% - 346px), 955px);
+    margin-inline: 0;
+    align-self: flex-start;
+  }
+}
+
+@media (max-width: 720px) {
+  .aspira-studio-layout {
+    gap: 0;
+  }
+
+  .aspira-conversation-column {
+    gap: 10px;
+  }
+
+  .aspira-shell .aspira-conversation-surface {
+    padding: 18px 16px;
+    border-radius: 20px;
+  }
+
+  .aspira-empty-state {
+    padding-top: 20px;
+    padding-bottom: 18px;
+  }
+
+  .aspira-shell .aspira-composer {
+    width: 100%;
+  }
+
+  .aspira-shell .aspira-user-message {
+    max-width: 94%;
+  }
+
+  .aspira-response-byline {
+    font-size: 12px;
+  }
+
+  .aspira-shell .aspira-context-rail {
+    gap: 9px;
+    border-color: #e2e2de;
+    border-radius: 20px;
+    background: rgba(250, 250, 248, 0.98);
+    box-shadow: 0 24px 64px rgba(28, 30, 36, 0.18);
+    padding: 10px;
+  }
+
+  .aspira-context-tabs {
+    border-radius: 14px;
+  }
+
+  .aspira-context-tabs > button {
+    min-height: 44px;
+    gap: 4px;
+    padding-inline: 5px;
+  }
+}
+
+@media (max-width: 490px) {
+  .aspira-empty-prompts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .aspira-shell .aspira-empty-prompt {
+    min-height: 68px;
+    padding: 9px 10px;
+    border-radius: 13px;
+  }
+
+  .aspira-empty-prompt > span:first-child {
+    font-size: 12px;
+    line-height: 1.25;
+  }
+
+  .aspira-empty-prompt > span + span {
+    font-size: 10px;
+    line-height: 1.35;
+  }
+}
+
+@media (max-width: 360px) {
+  .aspira-shell .aspira-conversation-surface {
+    padding: 14px 12px;
+  }
+
+  .aspira-context-tabs > button {
+    font-size: 10px;
+  }
+
+  .aspira-memory-form-row button {
+    padding-inline: 8px;
   }
 }
 
