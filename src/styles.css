@@ -969,9 +969,70 @@ select:focus-visible {
   background-color: #f0effb;
 }
 
-.aspira-shell .aspira-action-card {
+.aspira-shell .aspira-action-card--success {
   border: 1px solid rgba(36, 132, 105, 0.2);
   background: rgba(36, 132, 105, 0.055);
+}
+
+.aspira-shell .aspira-action-card--error {
+  border: 1px solid rgba(190, 54, 74, 0.2);
+  background: rgba(190, 54, 74, 0.045);
+}
+
+.aspira-shell .aspira-action-card--blocked {
+  border: 1px solid rgba(185, 125, 36, 0.2);
+  background: rgba(185, 125, 36, 0.05);
+}
+
+.aspira-action-card--success .aspira-action-status-icon,
+.aspira-action-card--success .aspira-action-title,
+.aspira-action-card--success .aspira-action-state {
+  color: #287c67;
+}
+
+.aspira-action-card--error .aspira-action-status-icon,
+.aspira-action-card--error .aspira-action-title,
+.aspira-action-card--error .aspira-action-state {
+  color: #b33c50;
+}
+
+.aspira-action-card--blocked .aspira-action-status-icon,
+.aspira-action-card--blocked .aspira-action-title,
+.aspira-action-card--blocked .aspira-action-state {
+  color: #9a681e;
+}
+
+.aspira-action-details {
+  min-width: 0;
+  border-top: 1px solid rgba(31, 36, 44, 0.075);
+  margin-top: 3px;
+  padding-top: 3px;
+}
+
+.aspira-action-details-summary {
+  display: flex;
+  min-height: 32px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: #777984;
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 540;
+  list-style: none;
+}
+
+.aspira-action-details-summary::-webkit-details-marker {
+  display: none;
+}
+
+.aspira-action-details-summary svg {
+  flex: 0 0 auto;
+  transition: transform 140ms ease;
+}
+
+.aspira-action-details[open] .aspira-action-details-summary svg {
+  transform: rotate(180deg);
 }
 
 .aspira-shell .aspira-perspective-card {

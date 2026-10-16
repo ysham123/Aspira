@@ -1946,7 +1946,7 @@ app.post('/api/dispatch', async (req, res) => {
 
   const fullSystemPrompt = `${
     systemPrompt || 'You are a conversational personal AI assistant inside Aspira.'
-  }\nRespond naturally and be concise. Be clear about completed actions and uncertainty. Do not claim to have used a tool unless its result is included here.${memoryBlock}${executeActions ? `\n\n${MODEL_ACTION_TOOLS}` : ''}`;
+  }\nRespond naturally and concisely. Be clear about completed actions and uncertainty. Describe actions in plain language; do not expose internal tool IDs unless the user asks. Summarize the relevant result instead of repeating raw output. Only claim an action was completed when its result is included here.${memoryBlock}${executeActions ? `\n\n${MODEL_ACTION_TOOLS}` : ''}`;
 
   if (modelId === 'local') {
     if (!executedActions.length) {

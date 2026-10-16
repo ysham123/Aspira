@@ -319,32 +319,47 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
                   {/* Local actions executed during this turn */}
                   {turn.result.executedActions && turn.result.executedActions.length > 0 && (
                     <div className="flex flex-col gap-2 pl-2">
-                      {turn.result.executedActions.map((act: AgentActionExecution) => (
-                        <div
-                          key={act.id}
-                          className="aspira-action-card flex flex-col gap-1.5 rounded-2xl px-4 py-3"
-                        >
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                              <span className="text-[12px] font-semibold text-emerald-200">
-                                {act.title}
-                              </span>
-                              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-400/20">
-                                {act.tool}
+                      {turn.result.executedActions.map((act: AgentActionExecution) => {
+                        const StatusIcon = act.status === 'success'
+                          ? CheckCircle2
+                          : act.status === 'blocked'
+                          ? ShieldCheck
+                          : X;
+                        const statusLabel = act.status === 'success'
+                          ? 'Completed'
+                          : act.status === 'blocked'
+                          ? 'Blocked'
+                          : 'Needs attention';
+                        return (
+                          <div
+                            key={act.id}
+                            className={`aspira-action-card aspira-action-card--${act.status} flex flex-col gap-1.5 rounded-2xl px-4 py-3`}
+                          >
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="flex min-w-0 items-center gap-2">
+                                <StatusIcon className="aspira-action-status-icon h-4 w-4 shrink-0" aria-hidden="true" />
+                                <span className="aspira-action-title min-w-0 text-[12px] font-semibold">
+                                  {act.title}
+                                </span>
+                              </div>
+                              <span className="aspira-action-state shrink-0 text-[10px] font-medium">
+                                {statusLabel} · {act.durationMs}ms
                               </span>
                             </div>
-                            <span className="text-[10px] font-mono text-emerald-300/80">
-                              {act.durationMs}ms · {act.status.toUpperCase()}
-                            </span>
+                            {act.output && (
+                              <details className="aspira-action-details" open={act.status !== 'success'}>
+                                <summary className="aspira-action-details-summary">
+                                  <span>{act.status === 'success' ? 'Show raw result' : 'View action details'}</span>
+                                  <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
+                                </summary>
+                                <pre className="aspira-code mt-2 text-[11px] font-mono text-slate-300 bg-black/40 rounded-xl p-2.5 overflow-x-auto whitespace-pre-wrap leading-relaxed border border-white/[0.05]">
+                                  {act.output}
+                                </pre>
+                              </details>
+                            )}
                           </div>
-                          {act.output && (
-                            <pre className="aspira-code text-[11px] font-mono text-slate-300 bg-black/40 rounded-xl p-2.5 overflow-x-auto whitespace-pre-wrap leading-relaxed border border-white/[0.05]">
-                              {act.output}
-                            </pre>
-                          )}
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
 
