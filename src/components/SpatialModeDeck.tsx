@@ -383,8 +383,16 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
                                 style={{ backgroundColor: m?.accentHex || '#6E8EFB' }}
                               />
                               {stream.codeName}
-                              <span className="text-[10px] font-mono text-slate-400">
-                                {stream.source === 'LOCAL_OLLAMA'
+                              <span
+                                className={`text-[10px] font-mono ${
+                                  stream.source === 'SUBSCRIPTION_OAUTH'
+                                    ? 'text-emerald-300'
+                                    : 'text-slate-400'
+                                }`}
+                              >
+                                {stream.source === 'SUBSCRIPTION_OAUTH'
+                                  ? '· Subscription OAuth'
+                                  : stream.source === 'LOCAL_OLLAMA'
                                   ? '· Ollama Local'
                                   : stream.source === 'LIVE_API'
                                   ? '· Cloud API'
@@ -396,6 +404,25 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
                       </div>
 
                       <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => {
+                            soundEngine.playGlassTick();
+                            onExecuteDirectAction(
+                              'subscription_desktop_handoff',
+                              {
+                                modelId: turn.result.modelStreams[0]?.modelId || 'claude',
+                                prompt: turn.userText,
+                              },
+                              `Hand off "${turn.userText.slice(0, 32)}..." to Desktop App`
+                            );
+                          }}
+                          className="px-2.5 py-1 rounded-lg bg-white/[0.04] hover:bg-white/[0.1] border border-white/[0.08] text-[11px] text-slate-300 flex items-center gap-1.5 transition-all"
+                          title="Send this prompt directly into your native macOS Desktop App (Claude.app / ChatGPT.app / Gemini.app)"
+                        >
+                          <AppWindow className="w-3.5 h-3.5 text-emerald-400" />
+                          Open in App
+                        </button>
+
                         <button
                           onClick={() => {
                             soundEngine.playGlassTick();

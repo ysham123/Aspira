@@ -1,0 +1,30 @@
+[
+  {
+    "id": "mem-1",
+    "content": "Building Aspira — an open-source, conversational, action-executing multi-agent studio on macOS.",
+    "category": "project",
+    "status": "IN_PROGRESS",
+    "emotionalTone": "Focused",
+    "sourceAgent": "argon",
+    "createdAt": "2026-10-16T03:42:02.323Z",
+    "tags": [
+      "aspira",
+      "macos",
+      "agents"
+    ]
+  },
+  {
+    "id": "mem-2",
+    "content": "Prefers modern, serene Tier-1 AI Lab aesthetics (Google Gemini, OpenAI, Anthropic, Linear) with real action execution like Muse, Grok Bot, OpenClaw, and Dot.",
+    "category": "preference",
+    "status": "ACTIVE",
+    "emotionalTone": "Decisive",
+    "sourceAgent": "claude",
+    "createdAt": "2026-10-16T03:42:02.323Z",
+    "tags": [
+      "design",
+      "autonomy",
+      "voice"
+    ]
+  }
+]

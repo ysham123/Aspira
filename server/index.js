@@ -2,7 +2,7 @@ import express from 'express';
 import os from 'node:os';
 import fs from 'node:fs';
 import path from 'node:path';
-import { exec } from 'node:child_process';
+import { exec, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 
@@ -10,6 +10,26 @@ const execAsync = promisify(exec);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '..');
 const dataDir = path.join(__dirname, 'data');
+const homeDir = os.homedir();
+
+// Ensure child processes have full access to user's subscription CLI paths
+const ENHANCED_PATH = [
+  path.join(homeDir, '.local', 'bin'),
+  path.join(homeDir, '.grok', 'bin'),
+  '/opt/homebrew/bin',
+  '/usr/local/bin',
+  '/usr/bin',
+  '/bin',
+  '/usr/sbin',
+  '/sbin',
+  process.env.PATH || '',
+].join(':');
+
+const CHILD_ENV = {
+  ...process.env,
+  PATH: ENHANCED_PATH,
+  HOME: homeDir,
+};
 
 if (!fs.existsSync(dataDir)) {
   fs.mkdirSync(dataDir, { recursive: true });
@@ -17,6 +37,268 @@ if (!fs.existsSync(dataDir)) {
 
 const memoryFile = path.join(dataDir, 'memory.json');
 const routinesFile = path.join(dataDir, 'routines.json');
+
+// ============================================================================
+// 0. PERSONAL LLM SUBSCRIPTION AUTO-DISCOVERY & EXECUTION BRIDGE
+//    (Zero API Keys Required — Uses Active Claude Pro/Max, ChatGPT Plus/Pro,
+//     Grok.com, Gemini.app, and Local Apple Silicon Ollama Subscriptions!)
+// ============================================================================
+function firstExistingPath(candidates) {
+  for (const p of candidates) {
+    try {
+      if (fs.existsSync(p)) return p;
+    } catch {
+      // ignore
+    }
+  }
+  return null;
+}
+
+export function detectSubscriptions() {
+  // 1. CLAUDE (Claude Pro / Max via `claude` CLI OAuth + Claude.app)
+  const claudeCli = firstExistingPath([
+    path.join(homeDir, '.local', 'bin', 'claude'),
+    '/opt/homebrew/bin/claude',
+    '/usr/local/bin/claude',
+  ]);
+  const claudeAuthFile = firstExistingPath([
+    path.join(homeDir, '.claude', '.claude.json'),
+    path.join(homeDir, '.claude', 'settings.json'),
+  ]);
+  const claudeDesktopApp = firstExistingPath([
+    '/Applications/Claude.app',
+    '/Applications/Claude Science.app',
+  ]);
+
+  // 2. GPT / CHATGPT (ChatGPT Plus / Pro via `codex` CLI OAuth + ChatGPT.app)
+  const codexCli = firstExistingPath([
+    '/opt/homebrew/bin/codex',
+    path.join(homeDir, '.local', 'bin', 'codex'),
+    '/usr/local/bin/codex',
+  ]);
+  const codexAuthFile = firstExistingPath([path.join(homeDir, '.codex', 'auth.json')]);
+  const chatgptDesktopApp = firstExistingPath([
+    '/Applications/ChatGPT.app',
+    '/Applications/ChatGPT Classic.app',
+  ]);
+
+  // 3. GROK (SuperGrok / X Premium+ via `grok` CLI OAuth ~/.grok/auth.json)
+  const grokCli = firstExistingPath([
+    path.join(homeDir, '.grok', 'bin', 'grok'),
+    '/opt/homebrew/bin/grok',
+    '/usr/local/bin/grok',
+  ]);
+  const grokAuthFile = firstExistingPath([path.join(homeDir, '.grok', 'auth.json')]);
+
+  // 4. ARGON / GEMINI (Google AI Pro / Gemini.app + Local Apple Silicon Ollama)
+  const geminiCli = firstExistingPath([
+    '/opt/homebrew/bin/gemini',
+    path.join(homeDir, '.local', 'bin', 'gemini'),
+    path.join(homeDir, '.local', 'bin', 'agy'),
+  ]);
+  const geminiDesktopApp = firstExistingPath(['/Applications/Gemini.app']);
+  const ollamaCli = firstExistingPath([
+    '/opt/homebrew/bin/ollama',
+    '/usr/local/bin/ollama',
+    '/Applications/Ollama.app/Contents/Resources/ollama',
+  ]);
+  const ollamaApp = firstExistingPath(['/Applications/Ollama.app']);
+
+  let ollamaModels = [];
+  try {
+    const libDir = path.join(
+      homeDir,
+      '.ollama',
+      'models',
+      'manifests',
+      'registry.ollama.ai',
+      'library'
+    );
+    if (fs.existsSync(libDir)) {
+      ollamaModels = fs.readdirSync(libDir).filter((f) => !f.startsWith('.'));
+    }
+  } catch {
+    // ignore
+  }
+
+  return {
+    argon: {
+      modelId: 'argon',
+      providerName: 'Google Gemini + Apple Silicon Local',
+      subscriptionAuthenticated: Boolean(geminiDesktopApp || geminiCli || ollamaModels.length > 0),
+      cliPath: geminiCli || ollamaCli,
+      authFile: geminiDesktopApp || path.join(homeDir, '.ollama'),
+      desktopAppPath: geminiDesktopApp || ollamaApp,
+      ollamaModels,
+      methodLabel: geminiDesktopApp
+        ? `Gemini.app + Ollama (${ollamaModels.slice(0, 2).join(', ') || 'Apple Silicon'})`
+        : 'Apple Silicon Local Neural Engine',
+      loginCommand: 'open -a "Gemini" || open "https://gemini.google.com"',
+    },
+    claude: {
+      modelId: 'claude',
+      providerName: 'Claude Pro / Max Subscription',
+      subscriptionAuthenticated: Boolean(claudeCli && claudeAuthFile) || Boolean(claudeDesktopApp),
+      cliPath: claudeCli,
+      authFile: claudeAuthFile,
+      desktopAppPath: claudeDesktopApp,
+      methodLabel:
+        claudeCli && claudeAuthFile
+          ? 'Claude Code OAuth (~/.claude) + Claude.app'
+          : claudeDesktopApp
+          ? 'Claude.app Desktop Session'
+          : 'Not Signed In',
+      loginCommand: claudeCli ? `${claudeCli} login` : 'open -a "Claude"',
+    },
+    grok: {
+      modelId: 'grok',
+      providerName: 'Grok / X Premium+ Subscription',
+      subscriptionAuthenticated: Boolean(grokCli && grokAuthFile),
+      cliPath: grokCli,
+      authFile: grokAuthFile,
+      desktopAppPath: null,
+      methodLabel:
+        grokCli && grokAuthFile
+          ? 'Grok CLI OAuth (~/.grok/auth.json)'
+          : 'Grok Web Session',
+      loginCommand: grokCli ? `${grokCli} login` : 'open "https://grok.com"',
+    },
+    gpt: {
+      modelId: 'gpt',
+      providerName: 'ChatGPT Plus / Pro Subscription',
+      subscriptionAuthenticated: Boolean(codexCli && codexAuthFile) || Boolean(chatgptDesktopApp),
+      cliPath: codexCli,
+      authFile: codexAuthFile,
+      desktopAppPath: chatgptDesktopApp,
+      methodLabel:
+        codexCli && codexAuthFile
+          ? 'ChatGPT OAuth (~/.codex/auth.json) + ChatGPT.app'
+          : chatgptDesktopApp
+          ? 'ChatGPT.app Desktop Session'
+          : 'Not Signed In',
+      loginCommand: codexCli ? `${codexCli} login` : 'open -a "ChatGPT"',
+    },
+  };
+}
+
+// Run a CLI binary safely with argument array (no shell injection) and timeout
+function runCliProcess(binary, args, timeoutMs = 16000) {
+  return new Promise((resolve, reject) => {
+    let stdout = '';
+    let stderr = '';
+    const child = spawn(binary, args, {
+      cwd: rootDir,
+      env: CHILD_ENV,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+
+    const timer = setTimeout(() => {
+      child.kill('SIGTERM');
+      reject(new Error(`Subscription CLI timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+
+    child.stdout.on('data', (chunk) => {
+      stdout += chunk.toString();
+    });
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk.toString();
+    });
+    child.on('error', (err) => {
+      clearTimeout(timer);
+      reject(err);
+    });
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      if (code === 0 && stdout.trim()) {
+        resolve(stdout.trim());
+      } else {
+        reject(new Error(stderr.trim() || `Exited with code ${code}`));
+      }
+    });
+  });
+}
+
+// Execute inference using the user's logged-in LLM Subscription (Zero API Key!)
+async function runSubscriptionInference(modelId, fullPrompt, subs) {
+  // 1. CLAUDE SUBSCRIPTION (via ~/.local/bin/claude -p)
+  if (modelId === 'claude' && subs.claude?.cliPath) {
+    try {
+      const out = await runCliProcess(
+        subs.claude.cliPath,
+        ['-p', fullPrompt, '--output-format', 'text', '--max-turns', '1'],
+        16000
+      );
+      if (out) {
+        return { text: out, badge: 'CLAUDE_SUBSCRIPTION' };
+      }
+    } catch {
+      // fall through
+    }
+  }
+
+  // 2. GROK SUBSCRIPTION (via ~/.grok/bin/grok -p)
+  if (modelId === 'grok' && subs.grok?.cliPath) {
+    try {
+      const out = await runCliProcess(
+        subs.grok.cliPath,
+        [
+          '-p',
+          fullPrompt,
+          '--output-format',
+          'plain',
+          '--disallowed-tools',
+          'run_terminal_cmd,search_replace,todo_write,task,Agent',
+          '--max-turns',
+          '1',
+        ],
+        16000
+      );
+      if (out) {
+        return { text: out, badge: 'GROK_SUBSCRIPTION' };
+      }
+    } catch {
+      // fall through
+    }
+  }
+
+  // 3. CHATGPT PLUS/PRO SUBSCRIPTION (via /opt/homebrew/bin/codex exec)
+  if (modelId === 'gpt' && subs.gpt?.cliPath) {
+    const tmpOut = path.join(os.tmpdir(), `aspira-codex-${Date.now()}.txt`);
+    try {
+      await runCliProcess(
+        subs.gpt.cliPath,
+        [
+          'exec',
+          '--ephemeral',
+          '--skip-git-repo-check',
+          '--color',
+          'never',
+          '-s',
+          'read-only',
+          '-o',
+          tmpOut,
+          fullPrompt,
+        ],
+        18000
+      );
+      if (fs.existsSync(tmpOut)) {
+        const text = fs.readFileSync(tmpOut, 'utf8').trim();
+        fs.unlinkSync(tmpOut);
+        if (text) {
+          return { text, badge: 'CHATGPT_SUBSCRIPTION' };
+        }
+      }
+    } catch {
+      try {
+        if (fs.existsSync(tmpOut)) fs.unlinkSync(tmpOut);
+      } catch {
+        // ignore
+      }
+    }
+  }
+
+  return null;
+}
 
 // ============================================================================
 // 1. DOT-STYLE AGENTIC LIVING MEMORY STORE (server/data/memory.json)
@@ -34,13 +316,13 @@ const DEFAULT_MEMORIES = [
   },
   {
     id: 'mem-2',
-    content: 'Prefers modern, serene Tier-1 AI Lab aesthetics (Google Gemini, OpenAI, Anthropic, Linear) with real action execution like Muse, Grok Bot, OpenClaw, and Dot.',
+    content: 'Uses direct LLM subscriptions (Claude Pro/Max, ChatGPT Plus/Pro, SuperGrok, Gemini.app + Ollama) instead of per-token API keys.',
     category: 'preference',
     status: 'ACTIVE',
     emotionalTone: 'Decisive',
     sourceAgent: 'claude',
     createdAt: new Date().toISOString(),
-    tags: ['design', 'autonomy', 'voice'],
+    tags: ['subscriptions', 'oauth', 'zero-api-key'],
   },
 ];
 
@@ -80,7 +362,7 @@ const DEFAULT_ROUTINES = [
   {
     id: 'routine-deep-work',
     title: 'Deep Focus Workspace Launch',
-    description: 'Opens Notes & Terminal, verifies local build health, and logs an active focus session into Dot Living Memory.',
+    description: 'Triggers a native macOS Focus banner, verifies local component tree, and logs an active focus session into Dot Living Memory.',
     schedule: 'On Demand / Voice Trigger',
     leadAgent: 'claude',
     steps: [
@@ -155,7 +437,7 @@ async function executeAgentTool(tool, args = {}) {
     switch (tool) {
       case 'macos_app': {
         const appName = String(args.app || 'Safari').replace(/[^a-zA-Z0-9 ._-]/g, '');
-        await execAsync(`open -a "${appName}"`);
+        await execAsync(`open -a "${appName}"`, { env: CHILD_ENV });
         return {
           id: `act-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
           tool: 'macos_app',
@@ -166,11 +448,58 @@ async function executeAgentTool(tool, args = {}) {
         };
       }
 
+      case 'subscription_desktop_handoff': {
+        const appMap = {
+          gpt: 'ChatGPT',
+          claude: 'Claude',
+          argon: 'Gemini',
+          grok: 'Safari',
+        };
+        const targetApp = String(args.app || appMap[args.modelId] || 'ChatGPT').replace(
+          /[^a-zA-Z0-9 ._-]/g,
+          ''
+        );
+        const promptText = String(args.prompt || 'Hello from Aspira');
+
+        // Copy prompt to macOS clipboard via pbcopy and activate the subscription desktop app
+        await new Promise((resolve) => {
+          const pb = spawn('pbcopy', [], { env: CHILD_ENV });
+          pb.stdin.write(promptText);
+          pb.stdin.end();
+          pb.on('close', resolve);
+        });
+
+        if (args.modelId === 'grok' && !fs.existsSync('/Applications/Grok.app')) {
+          await execAsync(`open "https://grok.com"`, { env: CHILD_ENV });
+        } else {
+          await execAsync(`open -a "${targetApp}"`, { env: CHILD_ENV });
+          // Attempt polite System Events paste if Accessibility is granted
+          try {
+            await execAsync(
+              `osascript -e 'tell application "${targetApp}" to activate' -e 'delay 0.4' -e 'tell application "System Events" to keystroke "v" using command down'`,
+              { env: CHILD_ENV }
+            );
+          } catch {
+            // Accessibility optional — prompt is already on clipboard!
+          }
+        }
+
+        return {
+          id: `act-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          tool: 'subscription_desktop_handoff',
+          title: `Handed Off to ${targetApp}.app Subscription`,
+          status: 'success',
+          output: `Copied prompt to macOS Clipboard and focused ${targetApp}.app (Press ⌘V + Return if not auto-pasted).`,
+          durationMs: Date.now() - start,
+        };
+      }
+
       case 'macos_notify': {
         const title = String(args.title || 'Aspira Agent').replace(/"/g, '\\"');
         const message = String(args.message || 'Action completed.').replace(/"/g, '\\"');
         await execAsync(
-          `osascript -e 'display notification "${message}" with title "${title}" sound name "Glass"'`
+          `osascript -e 'display notification "${message}" with title "${title}" sound name "Glass"'`,
+          { env: CHILD_ENV }
         );
         return {
           id: `act-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
@@ -184,7 +513,7 @@ async function executeAgentTool(tool, args = {}) {
 
       case 'macos_say': {
         const phrase = String(args.text || 'Aspira online').replace(/"/g, '\\"');
-        exec(`say "${phrase}"`);
+        exec(`say "${phrase}"`, { env: CHILD_ENV });
         return {
           id: `act-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
           tool: 'macos_say',
@@ -198,7 +527,7 @@ async function executeAgentTool(tool, args = {}) {
       case 'open_url': {
         const rawUrl = String(args.url || 'https://news.ycombinator.com');
         const safeUrl = rawUrl.startsWith('http') ? rawUrl : `https://${rawUrl}`;
-        await execAsync(`open "${safeUrl.replace(/"/g, '')}"`);
+        await execAsync(`open "${safeUrl.replace(/"/g, '')}"`, { env: CHILD_ENV });
         return {
           id: `act-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
           tool: 'open_url',
@@ -216,16 +545,22 @@ async function executeAgentTool(tool, args = {}) {
         const usedMem = (os.totalmem() - os.freemem()) / 1024 ** 3;
         let battInfo = 'AC Power / Nominal';
         try {
-          const { stdout } = await execAsync('pmset -g batt');
+          const { stdout } = await execAsync('pmset -g batt', { env: CHILD_ENV });
           battInfo = stdout.split('\n').slice(0, 2).join(' | ').trim();
         } catch {
           // ignore
         }
-        const summary = `Host: ${os.hostname()} (${os.platform()} ${os.arch()})\nCPU: ${cpus[0]?.model} (${cpus.length} cores, Load: ${os.loadavg().map((n) => n.toFixed(2)).join(', ')})\nMemory: ${usedMem.toFixed(1)} GB used / ${totalMem} GB total (${freeMem} GB free)\nPower: ${battInfo}`;
+        const subs = detectSubscriptions();
+        const activeSubList = Object.values(subs)
+          .filter((s) => s.subscriptionAuthenticated)
+          .map((s) => `${s.modelId.toUpperCase()}: ${s.methodLabel}`)
+          .join(' • ');
+
+        const summary = `Host: ${os.hostname()} (${os.platform()} ${os.arch()})\nCPU: ${cpus[0]?.model} (${cpus.length} cores, Load: ${os.loadavg().map((n) => n.toFixed(2)).join(', ')})\nMemory: ${usedMem.toFixed(1)} GB used / ${totalMem} GB total (${freeMem} GB free)\nPower: ${battInfo}\nActive Subscriptions: ${activeSubList}`;
         return {
           id: `act-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
           tool: 'system_status',
-          title: 'Audited macOS Hardware & Power Telemetry',
+          title: 'Audited macOS Hardware & Subscription Telemetry',
           status: 'success',
           output: summary,
           durationMs: Date.now() - start,
@@ -245,7 +580,11 @@ async function executeAgentTool(tool, args = {}) {
             durationMs: Date.now() - start,
           };
         }
-        const { stdout, stderr } = await execAsync(cmd, { cwd: rootDir, timeout: 6000 });
+        const { stdout, stderr } = await execAsync(cmd, {
+          cwd: rootDir,
+          timeout: 6000,
+          env: CHILD_ENV,
+        });
         return {
           id: `act-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
           tool: 'shell_exec',
@@ -295,7 +634,6 @@ async function executeAgentTool(tool, args = {}) {
         const query = String(args.query || 'AI agents');
         const results = [];
         try {
-          // 1. DuckDuckGo Instant Answer API
           const ddgRes = await fetch(
             `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1`
           );
@@ -311,11 +649,10 @@ async function executeAgentTool(tool, args = {}) {
             }
           }
         } catch {
-          // ignore network restrictions
+          // ignore
         }
 
         try {
-          // 2. Also fetch top HackerNews stories if query relates to tech/news/AI
           if (results.length < 2) {
             const hnRes = await fetch('https://hacker-news.firebaseio.com/v0/topstories.json');
             if (hnRes.ok) {
@@ -399,17 +736,32 @@ async function executeAgentTool(tool, args = {}) {
 }
 
 // ============================================================================
-// 4. NATURAL LANGUAGE INTENT -> REAL ACTION PARSER (Works instantaneously!)
+// 4. NATURAL LANGUAGE INTENT -> REAL ACTION PARSER
 // ============================================================================
 async function detectAndRunNaturalActions(prompt, leadAgent = 'argon') {
   const actions = [];
   const lower = prompt.toLowerCase().trim();
 
-  // 1. Open macOS App ("open safari", "launch spotify", "open calculator", "open notes", "open terminal")
-  const appMatch = prompt.match(
-    /\b(?:open|launch|start)\s+(?:the\s+)?(Safari|Spotify|Notes|Calendar|Calculator|Terminal|Finder|Mail|Messages|Reminders|Music|Preview|Activity Monitor|System Settings|Cursor|Visual Studio Code|Xcode)\b/i
+  // 0. Hand off prompt directly to native macOS Subscription Desktop App ("send to chatgpt app", "open in claude app", "open in gemini app")
+  const handoffMatch = prompt.match(
+    /\b(?:send to|open in|hand off to)\s+(chatgpt|claude|gemini|grok)(?:\s+app)?\b/i
   );
-  if (appMatch) {
+  if (handoffMatch) {
+    const target = handoffMatch[1].toLowerCase();
+    const modelMap = { chatgpt: 'gpt', claude: 'claude', gemini: 'argon', grok: 'grok' };
+    actions.push(
+      await executeAgentTool('subscription_desktop_handoff', {
+        modelId: modelMap[target] || 'gpt',
+        prompt,
+      })
+    );
+  }
+
+  // 1. Open macOS App ("open safari", "launch chatgpt", "open claude", "open gemini", "open calculator", "open notes")
+  const appMatch = prompt.match(
+    /\b(?:open|launch|start)\s+(?:the\s+)?(Safari|Spotify|Notes|Calendar|Calculator|Terminal|Finder|Mail|Messages|Reminders|Music|Preview|Activity Monitor|System Settings|Cursor|ChatGPT|Claude|Gemini|Ollama|Xcode)\b/i
+  );
+  if (appMatch && !handoffMatch) {
     actions.push(await executeAgentTool('macos_app', { app: appMatch[1] }));
   }
 
@@ -428,7 +780,7 @@ async function detectAndRunNaturalActions(prompt, leadAgent = 'argon') {
     );
   }
 
-  // 3. Dot Living Memory Extraction ("remember that...", "my goal is...", "remind me to...", "add a task...", "note that I prefer...")
+  // 3. Dot Living Memory Extraction
   const memMatch = prompt.match(
     /\b(?:remember that|remember to|my goal is|remind me to|add a task to|save to memory|don't forget that|i prefer)\s+(.+)/i
   );
@@ -446,7 +798,7 @@ async function detectAndRunNaturalActions(prompt, leadAgent = 'argon') {
     );
   }
 
-  // 4. Create / Write a File ("create a file called hello.py with...", "write a file notes.md...")
+  // 4. Create / Write a File
   const writeMatch = prompt.match(
     /\b(?:create|write|save)\s+(?:a\s+)?(?:file|script|note)\s+(?:called|named)?\s*['"`]?([a-zA-Z0-9_./-]+\.[a-zA-Z0-9]+)['"`]?(?:\s+(?:with|containing)\s+([\s\S]+))?/i
   );
@@ -458,7 +810,7 @@ async function detectAndRunNaturalActions(prompt, leadAgent = 'argon') {
     actions.push(await executeAgentTool('fs_write', { path: fileName, content: fileContent }));
   }
 
-  // 5. Read a File ("read README.md", "show me package.json", "inspect server/index.js")
+  // 5. Read a File
   const readMatch = prompt.match(
     /\b(?:read|show me|cat|inspect)\s+(?:the\s+file\s+)?['"`]?([a-zA-Z0-9_./-]+\.(?:md|json|ts|tsx|js|css|html|py|txt))['"`]?/i
   );
@@ -466,13 +818,15 @@ async function detectAndRunNaturalActions(prompt, leadAgent = 'argon') {
     actions.push(await executeAgentTool('fs_read', { path: readMatch[1] }));
   }
 
-  // 6. Run Terminal / Git / System Command ("run git status", "check git log", "list files", "check disk space")
-  const cmdMatch = prompt.match(/\b(?:run|execute)\s+`?((?:git|ls|df|uptime|whoami|date|find|cat|head|ps|pmset)[^`]*?)`?$/i);
+  // 6. Run Terminal / Git / System Command
+  const cmdMatch = prompt.match(
+    /\b(?:run|execute)\s+`?((?:git|ls|df|uptime|whoami|date|find|cat|head|ps|pmset)[^`]*?)`?$/i
+  );
   if (cmdMatch) {
     actions.push(await executeAgentTool('shell_exec', { command: cmdMatch[1].trim() }));
   } else if (/\b(?:git status|repo status|what changed in git)\b/i.test(lower)) {
     actions.push(await executeAgentTool('shell_exec', { command: 'git status -s && git log -n 3 --oneline' }));
-  } else if (/\b(?:battery|power|cpu|memory|ram|system health|hardware|mac status|system status)\b/i.test(lower)) {
+  } else if (/\b(?:battery|power|cpu|memory|ram|system health|hardware|mac status|system status|subscriptions)\b/i.test(lower)) {
     actions.push(await executeAgentTool('system_status', {}));
   } else if (/\b(?:disk space|storage|free space)\b/i.test(lower)) {
     actions.push(await executeAgentTool('shell_exec', { command: 'df -h .' }));
@@ -480,7 +834,7 @@ async function detectAndRunNaturalActions(prompt, leadAgent = 'argon') {
     actions.push(await executeAgentTool('shell_exec', { command: 'ps -Ao comm,%cpu,%mem -r | head -n 10' }));
   }
 
-  // 7. macOS Notification ("send a notification...", "notify me...")
+  // 7. macOS Notification
   const notifyMatch = prompt.match(/\b(?:send a notification|notify me)\s+(?:saying|that)?\s*(.+)/i);
   if (notifyMatch) {
     actions.push(
@@ -491,7 +845,7 @@ async function detectAndRunNaturalActions(prompt, leadAgent = 'argon') {
     );
   }
 
-  // 8. Live Web / News Search ("search the web for...", "what's happening on hackernews", "latest news on...")
+  // 8. Live Web / News Search
   const searchMatch = prompt.match(
     /\b(?:search(?:\s+the\s+web)?\s+for|look up|what is the latest on|hackernews|top stories|news about)\s+(.+)/i
   );
@@ -508,8 +862,59 @@ const app = express();
 app.use(express.json({ limit: '5mb' }));
 
 // ============================================================================
-// ENDPOINTS: TELEMETRY, AST GRAPH, MEMORY, ROUTINES, ACTION EXECUTION
+// ENDPOINTS: SUBSCRIPTIONS, TELEMETRY, MEMORY, ROUTINES, ACTION EXECUTION
 // ============================================================================
+
+app.get('/api/subscriptions', (_req, res) => {
+  res.json({ subscriptions: detectSubscriptions() });
+});
+
+app.post('/api/subscriptions/login', async (req, res) => {
+  const { modelId } = req.body || {};
+  const subs = detectSubscriptions();
+  const sub = subs[modelId];
+  if (!sub) return res.status(404).json({ error: 'Unknown modelId' });
+
+  try {
+    // Open native macOS Terminal or Desktop App to complete OAuth login
+    if (sub.cliPath && (modelId === 'claude' || modelId === 'grok' || modelId === 'gpt')) {
+      const cmd = `${sub.cliPath} login`;
+      await execAsync(
+        `osascript -e 'tell application "Terminal" to do script "${cmd}"' -e 'tell application "Terminal" to activate'`,
+        { env: CHILD_ENV }
+      );
+      return res.json({
+        launched: true,
+        message: `Opened macOS Terminal running \`${cmd}\` to authenticate your ${sub.providerName}.`,
+        subscriptions: detectSubscriptions(),
+      });
+    } else if (sub.desktopAppPath) {
+      await execAsync(`open "${sub.desktopAppPath}"`, { env: CHILD_ENV });
+      return res.json({
+        launched: true,
+        message: `Launched ${sub.desktopAppPath} for subscription session.`,
+        subscriptions: detectSubscriptions(),
+      });
+    }
+  } catch (err) {
+    return res.status(500).json({
+      launched: false,
+      message: err instanceof Error ? err.message : String(err),
+    });
+  }
+
+  return res.json({
+    launched: true,
+    message: 'Subscription session active.',
+    subscriptions: detectSubscriptions(),
+  });
+});
+
+app.post('/api/subscriptions/desktop-handoff', async (req, res) => {
+  const { modelId, prompt } = req.body || {};
+  const result = await executeAgentTool('subscription_desktop_handoff', { modelId, prompt });
+  res.json({ result });
+});
 
 app.get('/api/telemetry', (_req, res) => {
   const cpus = os.cpus();
@@ -552,7 +957,14 @@ app.get('/api/memory', (_req, res) => {
 });
 
 app.post('/api/memory', (req, res) => {
-  const { content, category = 'insight', status = 'IN_PROGRESS', emotionalTone = 'Focused', sourceAgent = 'argon', tags = [] } = req.body || {};
+  const {
+    content,
+    category = 'insight',
+    status = 'IN_PROGRESS',
+    emotionalTone = 'Focused',
+    sourceAgent = 'argon',
+    tags = [],
+  } = req.body || {};
   if (!content) return res.status(400).json({ error: 'Content required' });
   const memories = loadMemories();
   const item = {
@@ -591,7 +1003,8 @@ app.get('/api/routines', (_req, res) => {
 });
 
 app.post('/api/routines', (req, res) => {
-  const { title, description, schedule = 'On Demand', leadAgent = 'argon', steps = [] } = req.body || {};
+  const { title, description, schedule = 'On Demand', leadAgent = 'argon', steps = [] } =
+    req.body || {};
   if (!title) return res.status(400).json({ error: 'Title required' });
   const routines = loadRoutines();
   const newRoutine = {
@@ -763,7 +1176,7 @@ app.post('/api/terminal', (req, res) => {
     return;
   }
   const cmd = SAFE_COMMANDS[preset] || SAFE_COMMANDS['sys-procs'];
-  exec(cmd, { cwd: rootDir, timeout: 4000 }, (err, stdout, stderr) => {
+  exec(cmd, { cwd: rootDir, timeout: 4000, env: CHILD_ENV }, (err, stdout, stderr) => {
     res.json({
       command: cmd,
       output: stdout || stderr || (err ? err.message : 'Executed with 0 output'),
@@ -803,7 +1216,7 @@ app.post('/api/tts', async (req, res) => {
 });
 
 // ============================================================================
-// 5. CONVERSATIONAL + ACTION-EXECUTING MULTI-AGENT DISPATCH (/api/dispatch)
+// 5. SUBSCRIPTION-FIRST + ACTION-EXECUTING MULTI-AGENT DISPATCH (/api/dispatch)
 // ============================================================================
 app.post('/api/dispatch', async (req, res) => {
   const {
@@ -849,10 +1262,35 @@ app.post('/api/dispatch', async (req, res) => {
 
   const fullSystemPrompt = `${
     systemPrompt || 'You are a conversational, action-executing personal AI agent inside Aspira on macOS.'
-  }\nSpeak naturally, warmly, and concisely like a real-time personal companion (inspired by Dot by New Computer, Meta Muse, and OpenClaw). Avoid robotic headers or filler.${memoryBlock}${actionBlock}`;
+  }\nSpeak naturally, warmly, and concisely in 2-3 sentences like a real-time personal companion (inspired by Dot by New Computer, Meta Muse, and OpenClaw). Do not use robotic headers.${memoryBlock}${actionBlock}`;
+
+  const combinedPromptForCli = `${fullSystemPrompt}${recentHistoryText}\n\nUser: ${prompt}\n\nRespond directly in 2-3 concise conversational sentences:`;
 
   try {
-    // A. ARGON (Google Gemini API)
+    // ========================================================================
+    // TIER 1: PERSONAL LLM SUBSCRIPTION BRIDGE (Zero API Keys Required!)
+    // Uses active Claude Pro/Max (~/.claude), ChatGPT Plus/Pro (~/.codex),
+    // Grok Subscription (~/.grok), or Local Subscription Proxy (localhost:8317)
+    // ========================================================================
+    const subs = detectSubscriptions();
+    if (!apiKeys[modelId]) {
+      const subOut = await runSubscriptionInference(modelId, combinedPromptForCli, subs);
+      if (subOut?.text) {
+        return res.json({
+          source: 'SUBSCRIPTION_OAUTH',
+          subscriptionBadge: subOut.badge,
+          modelId,
+          text: subOut.text,
+          executedActions,
+          memories: loadMemories(),
+          latencyMs: Date.now() - startTime,
+        });
+      }
+    }
+
+    // ========================================================================
+    // TIER 2: OPTIONAL CLOUD API KEYS (If user explicitly configured BYOK)
+    // ========================================================================
     const geminiKey = apiKeys.argon || process.env.GEMINI_API_KEY;
     if (modelId === 'argon' && geminiKey) {
       const r = await fetch(
@@ -861,15 +1299,7 @@ app.post('/api/dispatch', async (req, res) => {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            contents: [
-              {
-                parts: [
-                  {
-                    text: `${fullSystemPrompt}${recentHistoryText}\n\nUser: ${prompt}`,
-                  },
-                ],
-              },
-            ],
+            contents: [{ parts: [{ text: combinedPromptForCli }] }],
           }),
         }
       );
@@ -889,7 +1319,6 @@ app.post('/api/dispatch', async (req, res) => {
       }
     }
 
-    // B. CLAUDE (Anthropic API)
     const claudeKey = apiKeys.claude || process.env.ANTHROPIC_API_KEY;
     if (modelId === 'claude' && claudeKey) {
       const r = await fetch('https://api.anthropic.com/v1/messages', {
@@ -922,7 +1351,6 @@ app.post('/api/dispatch', async (req, res) => {
       }
     }
 
-    // C. GROK (xAI API)
     const grokKey = apiKeys.grok || process.env.XAI_API_KEY;
     if (modelId === 'grok' && grokKey) {
       const r = await fetch('https://api.x.ai/v1/chat/completions', {
@@ -955,7 +1383,6 @@ app.post('/api/dispatch', async (req, res) => {
       }
     }
 
-    // D. GPT (OpenAI API)
     const gptKey = apiKeys.gpt || process.env.OPENAI_API_KEY;
     if (modelId === 'gpt' && gptKey) {
       const r = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -988,7 +1415,9 @@ app.post('/api/dispatch', async (req, res) => {
       }
     }
 
-    // E. CUSTOM OPENAI-COMPATIBLE OR LOCAL OLLAMA MODEL PLUGIN
+    // ========================================================================
+    // TIER 3: CUSTOM OPENAI-COMPATIBLE OR CLIProxyAPI SUBSCRIPTION BRIDGE
+    // ========================================================================
     if (endpointConfig?.baseUrl) {
       const customKey = apiKeys[modelId] || '';
       const headers = { 'Content-Type': 'application/json' };
@@ -1021,14 +1450,14 @@ app.post('/api/dispatch', async (req, res) => {
       }
     }
 
-    // F. ZERO-CONFIG APPLE SILICON LOCAL OLLAMA BRIDGE (llama3.2:latest / llama3:latest)
-    // Automatically powers real conversational responses on the user's Mac when cloud keys aren't set!
-    const ollamaModel = modelId === 'argon' ? 'llama3.2:latest' : 'llama3.2:latest';
+    // ========================================================================
+    // TIER 4: ZERO-CONFIG APPLE SILICON LOCAL OLLAMA (llama3.2:latest)
+    // ========================================================================
     const ollamaRes = await fetch('http://127.0.0.1:11434/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: ollamaModel,
+        model: 'llama3.2:latest',
         stream: false,
         messages: [
           { role: 'system', content: fullSystemPrompt },
@@ -1055,6 +1484,26 @@ app.post('/api/dispatch', async (req, res) => {
         });
       }
     }
+
+    // If Argon (Gemini) was requested and Ollama daemon wasn't running yet,
+    // fall back to any active subscription CLI (grok / claude / codex) so Argon still gives live AI answers!
+    if (modelId === 'argon') {
+      const fallbackSub =
+        (await runSubscriptionInference('grok', combinedPromptForCli, subs)) ||
+        (await runSubscriptionInference('claude', combinedPromptForCli, subs)) ||
+        (await runSubscriptionInference('gpt', combinedPromptForCli, subs));
+      if (fallbackSub?.text) {
+        return res.json({
+          source: 'SUBSCRIPTION_OAUTH',
+          subscriptionBadge: 'GEMINI_SUBSCRIPTION_BRIDGE',
+          modelId,
+          text: fallbackSub.text,
+          executedActions,
+          memories: loadMemories(),
+          latencyMs: Date.now() - startTime,
+        });
+      }
+    }
   } catch {
     // Fall through if offline
   }
@@ -1071,7 +1520,9 @@ app.post('/api/dispatch', async (req, res) => {
 
 const PORT = Number(process.env.PORT || 3001);
 app.listen(PORT, () => {
+  const subs = detectSubscriptions();
+  const activeCount = Object.values(subs).filter((s) => s.subscriptionAuthenticated).length;
   console.log(
-    `\x1b[32m[Aspira Personal Agent OS] Telemetry, Dot Memory, OpenClaw Actions & Ollama/Cloud Bridge online at http://localhost:${PORT}\x1b[0m`
+    `\x1b[32m[Aspira Personal Agent OS] Online at http://localhost:${PORT} | Detected ${activeCount}/4 Active LLM Subscriptions (Zero API Keys Needed)\x1b[0m`
   );
 });

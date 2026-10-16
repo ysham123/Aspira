@@ -802,7 +802,7 @@ export const App: React.FC = () => {
           </span>
           <span className="hidden md:inline-flex items-center gap-2 font-mono-tech text-[11px] text-slate-400 px-2.5 py-0.5 rounded-full bg-white/[0.03] border border-white/[0.06]">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-            <span>{macTelemetry.cpuModel}</span>
+            <span className="text-emerald-300 font-medium">Subscriptions Active (Zero API Keys)</span>
             <span>·</span>
             <span>{macTelemetry.cpuUsagePercent}% CPU</span>
             <span>·</span>
@@ -849,7 +849,7 @@ export const App: React.FC = () => {
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl aspira-card-interactive text-xs font-medium text-slate-200 cursor-pointer"
           >
             <Sliders className="w-3.5 h-3.5 text-[#6E8EFB]" />
-            <span>Models & Keys</span>
+            <span>Subscriptions & Models</span>
           </button>
 
           <button

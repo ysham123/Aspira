@@ -579,6 +579,18 @@ export interface AutonomousRoutine {
   lastRunAt: string | null;
 }
 
+export interface SubscriptionStatus {
+  modelId: string;
+  providerName: string;
+  subscriptionAuthenticated: boolean;
+  cliPath: string | null;
+  authFile: string | null;
+  desktopAppPath: string | null;
+  ollamaModels?: string[];
+  methodLabel: string;
+  loginCommand: string;
+}
+
 export interface SynergyExecutionResult {
   id: string;
   timestamp: string;
@@ -602,7 +614,7 @@ export interface SynergyExecutionResult {
     latencyMs: number;
     ttftMs: number;
     tokensPerSec: number;
-    source: 'LIVE_API' | 'LOCAL_OLLAMA' | 'NEURAL_SIMULATOR';
+    source: 'SUBSCRIPTION_OAUTH' | 'LIVE_API' | 'LOCAL_OLLAMA' | 'NEURAL_SIMULATOR';
     keyInsight: string;
     uniqueNuance: string;
     confidence: number;
@@ -627,4 +639,5 @@ export interface ConversationTurn {
   pitchHz?: number;
   result: SynergyExecutionResult;
 }
+
 

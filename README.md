@@ -1,47 +1,53 @@
-# Aspira — Flagship Open-Source Multi-Agent Spatial Studio
+# Aspira — Flagship Open-Source Personal Agent OS & Spatial Studio
 
-**Aspira** is a 100% open-source, plug-and-play spatial AI studio that connects **Argon (Gemini)**, **Claude**, **Grok**, and **GPT** (plus custom OpenAI-compatible or local Ollama models) in a single serene, transformative canvas.
+**Aspira** is a 100% open-source, plug-and-play Personal Agent OS & spatial studio for macOS that connects **Argon (Gemini)**, **Claude**, **Grok**, and **GPT** using your **existing personal LLM subscriptions (Zero API Keys Required!)** alongside local Apple Silicon models.
 
-Co-designed around the flagship craft of **Google Gemini Live, OpenAI Realtime, Anthropic Workbench, xAI, and Linear/Raycast**, Aspira pairs a custom **GLSL Bioluminescent Fluid Orb & Aurora Constellation** with a **Multi-Feature Acoustic Double-Clap + Spoken Passkey Gate** and a **Luxury WebAudio + Local Neural TTS Engine (`Kokoro-82M` / `mlx-audio`)**.
+Co-designed around the flagship craft of **Google Gemini Live, OpenAI Realtime, Anthropic Workbench, xAI, and Linear/Raycast**, and engineered with the personal-agent breakthroughs of **Dot (by New Computer)**, **Meta Muse**, **OpenClaw (Clawdbot)**, **Grok Bot**, and **MacOS-Use**, Aspira combines:
+1. **Universal LLM Subscription Bridge (Zero API Keys Required)**
+2. **Continuous Hands-Free Duplex Voice Conversation + Acoustic Double-Clap & Spoken Passkey Gate**
+3. **Real macOS, Filesystem, Terminal & Live Web Action Execution**
+4. **Dot-Style Agentic Living Memory Graph & Grokbot/OpenClaw Autonomous Routines**
 
 Repository: [`https://github.com/ysham123/Aspira`](https://github.com/ysham123/Aspira)
 
 ---
 
-## Signature Capabilities
+## 1. Zero API Keys Required — Personal LLM Subscription Bridge
 
-### 1. Acoustic Double-Clap $\rightarrow$ `"Wake up, I'm back"` $\rightarrow$ Vocal Biometric Passkey Gate
-- **Ambient Lock Screen (Zero Cloud Tokens in Standby):** Uses a 2048-FFT local WebAudio DSP sentinel (`src/audio/acousticSentinel.ts`) with a 4-feature physical clap discriminator (adaptive noise floor, crest factor, onset rise derivative, and high-frequency spectral ratio) so speech sibilants and keyboard clicks never false-trigger.
-- **Spoken Passkey & Vocal Frequency Verification:** Responds in a warm natural neural voice (*"Welcome back. State your passkey to unlock the studio."*) and verifies both your **custom spoken passkey phrase** and **vocal frequency signature** (3-point parabolic `F0` pitch interpolation + formant spectral centroid matching).
-- **Multi-Tier Passkey Protocols:**
-  - `"Protocol Lazarus"` (Primary): Unlocks the studio and wakes **Argon + Claude**.
-  - `"House Party Protocol"`: Ignites all 4 flagship agents simultaneously (**Argon, Claude, Grok, GPT**).
-  - `"Overwatch Alpha"`: Wakes **Argon + Grok** directly in **Live Vision** mode.
-  - `"Ghost Protocol"`: Emergency purge & return to zero-token ambient lock.
+Most people already have personal subscriptions (**Claude Pro/Max**, **ChatGPT Plus/Pro**, **SuperGrok / X Premium+**, **Google AI Pro / Gemini**, or local **Apple Silicon Ollama**)—not separate per-token developer API keys. Aspira auto-discovers and bridges your active subscriptions out of the box (`GET /api/subscriptions` in `server/index.js`):
 
-### 2. Unique Superpowers vs. Overlapping Capability Synergy Engine
-- **4 Unique Apex Superpowers:**
-  - **Argon (`#6E8EFB`):** 2M Context Vault & Native Live Multimodal Stream
-  - **Claude (`#D97757`):** Direct OS Computer Use & MCP Sandboxed Execution
-  - **Grok (`#F43F5E`):** Unfiltered Live X Firehose & Cultural Pulse
-  - **GPT (`#10A37F`):** Sub-Second Realtime Voice & Recursive O-Series Planner
-- **5 Overlapping Shared Capabilities (`Code Synthesis`, `Deep Reasoning`, `Spatial Vision`, `Live Grounding`, `Creative Studio`) across 4 Collaboration Modes:**
-  - **Fusion (`Consensus + Nuance`):** Synthesizes parallel agent outputs into an executive unified response with interactive `[Consensus]` and `[Agent Nuance]` attribution pills.
-  - **Debate (`Adversarial`):** Structured 3-stage `Thesis -> Critique -> Verdict` executive review.
-  - **Race (`Speculative Speed`):** Live sub-millisecond token velocity telemetry locking onto the fastest agent stream.
-  - **Relay (`Apex Chain`):** Sequential handoffs across each model's unique superpower.
+| Agent Core | Subscription Source Auto-Detected on macOS | Desktop App Handoff |
+| :--- | :--- | :--- |
+| **Claude (`#D97757`)** | **Claude Pro / Max** OAuth via `claude` CLI (`~/.claude`) | `/Applications/Claude.app` |
+| **GPT (`#10A37F`)** | **ChatGPT Plus / Pro** OAuth via `codex` CLI (`~/.codex/auth.json`) | `/Applications/ChatGPT.app` |
+| **Grok (`#F43F5E`)** | **Grok / X Premium+** OAuth via `grok` CLI (`~/.grok/auth.json`) | `grok.com` / Native Browser |
+| **Argon (`#6E8EFB`)** | **Google Gemini** (`Gemini.app` / `gemini` CLI) + **Ollama Apple Silicon** (`llama3.2`, `qwen2.5vl`) | `/Applications/Gemini.app` |
 
-### 3. Custom GLSL Bioluminescent Fluid Orb & 4 Transformative Studio Views
-- **Custom Shader Pipeline (`src/components/ThreeHologramStage.tsx`):** 3D Ashima Simplex Noise + Dual-Layer Fresnel Iridescence (`#4285F4`, `#9B72CB`, `#D96570`, `#F49C46`), Volumetric Back-Face Corona Halo, and 160-particle **Curved Cubic Bezier Aurora Ribbons** connecting awake agent cores.
-- **4 Spacious Studio Views (`⌘1` – `⌘4`):**
-  - **`⌘1` Studio:** Executive synthesized response canvas + side-by-side collapsible agent perspective cards + capability filter pills.
-  - **`⌘2` Workbench:** Interactive workspace file/AST explorer with **Source Inspector**, **Multi-Agent AST Diff**, and a collapsible macOS terminal drawer (`⌘J`).
-  - **`⌘3` Live Vision:** Minimalist floating Picture-in-Picture optical gesture sensor + multimodal vision & MCP action cards.
-  - **`⌘4` Global Pulse:** Editorial live signal feed + structured multi-agent debate timeline.
+- **1-Click Subscription Sign-In / Re-Auth**: Open **Subscriptions & Models** in the top bar to view live green `SUBSCRIPTION ACTIVE` badges, launch 1-click OAuth sign-in (`claude login`, `codex login`, `grok login`), or connect a local `CLIProxyAPI` router (`http://localhost:8317/v1`).
+- **1-Click Native Desktop App Handoff**: Click **Open in App** on any conversation turn (or say *"Send to Claude app"* / *"Send to ChatGPT app"*) to copy and paste your prompt directly into your native macOS `Claude.app`, `ChatGPT.app`, or `Gemini.app` window.
 
-### 4. Luxury Acoustic Bus & Local Neural Voice AI (`Kokoro-82M` / `mlx-audio`)
-- **Master Luxury Acoustic Bus (`src/audio/soundEngine.ts`):** `24dB/oct` warm low-pass filter + stereo ambient diffusion + soft knee compressor generating VisionOS-style modal glass droplets, `Dmin9` wake swells, and `Cmaj9(#11)` unlock blooms.
-- **Local Open-Source Neural Voice AI (`/api/tts`):** Out-of-the-box support for locally hosted **Kokoro-82M**, **mlx-audio**, or **Orpheus** (`http://127.0.0.1:8880/v1/audio/speech`) with automatic fallback to pre-warmed macOS Neural Voices.
+---
+
+## 2. Real Host Actions, Dot Living Memory & Autonomous Routines
+
+- **Native macOS & Workspace Action Engine (`OpenClaw` / `Muse` / `MacOS-Use` style)**:
+  - `macos_app`: Launch any macOS application (`"Open Safari"`, `"Open Calculator"`, `"Open Notes"`, `"Open Claude"`).
+  - `macos_notify`: Trigger native macOS Notification Center banners (`osascript`).
+  - `system_status`: Real-time Apple Silicon CPU, Unified Memory, `pmset -g batt` battery telemetry, and active subscription audit.
+  - `fs_write` / `fs_read` & `shell_exec`: Create or inspect workspace files and run safe shell commands (`git status`, `ls`, `df`, `ps`, `cat`) with inline **Action Execution Cards**.
+  - `web_search` & `open_url`: Live DuckDuckGo + HackerNews Firebase API recon and direct browser launching.
+- **Dot-Style Agentic Living Memory Graph (`server/data/memory.json`)**:
+  - Automatically extracts and persists your `Goals`, `In-Progress Tasks`, `Preferences`, `Projects`, and `Insights` with status tags (`IN_PROGRESS`, `COMPLETED`, `ACTIVE`) and vocal pitch/emotion telemetry (`Focused`, `Energetic`, `Reflective`), injecting them into every future turn.
+- **Grokbot / OpenClaw Autonomous Routines (`server/data/routines.json`)**:
+  - Multi-step automated playbooks (*Executive Morning & System Briefing*, *Deep Focus Workspace Launch*, *Grok Live Web Recon Sweep*) that execute sequential host actions and speak the synthesized briefing aloud.
+
+---
+
+## 3. Acoustic Double-Clap $\rightarrow$ `"Wake up, I'm back"` $\rightarrow$ Spoken Passkey Gate
+
+- **2048-FFT 4-Feature Clap Discriminator (`src/audio/acousticSentinel.ts`)**: Distinguishes real physical hand claps from speech sibilants and desk taps.
+- **3-Point Parabolic `F0` Pitch & Formant Biometric Matching**: Verifies your vocal frequency signature alongside multi-tier spoken passkey protocols (`"Protocol Lazarus"`, `"House Party Protocol"`, `"Overwatch Alpha"`, `"Ghost Protocol"`).
+- **Hands-Free Duplex Voice Conversation + Local Neural TTS (`src/audio/soundEngine.ts`)**: Once unlocked, talk naturally at any time—Aspira listens, executes actions on your Mac, and speaks back via local **Kokoro-82M / mlx-audio** (`/api/tts`) or pre-warmed macOS Neural Voices with instant barge-in interruption.
 
 ---
 
@@ -52,16 +58,6 @@ git clone https://github.com/ysham123/Aspira.git
 cd Aspira
 npm install
 
-# 1. Start both the Local Express Bridge Server (:3001) & Vite Spatial Studio (:5173)
+# Start the Subscription-First Personal Agent OS Server (:3001) & Vite Spatial Studio (:5173)
 npm run dev
-
-# 2. (Optional) Launch in Frameless Native macOS Desktop Mode
-npm run desktop
 ```
-
-### Optional: Local Open-Source Neural Voice AI (`Kokoro-82M` on Apple Silicon)
-To run ultra-natural local neural voice synthesis on your Mac (`0` cloud tokens, `<120ms` latency):
-```bash
-docker run -p 8880:8880 ghcr.io/remsky/kokoro-fastapi-cpu:latest
-```
-Then open **Settings (`⌘,`) $\rightarrow$ API Keys & Voice AI** in Aspira to test or customize your voice profile (`af_heart`, `af_bella`, `am_adam`, `bf_emma`).

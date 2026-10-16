@@ -13,7 +13,8 @@ import {
 } from './manifest';
 
 interface DispatchModelResponse {
-  source: 'LIVE_API' | 'LOCAL_OLLAMA' | 'NEURAL_SIMULATOR';
+  source: 'SUBSCRIPTION_OAUTH' | 'LIVE_API' | 'LOCAL_OLLAMA' | 'NEURAL_SIMULATOR';
+  subscriptionBadge?: string;
   modelId: string;
   text: string | null;
   executedActions?: AgentActionExecution[];
@@ -47,7 +48,7 @@ async function fetchModelStream(
   conversationHistory: ConversationMessageContext[],
   executeActions: boolean
 ): Promise<{
-  source: 'LIVE_API' | 'LOCAL_OLLAMA' | 'NEURAL_SIMULATOR';
+  source: 'SUBSCRIPTION_OAUTH' | 'LIVE_API' | 'LOCAL_OLLAMA' | 'NEURAL_SIMULATOR';
   text: string;
   executedActions: AgentActionExecution[];
   memories?: LivingMemoryItem[];
@@ -85,7 +86,12 @@ async function fetchModelStream(
       if (Array.isArray(data.memories)) {
         updatedMemories = data.memories;
       }
-      if (data.text && (data.source === 'LIVE_API' || data.source === 'LOCAL_OLLAMA')) {
+      if (
+        data.text &&
+        (data.source === 'SUBSCRIPTION_OAUTH' ||
+          data.source === 'LIVE_API' ||
+          data.source === 'LOCAL_OLLAMA')
+      ) {
         const totalLatency = Math.round(performance.now() - start);
         return {
           source: data.source,

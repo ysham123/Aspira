@@ -10,7 +10,26 @@ class StarkSoundEngine {
   public voiceEnabled = true;
   public localTtsEndpoint = ''; // Optional local Kokoro-82M / mlx-audio / Orpheus endpoint
 
+  public getLocalTtsEndpoint(): string {
+    return this.localTtsEndpoint;
+  }
+
+  public setLocalTtsEndpoint(url: string) {
+    this.localTtsEndpoint = url;
+    try {
+      localStorage.setItem('aspira_local_tts_url', url);
+    } catch {
+      // ignore
+    }
+  }
+
   constructor() {
+    try {
+      const savedTts = typeof window !== 'undefined' ? localStorage.getItem('aspira_local_tts_url') : null;
+      if (savedTts) this.localTtsEndpoint = savedTts;
+    } catch {
+      // ignore
+    }
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
       const loadVoices = () => {
         const voices = window.speechSynthesis.getVoices();
