@@ -1,0 +1,33 @@
+{
+  "name": "archon-hud",
+  "version": "1.0.0",
+  "license": "MIT",
+  "description": "Open-Source Plug-and-Play Multi-Model Spatial HUD (Argon, Claude, Grok, GPT) with Acoustic Clap + Wake Word + Voiceprint Passkey & Transformative 3D Geometry",
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/dev.js",
+    "client": "vite --port 5173 --host",
+    "server": "node server/index.js",
+    "desktop": "node scripts/launch-desktop.js",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "express": "^5.1.0",
+    "lucide-react": "^0.511.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "tailwindcss": "^4.3.3",
+    "three": "^0.176.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "@types/three": "^0.176.0",
+    "@vitejs/plugin-react": "^4.4.1",
+    "typescript": "^5.8.3",
+    "vite": "^6.3.5"
+  }
+}

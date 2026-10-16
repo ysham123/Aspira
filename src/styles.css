@@ -1,0 +1,67 @@
+@import "tailwindcss";
+
+:root {
+  --hud-cyan: #00f0ff;
+  --hud-amber: #ff9e00;
+  --hud-crimson: #ff2a6d;
+  --hud-emerald: #00ff9d;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: #02060d;
+  color: #e2f8ff;
+  font-family: 'Rajdhani', -apple-system, BlinkMacSystemFont, sans-serif;
+  overflow: hidden;
+}
+
+/* Holographic Scanline & Vignette Overlay */
+.hud-grid-bg {
+  background-image:
+    radial-gradient(circle at 50% 48%, rgba(0, 240, 255, 0.11) 0%, rgba(2, 6, 13, 0.92) 70%),
+    linear-gradient(rgba(0, 240, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 240, 255, 0.035) 1px, transparent 1px);
+  background-size: 100% 100%, 38px 38px, 38px 38px;
+}
+
+.hud-scanlines::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0px,
+    transparent 2px,
+    rgba(0, 240, 255, 0.02) 3px
+  );
+  z-index: 30;
+}
+
+/* Sci-Fi Angled HUD Panel Corners */
+.hud-panel {
+  box-shadow:
+    0 0 24px rgba(0, 240, 255, 0.08),
+    inset 0 0 18px rgba(0, 240, 255, 0.05);
+}
+
+/* Custom sleek scrollbars */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(2, 10, 22, 0.6);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 240, 255, 0.35);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 240, 255, 0.65);
+}
