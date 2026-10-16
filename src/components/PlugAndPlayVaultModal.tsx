@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   AlertTriangle,
-  Check,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
@@ -36,7 +35,7 @@ interface PlugAndPlayVaultModalProps {
   onTogglePasskeyLock: (enabled: boolean) => void;
   onUpdatePasskeyPhrase: (id: string, newPhrase: string) => void;
   apiKeys: Record<string, string>;
-  onSaveApiKeys: (keys: Record<string, string>) => void;
+  onSaveApiKeys: (keys: Record<string, string>) => boolean;
 }
 
 type VaultTab = 'subscriptions' | 'models' | 'voice' | 'passkeys';
@@ -85,6 +84,7 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
   const [hasVerifiedSubscriptionStatus, setHasVerifiedSubscriptionStatus] = useState(false);
   const [loginStatusMsg, setLoginStatusMsg] = useState<string | null>(null);
   const [showByokSection, setShowByokSection] = useState(false);
+  const [keysSaveError, setKeysSaveError] = useState('');
 
   // Hot-plug custom agent state
   const [codeName, setCodeName] = useState('');
@@ -249,9 +249,9 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
 
   const handleSaveKeys = (e: React.FormEvent) => {
     e.preventDefault();
-    onSaveApiKeys(localKeys);
-    setKeysSavedBanner(true);
-    setTimeout(() => setKeysSavedBanner(false), 2600);
+    const saved = onSaveApiKeys(localKeys);
+    setKeysSavedBanner(saved);
+    setKeysSaveError(saved ? '' : 'Keys are active for this session, but browser storage could not save them.');
   };
 
   const handleSaveTtsEndpoint = async () => {
@@ -543,33 +543,45 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
                           key={item.id}
                           className="p-3 rounded-xl bg-black/30 border border-white/[0.06] space-y-1.5"
                         >
-                          <label className="text-[11px] font-medium text-slate-300 block">
+                          <label htmlFor={`api-key-${item.id}`} className="text-[11px] font-medium text-slate-300 block">
                             {item.label}
                           </label>
                           <input
+                            id={`api-key-${item.id}`}
                             type="password"
+                            autoComplete="off"
                             value={localKeys[item.id] || ''}
-                            onChange={(e) =>
-                              setLocalKeys((prev) => ({ ...prev, [item.id]: e.target.value }))
-                            }
+                            onChange={(e) => {
+                              setKeysSavedBanner(false);
+                              setKeysSaveError('');
+                              setLocalKeys((prev) => ({ ...prev, [item.id]: e.target.value }));
+                            }}
                             placeholder={item.placeholder}
+                            aria-describedby={`api-key-hint-${item.id}`}
                             className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-1.5 text-xs font-mono text-white focus:outline-none focus:border-indigo-400"
                           />
+                          <p id={`api-key-hint-${item.id}`} className="text-[10px] leading-4 text-slate-500">
+                            Saved locally. Aspira checks this key when you request a response.
+                          </p>
                         </div>
                       ))}
                     </div>
-                    <div className="flex justify-end">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      {keysSavedBanner && (
+                        <p className="text-xs text-emerald-700" role="status" aria-live="polite">
+                          API keys saved in this browser.
+                        </p>
+                      )}
+                      {keysSaveError && (
+                        <p className="text-xs text-amber-700" role="alert">
+                          {keysSaveError}
+                        </p>
+                      )}
                       <button
                         type="submit"
                         className="px-4 py-2 rounded-xl bg-white text-slate-950 font-semibold text-xs hover:bg-slate-100 transition-all flex items-center gap-1.5"
                       >
-                        {keysSavedBanner ? (
-                          <>
-                            <Check className="w-3.5 h-3.5 text-emerald-600" /> Saved Override Keys
-                          </>
-                        ) : (
-                          'Save Optional API Keys'
-                        )}
+                        <KeyRound className="w-3.5 h-3.5 text-indigo-600" /> Save optional API keys
                       </button>
                     </div>
                   </form>
@@ -634,49 +646,69 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
                   </div>
                 </div>
 
-                <form onSubmit={handleAddPlugin} className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <input
-                    type="text"
-                    value={codeName}
-                    onChange={(e) => setCodeName(e.target.value)}
-                    placeholder="Agent Name (e.g. Llama-3.2)"
-                    className="bg-black/30 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-indigo-400"
-                  />
-                  <input
-                    type="text"
-                    value={family}
-                    onChange={(e) => setFamily(e.target.value)}
-                    placeholder="Model Family"
-                    className="bg-black/30 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-indigo-400"
-                  />
-                  <input
-                    type="text"
-                    value={baseUrl}
-                    onChange={(e) => setBaseUrl(e.target.value)}
-                    placeholder="Endpoint Base URL (e.g. http://localhost:11434/v1)"
-                    className="bg-black/30 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs font-mono text-slate-200 focus:outline-none focus:border-indigo-400"
-                  />
-                  <input
-                    type="text"
-                    value={apiModelId}
-                    onChange={(e) => setApiModelId(e.target.value)}
-                    placeholder="Model ID (e.g. llama3.2:latest)"
-                    className="bg-black/30 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs font-mono text-slate-200 focus:outline-none focus:border-indigo-400"
-                  />
-                  <input
-                    type="text"
-                    value={superpower}
-                    onChange={(e) => setSuperpower(e.target.value)}
-                    placeholder="Connection note (optional)"
-                    className="md:col-span-2 bg-black/30 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-indigo-400"
-                  />
+                <form onSubmit={handleAddPlugin} className="space-y-3">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <label className="space-y-1.5 text-xs text-slate-400">
+                      <span>Model name</span>
+                      <input
+                        type="text"
+                        value={codeName}
+                        onChange={(e) => setCodeName(e.target.value)}
+                        placeholder="e.g. Llama-3.2"
+                        required
+                        className="w-full bg-black/30 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-indigo-400"
+                      />
+                    </label>
+                    <label className="space-y-1.5 text-xs text-slate-400">
+                      <span>Model family (optional)</span>
+                      <input
+                        type="text"
+                        value={family}
+                        onChange={(e) => setFamily(e.target.value)}
+                        placeholder="e.g. Llama 3.2"
+                        className="w-full bg-black/30 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-indigo-400"
+                      />
+                    </label>
+                    <label className="space-y-1.5 text-xs text-slate-400">
+                      <span>OpenAI-compatible endpoint</span>
+                      <input
+                        type="url"
+                        value={baseUrl}
+                        onChange={(e) => setBaseUrl(e.target.value)}
+                        placeholder="http://localhost:11434/v1"
+                        required
+                        className="w-full bg-black/30 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs font-mono text-slate-200 focus:outline-none focus:border-indigo-400"
+                      />
+                    </label>
+                    <label className="space-y-1.5 text-xs text-slate-400">
+                      <span>Model ID</span>
+                      <input
+                        type="text"
+                        value={apiModelId}
+                        onChange={(e) => setApiModelId(e.target.value)}
+                        placeholder="e.g. llama3.2:latest"
+                        required
+                        className="w-full bg-black/30 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs font-mono text-slate-200 focus:outline-none focus:border-indigo-400"
+                      />
+                    </label>
+                    <label className="md:col-span-2 space-y-1.5 text-xs text-slate-400">
+                      <span>Connection note (optional)</span>
+                      <input
+                        type="text"
+                        value={superpower}
+                        onChange={(e) => setSuperpower(e.target.value)}
+                        placeholder="Short note to help you recognize this model"
+                        className="w-full bg-black/30 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-indigo-400"
+                      />
+                    </label>
+                  </div>
                   <div className="md:col-span-2 flex justify-end">
                     <button
                       type="submit"
                       className="px-5 py-2.5 rounded-xl bg-white text-slate-950 font-semibold text-xs hover:bg-slate-100 transition-all flex items-center gap-2"
                     >
                       <Plus className="w-3.5 h-3.5" />
-                      Hot-Plug Agent into Constellation
+                      Add model
                     </button>
                   </div>
                 </form>

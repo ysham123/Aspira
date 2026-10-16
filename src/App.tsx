@@ -829,10 +829,10 @@ export const App: React.FC = () => {
           setApiKeys(keys);
           try {
             localStorage.setItem('archon_api_keys_v1', JSON.stringify(keys));
+            return true;
           } catch {
-            // ignore
+            return false;
           }
-          setVaultModalOpen(false);
         }}
       />
 
