@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Check,
   CheckCircle2,
@@ -94,6 +94,7 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
   const [localTtsVoice, setLocalTtsVoice] = useState(soundEngine.getLocalTtsVoice());
   const [ttsSavedBanner, setTtsSavedBanner] = useState(false);
   const [ttsStatus, setTtsStatus] = useState('');
+  const dialogRef = useRef<HTMLDivElement | null>(null);
 
   const refreshSubscriptions = () => {
     fetch('/api/subscriptions')
@@ -111,6 +112,50 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
     if (open) {
       refreshSubscriptions();
     }
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const previouslyFocused = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+    const dialog = dialogRef.current;
+    const focusableSelector = 'button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])';
+    const focusFirst = () => {
+      const first = dialog?.querySelector<HTMLElement>(focusableSelector);
+      (first || dialog)?.focus();
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        onClose();
+        return;
+      }
+      if (event.key !== 'Tab' || !dialog) return;
+      const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(focusableSelector))
+        .filter((element) => element.getClientRects().length > 0);
+      if (focusable.length === 0) {
+        event.preventDefault();
+        dialog.focus();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && (document.activeElement === first || !dialog.contains(document.activeElement))) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && (document.activeElement === last || !dialog.contains(document.activeElement))) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    const focusFrame = window.requestAnimationFrame(focusFirst);
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.cancelAnimationFrame(focusFrame);
+      window.removeEventListener('keydown', onKeyDown);
+      if (previouslyFocused?.isConnected) previouslyFocused.focus();
+    };
   }, [open]);
 
   if (!open) return null;
@@ -192,16 +237,23 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
   const sessionPhrase = passkeyProfiles[0]?.phrase || '';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-xl p-4">
-      <div className="w-full max-w-4xl aspira-glass-elevated rounded-3xl overflow-hidden flex flex-col max-h-[88vh] shadow-2xl border border-white/[0.1]">
+    <div
+      ref={dialogRef}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-xl p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="connections-dialog-title"
+      tabIndex={-1}
+    >
+      <div className="aspira-vault-dialog w-full max-w-4xl aspira-glass-elevated rounded-3xl overflow-hidden flex flex-col max-h-[88vh] shadow-2xl border border-white/[0.1]">
         {/* TOP HEADER */}
-        <div className="flex items-center justify-between px-7 py-5 border-b border-white/[0.07]">
+        <div className="aspira-vault-header flex items-center justify-between px-7 py-5 border-b border-white/[0.07]">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-indigo-500/15 border border-indigo-400/30 flex items-center justify-center">
               <Sparkles className="w-4 h-4 text-indigo-300" />
             </div>
             <div>
-              <h2 className="text-base font-semibold text-white tracking-tight">
+              <h2 id="connections-dialog-title" className="text-base font-semibold text-white tracking-tight">
                 Models & settings
               </h2>
               <p className="text-xs text-slate-400">
@@ -214,15 +266,17 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
             onClick={() => {
               onClose();
             }}
-            className="p-2 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] text-slate-400 hover:text-white transition-colors"
+            aria-label="Close models and settings"
+            className="aspira-vault-close flex min-h-11 min-w-11 items-center justify-center rounded-xl bg-white/[0.04] text-slate-400 transition-colors hover:bg-white/[0.08] hover:text-white"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* 4-TAB SEGMENTED NAVIGATION */}
-        <div className="px-7 pt-4 pb-2 border-b border-white/[0.06] flex items-center gap-2 overflow-x-auto">
-          {[
+        <div className="aspira-vault-tabs-shell border-b border-white/[0.06]">
+          <div className="aspira-vault-tabs flex items-center gap-2 overflow-x-auto px-7 pt-4 pb-2" role="group" aria-label="Settings sections">
+            {[
             { id: 'subscriptions', label: 'Connections', icon: CheckCircle2 },
             { id: 'models', label: 'Agents & Hot-Plug', icon: Layers },
             { id: 'voice', label: 'Voice', icon: Volume2 },
@@ -233,9 +287,12 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
             return (
               <button
                 key={tab.id}
+                type="button"
                 onClick={() => {
                   setActiveTab(tab.id as VaultTab);
                 }}
+                aria-label={tab.label}
+                aria-pressed={active}
                 className={`px-4 py-2 rounded-xl text-xs font-medium flex items-center gap-2 transition-all whitespace-nowrap ${
                   active
                     ? 'bg-white/[0.1] text-white border border-white/[0.14] shadow-sm'
@@ -243,14 +300,19 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
                 }`}
               >
                 <Icon className="w-3.5 h-3.5 text-indigo-400" />
-                {tab.label}
+                <span className="aspira-vault-tab-label-full">{tab.label}</span>
+                <span className="aspira-vault-tab-label-short" aria-hidden="true">
+                  {tab.id === 'models' ? 'Agents' : tab.id === 'passkeys' ? 'Passkeys' : tab.label}
+                </span>
               </button>
             );
           })}
+          </div>
+          <p className="aspira-vault-tabs-hint" aria-hidden="true">More sections →</p>
         </div>
 
         {/* MODAL BODY */}
-        <div className="p-7 overflow-y-auto custom-scrollbar space-y-6 flex-1">
+        <div className="aspira-vault-body p-7 overflow-y-auto custom-scrollbar space-y-6 flex-1 min-h-0">
           {/* TAB 1: PERSONAL LLM SUBSCRIPTIONS (ZERO API KEYS REQUIRED) & VOICE AI */}
           {activeTab === 'subscriptions' && (
             <div className="space-y-6">

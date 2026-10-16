@@ -41,6 +41,7 @@ import {
   SynergyExecutionResult,
 } from '../plugins/models/manifest';
 import { soundEngine } from '../audio/soundEngine';
+import { MarkdownMessage } from './MarkdownMessage';
 
 interface SpatialModeDeckProps {
   spatialMode: SpatialMode;
@@ -95,7 +96,9 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
   voiceStatus,
 }) => {
   const [rightRailTab, setRightRailTab] = useState<'memory' | 'routines' | 'tools'>('memory');
-  const [contextOpen, setContextOpen] = useState(false);
+  const [contextExpanded, setContextExpanded] = useState(() =>
+    typeof window !== 'undefined' && window.innerWidth >= 1280
+  );
   const [expandedTurnId, setExpandedTurnId] = useState<string | null>(null);
   const [newMemoryInput, setNewMemoryInput] = useState('');
   const [newMemoryCategory, setNewMemoryCategory] = useState<LivingMemoryItem['category']>('goal');
@@ -103,8 +106,8 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
     .filter((model) => awakeModelIds.includes(model.id))
     .map((model) => model.codeName);
   const emptyConversationIntro = selectedModelNames.length > 0
-    ? `${selectedModelNames.join(' + ')} ${selectedModelNames.length === 1 ? 'is' : 'are'} ready. Ask a question or describe a task; local actions can run without a model.`
-    : 'Select a provider below to chat. Local actions such as opening an app or checking Git can run without a model.';
+    ? `${selectedModelNames.join(' + ')} ${selectedModelNames.length === 1 ? 'is' : 'are'} ready. Ask a question or choose a starter below. Local actions also work without a model.`
+    : 'Choose a model in the composer to chat. Local actions work without one.';
 
   // Workbench state
   const [fsNodes, setFsNodes] = useState<FsNode[]>([]);
@@ -126,10 +129,25 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
   });
   const [runningTerminal, setRunningTerminal] = useState(false);
 
+  useEffect(() => {
+    const wideLayout = window.matchMedia('(min-width: 1280px)');
+    const collapseOnNarrowLayout = () => {
+      if (!wideLayout.matches) setContextExpanded(false);
+    };
+    collapseOnNarrowLayout();
+    wideLayout.addEventListener('change', collapseOnNarrowLayout);
+    return () => wideLayout.removeEventListener('change', collapseOnNarrowLayout);
+  }, []);
+
   const chatEndRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const scrollContainer = chatEndRef.current?.parentElement;
+    if (conversationTurns.length === 0 && !isExecuting) {
+      if (scrollContainer) scrollContainer.scrollTop = 0;
+      return;
+    }
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [conversationTurns.length, isExecuting]);
 
   useEffect(() => {
@@ -215,13 +233,13 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
   // ==========================================================================
   if (spatialMode === 'nexus') {
     return (
-      <div className="w-full h-full grid grid-cols-12 gap-4 overflow-hidden">
-        <div className="col-span-12 xl:col-span-8 flex min-h-0 flex-col gap-4 overflow-hidden">
+      <div className="flex h-full w-full min-w-0 gap-4 overflow-hidden">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-hidden">
           <div className="flex shrink-0 items-end justify-between gap-4 px-1">
             <div>
-              <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-slate-500">Personal workspace</p>
-              <h1 className="mt-1 text-2xl font-medium tracking-tight text-white">Studio</h1>
-                <p className="mt-1 text-xs text-slate-400">A private workspace for provider chats and local actions.</p>
+              <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">Personal workspace</p>
+              <h1 className="mt-1 text-2xl font-semibold tracking-tight text-white">Studio</h1>
+              <p className="mt-1 text-xs text-slate-400">Conversation, connected models, and local actions in one place.</p>
             </div>
             <div className="flex items-center gap-2 text-right">
               {voiceStatus !== 'Voice input is off' && <span className={`h-2 w-2 rounded-full ${isAgentSpeaking ? 'bg-indigo-300 animate-pulse' : duplexVoiceActive ? 'bg-emerald-300 animate-pulse' : 'bg-slate-500'}`} />}
@@ -230,32 +248,38 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
                 {liveTranscript && <p className="mt-0.5 max-w-[300px] truncate text-[10px] text-slate-500">“{liveTranscript}”</p>}
               </div>
               {isAgentSpeaking && <button onClick={() => soundEngine.stopSpeaking()} className="ml-2 rounded-lg border border-white/10 px-2.5 py-1.5 text-[11px] text-slate-300 hover:bg-white/[0.06]">Stop voice</button>}
-              <button onClick={() => setContextOpen((open) => !open)} className="xl:hidden rounded-xl border border-white/10 px-3 py-2 text-xs text-slate-300 hover:bg-white/[0.06]">
-                {contextOpen ? 'Close context' : 'Workspace context'}
+              <button
+                type="button"
+                onClick={() => setContextExpanded((expanded) => !expanded)}
+                aria-controls="workspace-context-rail"
+                aria-expanded={contextExpanded}
+                aria-label={contextExpanded ? 'Hide workspace context' : 'Show workspace context'}
+                className="aspira-context-toggle flex min-h-11 min-w-11 items-center gap-1.5 whitespace-nowrap rounded-xl px-3 py-2 text-xs font-medium"
+              >
+                <Layers className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">{contextExpanded ? 'Hide context' : 'Show context'}</span>
+                <span className="sm:hidden">Context</span>
               </button>
             </div>
           </div>
 
           {/* Multi-Turn Conversational Timeline */}
-          <div className="aspira-glass-elevated rounded-[26px] p-6 flex-1 overflow-y-auto custom-scrollbar flex flex-col gap-5">
+          <div className="aspira-conversation-surface flex flex-1 flex-col gap-5 overflow-y-auto p-6 custom-scrollbar">
             {conversationTurns.length === 0 && (
-              <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col justify-center py-8">
-                <div className="mb-6 flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04] text-slate-200">
-                  <MessageSquare className="h-4 w-4" />
-                </div>
-                <p className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Aspira · agent workspace</p>
-                <h2 className="mt-3 max-w-xl text-3xl font-medium leading-tight tracking-tight text-white sm:text-4xl">What would you like to work on?</h2>
-                <p className="mt-3 max-w-lg text-sm leading-6 text-slate-400">{emptyConversationIntro}</p>
-                <div className="mt-7 grid gap-2 sm:grid-cols-2">
+              <div className="aspira-empty-state mx-auto flex w-full max-w-2xl flex-col justify-start py-4">
+                <p className="aspira-empty-eyebrow text-xs font-semibold uppercase tracking-[0.16em] text-indigo-300">Aspira Studio</p>
+                <h2 className="aspira-empty-title mt-3 max-w-xl text-3xl font-semibold leading-tight tracking-tight text-white sm:text-4xl">What can I help you move forward?</h2>
+                <p className="aspira-empty-intro mt-3 max-w-lg text-sm leading-6 text-slate-400">{emptyConversationIntro}</p>
+                <div className="aspira-empty-prompts mt-5 grid gap-2 sm:grid-cols-2">
                   {[
-                    { title: 'Understand this workspace', prompt: 'Summarize this workspace and tell me what I should work on next.' },
-                    { title: 'Check the local system', prompt: 'Check my Mac CPU, memory, and battery status.' },
-                    { title: 'Read Git status', prompt: 'Run git status' },
-                    { title: 'Hacker News headlines', prompt: 'Show me the Hacker News top stories.' },
+                    { title: 'Get oriented', detail: 'Review this project and suggest a next step.', prompt: 'Summarize this workspace and tell me what I should work on next.' },
+                    { title: 'Check my Mac', detail: 'Review CPU, memory, and battery status.', prompt: 'Check my Mac CPU, memory, and battery status.' },
+                    { title: 'Review changes', detail: 'Inspect the current Git working tree.', prompt: 'Run git status' },
+                    { title: 'Explore the web', detail: 'Find current stories from Hacker News.', prompt: 'Show me the Hacker News top stories.' },
                   ].map((item) => (
-                    <button key={item.title} onClick={() => onRunPrompt(item.prompt)} className="group rounded-2xl border border-white/[0.08] bg-white/[0.025] px-4 py-3 text-left transition hover:border-white/20 hover:bg-white/[0.05]">
-                      <span className="block text-xs font-medium text-slate-200">{item.title}</span>
-                      <span className="mt-1 block text-[11px] leading-5 text-slate-500">{item.prompt}</span>
+                    <button key={item.title} onClick={() => onRunPrompt(item.prompt)} className="aspira-empty-prompt group px-3 py-2.5 text-left transition">
+                      <span className="block text-[13px] font-semibold text-slate-200">{item.title}</span>
+                      <span className="mt-1 block text-[10px] leading-4 text-slate-500">{item.detail}</span>
                     </button>
                   ))}
                 </div>
@@ -272,14 +296,14 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
                 >
                   {/* 1. User Conversational Turn Bubble */}
                   <div className="flex items-start justify-end gap-3">
-                    <div className="max-w-[82%] rounded-2xl rounded-tr-sm bg-indigo-500/[0.14] border border-indigo-400/25 px-4 py-2.5 text-slate-100">
+                    <div className="aspira-user-message max-w-[82%] px-4 py-2.5">
                       <div className="flex items-center justify-end gap-2 mb-1 text-[10px] text-indigo-300/80 font-mono">
                         <span>
                           {turn.inputModality === 'voice'
-                            ? `🎙️ Spoken Voice${turn.pitchHz ? ` · ${turn.pitchHz}Hz` : ''}`
+                            ? 'Voice'
                             : turn.inputModality === 'routine'
-                            ? '⚡ Local playbook'
-                            : '⌨️ Typed'}
+                            ? 'Routine'
+                            : 'Message'}
                         </span>
                         {turn.vocalEmotion && (
                           <span className="px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-200">
@@ -298,7 +322,7 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
                       {turn.result.executedActions.map((act: AgentActionExecution) => (
                         <div
                           key={act.id}
-                          className="rounded-2xl bg-emerald-500/[0.07] border border-emerald-400/25 px-4 py-3 flex flex-col gap-1.5"
+                          className="aspira-action-card flex flex-col gap-1.5 rounded-2xl px-4 py-3"
                         >
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
@@ -315,7 +339,7 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
                             </span>
                           </div>
                           {act.output && (
-                            <pre className="text-[11px] font-mono text-slate-300 bg-black/40 rounded-xl p-2.5 overflow-x-auto whitespace-pre-wrap leading-relaxed border border-white/[0.05]">
+                            <pre className="aspira-code text-[11px] font-mono text-slate-300 bg-black/40 rounded-xl p-2.5 overflow-x-auto whitespace-pre-wrap leading-relaxed border border-white/[0.05]">
                               {act.output}
                             </pre>
                           )}
@@ -325,7 +349,7 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
                   )}
 
                   {/* 3. Multi-Agent Conversational Reply Card */}
-                  <div className="rounded-2xl bg-white/[0.025] border border-white/[0.07] p-4 flex flex-col gap-3">
+                  <div className="aspira-response-card flex flex-col gap-3 p-4">
                     <div className="flex items-center justify-between gap-2 flex-wrap">
                       <div className="flex items-center gap-2 flex-wrap">
                         {turn.result.modelStreams.map((stream) => {
@@ -415,9 +439,10 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
                     </div>
 
                     {/* Primary Conversational Output */}
-                    <div className="text-[14px] text-slate-100 leading-relaxed whitespace-pre-line">
-                      {turn.result.synthesizedOutput}
-                    </div>
+                    <MarkdownMessage
+                      content={turn.result.synthesizedOutput}
+                      className="text-[14px] text-slate-100 leading-relaxed"
+                    />
 
                     {/* Expandable Individual Agent Perspectives / Debate / Race / Relay */}
                     {showDetails && (
@@ -427,7 +452,7 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
                           return (
                             <div
                               key={stream.modelId}
-                              className="rounded-xl p-3 bg-black/25 border border-white/[0.06]"
+                              className="aspira-perspective-card rounded-xl p-3"
                             >
                               <div className="flex items-center justify-between mb-1">
                                 <span className="text-xs font-semibold text-white">
@@ -443,9 +468,10 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
                           {stream.latencyMs}ms response
                                 </span>
                               </div>
-                              <p className="text-xs text-slate-300 leading-relaxed">
-                                {stream.keyInsight}
-                              </p>
+                              <MarkdownMessage
+                                content={stream.keyInsight}
+                                className="text-xs text-slate-300 leading-relaxed"
+                              />
                             </div>
                           );
                         })}
@@ -488,11 +514,15 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
         </div>
 
         {/* Workspace context, on-demand playbooks, and local tools */}
-        <div className={contextOpen
-          ? 'fixed inset-x-4 bottom-28 z-40 flex max-h-[58vh] flex-col gap-3 overflow-hidden rounded-[24px] border border-white/10 bg-[#14171d] p-3 shadow-2xl xl:relative xl:inset-auto xl:col-span-4 xl:h-full xl:max-h-none xl:rounded-none xl:border-0 xl:bg-transparent xl:p-0 xl:shadow-none'
-          : 'hidden xl:col-span-4 xl:flex xl:h-full xl:flex-col xl:gap-3 xl:overflow-hidden'}>
+        <aside
+          id="workspace-context-rail"
+          aria-label="Workspace context, routines, and local tools"
+          className={contextExpanded
+            ? 'aspira-context-rail fixed inset-x-3 bottom-28 z-40 flex max-h-[58vh] flex-col gap-3 overflow-hidden rounded-[24px] border border-white/10 bg-white p-3 shadow-2xl xl:relative xl:inset-auto xl:z-10 xl:h-full xl:w-[330px] xl:max-h-none xl:shrink-0 xl:rounded-none xl:border-0 xl:bg-transparent xl:p-0 xl:shadow-none'
+            : 'hidden'}
+        >
           {/* Segmented Switcher */}
-          <div className="aspira-glass rounded-2xl p-1.5 flex items-center gap-1 shrink-0">
+          <div className="aspira-glass aspira-context-tabs rounded-2xl p-1.5 flex items-center gap-1 shrink-0">
             <button
               onClick={() => {
                 setRightRailTab('memory');
@@ -532,7 +562,11 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
               <Layers className="w-3.5 h-3.5 text-emerald-400" />
               Local tools
             </button>
-            {contextOpen && <button onClick={() => setContextOpen(false)} className="xl:hidden rounded-lg p-2 text-slate-400 hover:text-white" aria-label="Close workspace context"><X className="h-4 w-4" /></button>}
+            <button
+              onClick={() => setContextExpanded(false)}
+              className="aspira-context-close rounded-lg p-2 text-slate-500 hover:text-slate-800 xl:hidden"
+              aria-label="Close workspace context"
+            ><X className="h-4 w-4" /></button>
           </div>
 
           {/* TAB 1: Saved local context */}
@@ -559,7 +593,7 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
                 }}
                 className="flex flex-col gap-2 bg-white/[0.03] border border-white/[0.07] rounded-2xl p-2.5"
               >
-                <div className="flex items-center gap-1.5">
+                <div className="aspira-memory-category-row flex items-center gap-1.5">
                   {(['goal', 'task', 'preference', 'project', 'insight'] as const).map((cat) => (
                     <button
                       type="button"
@@ -575,7 +609,7 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
                     </button>
                   ))}
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="aspira-memory-form-row flex items-center gap-2">
                   <input
                     type="text"
                     value={newMemoryInput}
@@ -733,7 +767,7 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
               ))}
             </div>
           )}
-        </div>
+        </aside>
       </div>
     );
   }
@@ -839,7 +873,7 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
             </div>
 
             {workbenchTab === 'source' ? (
-              <div className="flex-1 overflow-y-auto custom-scrollbar font-mono text-xs leading-relaxed bg-black/30 rounded-2xl p-4 border border-white/[0.05]">
+              <div className="aspira-code flex-1 overflow-y-auto custom-scrollbar font-mono text-xs leading-relaxed bg-black/30 rounded-2xl p-4 border border-white/[0.05]">
                 {codeLines.slice(0, 120).map((line, idx) => (
                   <div key={idx} className="flex gap-4 hover:bg-white/[0.02] px-1 rounded">
                     <span className="w-8 text-right text-slate-600 select-none">{idx + 1}</span>
@@ -848,7 +882,7 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
                 ))}
               </div>
             ) : (
-              <div className="flex-1 overflow-y-auto custom-scrollbar rounded-2xl bg-black/30 p-4 font-mono text-xs leading-relaxed">
+              <div className="aspira-code flex-1 overflow-y-auto custom-scrollbar rounded-2xl bg-black/30 p-4 font-mono text-xs leading-relaxed">
                 {diffLoading ? (
                   <p className="text-slate-500">Loading Git diff…</p>
                 ) : fileDiffError ? (
@@ -920,7 +954,7 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
                   value={customShellCmd}
                   onChange={(e) => setCustomShellCmd(e.target.value)}
                   placeholder="Try: git status -s, git diff --stat, ls -la src/components, df -h ."
-                  className="flex-1 bg-black/30 border border-white/[0.07] rounded-xl px-3 py-1 text-xs font-mono text-white placeholder-slate-500 focus:outline-none focus:border-emerald-400/40"
+                  className="aspira-code-input flex-1 bg-black/30 border border-white/[0.07] rounded-xl px-3 py-1 text-xs font-mono text-white placeholder-slate-500 focus:outline-none focus:border-emerald-400/40"
                 />
                 <button
                   type="submit"
@@ -930,7 +964,7 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
                 </button>
               </form>
 
-              <div className="flex-1 overflow-y-auto custom-scrollbar bg-black/40 rounded-2xl p-3 font-mono text-[11px] text-slate-300 border border-white/[0.05]">
+              <div className="aspira-code flex-1 overflow-y-auto custom-scrollbar bg-black/40 rounded-2xl p-3 font-mono text-[11px] text-slate-300 border border-white/[0.05]">
                 <div className="text-emerald-400 mb-1">$ {terminalLog.command}</div>
                 <pre className="whitespace-pre-wrap text-slate-300 leading-relaxed">
                   {terminalLog.output}

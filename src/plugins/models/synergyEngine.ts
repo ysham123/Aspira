@@ -103,11 +103,17 @@ async function fetchModelStream(
       };
     }
     const data = (await res.json().catch(() => ({}))) as DispatchModelResponse;
+    if (Array.isArray(data.executedActions)) {
+      executedActions = data.executedActions;
+    }
+    if (Array.isArray(data.memories)) {
+      updatedMemories = data.memories;
+    }
     return {
       source: 'UNAVAILABLE',
       text: data.error || `The local agent service returned ${res.status}. Check the service and try again.`,
       executedActions,
-      memories: data.memories,
+      memories: updatedMemories,
       latencyMs: Math.round(performance.now() - startedAt),
       responseMs: Math.round(performance.now() - startedAt),
     };

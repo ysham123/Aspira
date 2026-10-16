@@ -1,24 +1,24 @@
 @import "tailwindcss";
 
 :root {
-  --bg-void: #0d0f13;
-  --bg-canvas: #101216;
-  --surface-glass-1: #15181e;
-  --surface-glass-2: #181b21;
-  --surface-glass-3: #20242c;
-  --surface-code: #101216;
-  --border-subtle: rgba(255, 255, 255, 0.075);
-  --border-strong: rgba(255, 255, 255, 0.11);
-  --border-focus: rgba(255, 255, 255, 0.24);
+  --bg-void: #f4f3ef;
+  --bg-canvas: #f4f3ef;
+  --surface-glass-1: rgba(255, 255, 255, 0.76);
+  --surface-glass-2: #ffffff;
+  --surface-glass-3: #f7f7f5;
+  --surface-code: #f6f7f8;
+  --border-subtle: rgba(31, 36, 44, 0.085);
+  --border-strong: rgba(31, 36, 44, 0.12);
+  --border-focus: rgba(88, 82, 214, 0.4);
   --specular-top: none;
-  --shadow-ambient: 0 14px 36px -24px rgba(0, 0, 0, 0.8);
-  --text-primary: #f4f4f5;
-  --text-secondary: #a1a1aa;
-  --text-muted: #71717a;
-  --accent-argon: #6e8efb;
-  --accent-claude: #d97757;
-  --accent-grok: #f43f5e;
-  --accent-gpt: #10a37f;
+  --shadow-ambient: 0 16px 42px -32px rgba(21, 26, 38, 0.26);
+  --text-primary: #202126;
+  --text-secondary: #696a72;
+  --text-muted: #888991;
+  --accent-argon: #6578d9;
+  --accent-claude: #bd6c50;
+  --accent-grok: #d64f68;
+  --accent-gpt: #19856d;
 }
 
 * {
@@ -54,8 +54,8 @@ body {
 .aspira-canvas-bg {
   background-color: var(--bg-canvas);
   background-image:
-    radial-gradient(ellipse 72% 44% at 50% -14%, rgba(130, 142, 167, 0.08), transparent 76%),
-    radial-gradient(ellipse 45% 40% at 100% 100%, rgba(91, 105, 142, 0.045), transparent 74%);
+    radial-gradient(ellipse 66% 48% at 50% -24%, rgba(104, 98, 214, 0.065), transparent 74%),
+    radial-gradient(ellipse 44% 34% at 100% 100%, rgba(194, 156, 123, 0.055), transparent 75%);
 }
 
 .aspira-glass {
@@ -71,15 +71,15 @@ body {
 }
 
 .aspira-card-interactive {
-  background: rgba(255, 255, 255, 0.025);
-  border: 1px solid rgba(255, 255, 255, 0.065);
-  box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(31, 36, 44, 0.09);
+  box-shadow: 0 1px 2px rgba(30, 34, 42, 0.035);
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .aspira-card-interactive:hover {
-  background: rgba(255, 255, 255, 0.045);
-  border-color: rgba(255, 255, 255, 0.16);
+  background: #ffffff;
+  border-color: rgba(31, 36, 44, 0.17);
 }
 
 button,
@@ -93,13 +93,1260 @@ button:focus-visible,
 input:focus-visible,
 textarea:focus-visible,
 select:focus-visible {
-  outline: 2px solid rgba(196, 205, 225, 0.76);
+  outline: 2px solid rgba(96, 90, 210, 0.76);
   outline-offset: 2px;
 }
 
 @media (max-width: 720px) {
   body {
     overflow: auto;
+  }
+}
+
+/* Aspira's studio uses a quiet paper-and-ink palette. The interaction
+   vocabulary stays familiar while the visual layer moves away from HUD glass. */
+.aspira-shell {
+  color: #25262b;
+  background-color: #f4f3ef;
+  gap: 12px;
+}
+
+.aspira-sidebar {
+  width: 224px;
+  min-width: 224px;
+  flex: 0 0 224px;
+  flex-direction: column;
+  padding: 20px 14px 14px;
+  border: 1px solid rgba(31, 36, 44, 0.075);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.68);
+}
+
+.aspira-sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 0 8px 24px;
+}
+
+.aspira-brand-mark {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  flex: 0 0 auto;
+  border-radius: 12px;
+  background: #292a31;
+  color: #fff;
+  box-shadow: 0 3px 8px rgba(30, 34, 42, 0.13);
+}
+
+.aspira-sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.aspira-sidebar-label {
+  padding: 0 10px;
+  color: #8b8c94;
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.aspira-sidebar-nav .aspira-sidebar-label {
+  margin: 0 0 7px;
+}
+
+.aspira-history-content {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 12px;
+  margin: 18px 0 12px;
+}
+
+.aspira-history-heading {
+  display: flex;
+  min-height: 36px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 4px 0 8px;
+}
+
+.aspira-history-heading h2 {
+  color: #555760;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.aspira-new-chat-button {
+  display: inline-flex;
+  min-height: 36px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 9px;
+  border: 1px solid rgba(31, 36, 44, 0.09);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.72);
+  color: #4f4d7e;
+  font-size: 10px;
+  font-weight: 600;
+  transition: background 140ms ease, border-color 140ms ease, color 140ms ease;
+}
+
+.aspira-new-chat-button:hover:not(:disabled) {
+  border-color: rgba(98, 88, 201, 0.24);
+  background: #fff;
+  color: #5148b1;
+}
+
+.aspira-new-chat-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.aspira-new-chat-button svg {
+  width: 13px;
+  height: 13px;
+}
+
+.aspira-history-search {
+  display: flex;
+  min-height: 38px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  border: 1px solid rgba(31, 36, 44, 0.075);
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.55);
+  color: #8b8c94;
+}
+
+.aspira-history-search:focus-within {
+  border-color: rgba(98, 88, 201, 0.34);
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(98, 88, 201, 0.07);
+}
+
+.aspira-history-search svg {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+}
+
+.aspira-history-search input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #35363d;
+  font-size: 11px;
+}
+
+.aspira-history-search input::placeholder {
+  color: #9b9ca4;
+}
+
+.aspira-history-search input::-webkit-search-cancel-button {
+  cursor: pointer;
+}
+
+.aspira-history-list {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 3px;
+  overflow: auto;
+  margin: 0;
+  padding: 0 2px 0 0;
+  list-style: none;
+  overscroll-behavior: contain;
+}
+
+.aspira-history-entry {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  gap: 2px;
+  border: 1px solid transparent;
+  border-radius: 11px;
+  transition: background 140ms ease, border-color 140ms ease;
+}
+
+.aspira-history-entry:hover {
+  background: rgba(31, 36, 44, 0.035);
+}
+
+.aspira-history-entry.is-active {
+  border-color: rgba(31, 36, 44, 0.055);
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.aspira-history-select {
+  display: flex;
+  min-width: 0;
+  min-height: 42px;
+  flex: 1 1 auto;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  overflow: hidden;
+  padding: 5px 7px 5px 9px;
+  border-radius: 10px;
+  background: transparent;
+  text-align: left;
+}
+
+.aspira-history-select:disabled,
+.aspira-history-delete:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.aspira-history-title {
+  overflow: hidden;
+  color: #4b4c54;
+  font-size: 10px;
+  font-weight: 540;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.aspira-history-entry.is-active .aspira-history-title {
+  color: #292a31;
+  font-weight: 620;
+}
+
+.aspira-history-date {
+  color: #999aa2;
+  font-size: 9px;
+  line-height: 1.1;
+}
+
+.aspira-history-delete {
+  display: grid;
+  width: 34px;
+  min-width: 34px;
+  height: 40px;
+  place-items: center;
+  border-radius: 9px;
+  color: #a0a1a8;
+  transition: background 140ms ease, color 140ms ease;
+}
+
+.aspira-history-delete:hover {
+  background: rgba(190, 54, 74, 0.08);
+  color: #aa3d4d;
+}
+
+.aspira-history-delete svg {
+  width: 13px;
+  height: 13px;
+}
+
+.aspira-history-empty {
+  display: flex;
+  min-height: 92px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 8px;
+  color: #8f9099;
+  font-size: 10px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.aspira-history-empty svg {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  color: #a6a7ae;
+}
+
+.aspira-history-storage-note {
+  margin: 0;
+  padding: 0 8px;
+  color: #999aa2;
+  font-size: 9px;
+  line-height: 1.4;
+}
+
+.aspira-mobile-history-backdrop {
+  position: fixed;
+  z-index: 60;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(26, 27, 33, 0.32);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.aspira-mobile-history-dialog {
+  display: flex;
+  width: min(420px, 100%);
+  max-height: min(760px, calc(100dvh - 32px));
+  min-height: 280px;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 18px;
+  border: 1px solid rgba(31, 36, 44, 0.1);
+  border-radius: 22px;
+  background: #f8f7f4;
+  box-shadow: 0 24px 70px rgba(30, 32, 40, 0.2);
+}
+
+.aspira-mobile-history-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 2px 2px 15px;
+  border-bottom: 1px solid rgba(31, 36, 44, 0.08);
+}
+
+.aspira-mobile-history-header h2 {
+  color: #292a31;
+  font-size: 16px;
+  font-weight: 650;
+  letter-spacing: -0.025em;
+}
+
+.aspira-mobile-history-close {
+  display: grid;
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  place-items: center;
+  margin: -4px -4px 0 0;
+  border: 1px solid rgba(31, 36, 44, 0.07);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.7);
+  color: #656770;
+}
+
+.aspira-mobile-history-close svg {
+  width: 17px;
+  height: 17px;
+}
+
+.aspira-mobile-history-dialog .aspira-history-content {
+  width: 100%;
+  margin: 10px 0 0;
+}
+
+.aspira-mobile-history-dialog .aspira-history-heading {
+  min-height: 38px;
+}
+
+.aspira-mobile-history-dialog .aspira-history-search {
+  min-height: 44px;
+}
+
+.aspira-mobile-history-dialog .aspira-history-entry {
+  min-height: 52px;
+}
+
+.aspira-mobile-history-dialog .aspira-history-select {
+  min-height: 50px;
+}
+
+.aspira-mobile-history-dialog .aspira-history-title {
+  font-size: 12px;
+}
+
+.aspira-mobile-history-dialog .aspira-history-date {
+  font-size: 10px;
+}
+
+.aspira-mobile-history-dialog .aspira-history-delete {
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+}
+
+.aspira-sidebar-link {
+  display: flex;
+  min-height: 40px;
+  align-items: center;
+  gap: 10px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: transparent;
+  color: #656770;
+  text-align: left;
+  font-size: 12px;
+  font-weight: 520;
+  transition: background 140ms ease, color 140ms ease, border-color 140ms ease;
+}
+
+.aspira-sidebar-link:hover {
+  background: rgba(31, 36, 44, 0.045);
+  color: #282930;
+}
+
+.aspira-sidebar-link.is-active {
+  border-color: rgba(31, 36, 44, 0.075);
+  background: #fff;
+  color: #282930;
+  box-shadow: 0 3px 12px -10px rgba(30, 34, 42, 0.35);
+}
+
+.aspira-sidebar-link.is-active svg {
+  color: #6258c9;
+}
+
+.aspira-sidebar-footer {
+  display: flex;
+  flex-direction: column;
+  margin-top: auto;
+  padding: 15px 9px 5px;
+  border-top: 1px solid rgba(31, 36, 44, 0.085);
+}
+
+.aspira-sidebar-footer .aspira-sidebar-label {
+  padding: 0;
+  margin-bottom: 5px;
+}
+
+.aspira-app-content {
+  min-height: 0;
+}
+
+.aspira-mobile-nav {
+  flex: 0 1 auto;
+}
+
+.aspira-mobile-nav button {
+  white-space: nowrap;
+}
+
+.aspira-composer-toolbar {
+  display: flex;
+  min-height: 34px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 2px;
+}
+
+.aspira-provider-picker {
+  position: relative;
+}
+
+.aspira-provider-summary {
+  display: flex;
+  min-width: 172px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 5px 8px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.aspira-provider-summary::-webkit-details-marker {
+  display: none;
+}
+
+.aspira-provider-summary:hover,
+.aspira-provider-picker[open] .aspira-provider-summary {
+  border-color: rgba(31, 36, 44, 0.09);
+  background: #f7f7f6;
+}
+
+.aspira-provider-summary:focus-visible {
+  outline: 2px solid rgba(96, 90, 210, 0.76);
+  outline-offset: 2px;
+}
+
+.aspira-provider-options {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 0;
+  z-index: 70;
+  width: min(320px, calc(100vw - 32px));
+  padding: 12px;
+  border: 1px solid rgba(31, 36, 44, 0.12);
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 24px 70px -34px rgba(23, 26, 34, 0.35), 0 4px 14px rgba(23, 26, 34, 0.08);
+}
+
+.aspira-provider-option {
+  display: flex;
+  width: 100%;
+  min-height: 46px;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 8px;
+  border: 1px solid transparent;
+  border-radius: 11px;
+  background: transparent;
+  text-align: left;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.aspira-provider-option:hover {
+  background: #f7f7f6;
+}
+
+.aspira-provider-option.is-selected {
+  border-color: color-mix(in srgb, var(--provider-accent) 25%, transparent);
+  background: color-mix(in srgb, var(--provider-accent) 6%, white);
+}
+
+.aspira-provider-indicator {
+  display: grid;
+  width: 19px;
+  height: 19px;
+  place-items: center;
+  flex: 0 0 auto;
+  border: 1px solid #d4d5dc;
+  border-radius: 6px;
+  color: #fff;
+}
+
+.aspira-provider-option.is-selected .aspira-provider-indicator {
+  border-color: var(--provider-accent);
+  background: var(--provider-accent);
+}
+
+.aspira-composer-inputrow {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  gap: 12px;
+  padding: 0 2px;
+}
+
+.aspira-message-input {
+  border: 0;
+  background: transparent;
+  color: #25262b;
+}
+
+.aspira-message-input:focus-visible {
+  outline: none;
+}
+
+.aspira-context-toggle {
+  border: 1px solid rgba(31, 36, 44, 0.09);
+  background: rgba(255, 255, 255, 0.72);
+  color: #656770;
+}
+
+.aspira-context-toggle:hover,
+.aspira-context-toggle[aria-expanded="true"] {
+  border-color: rgba(31, 36, 44, 0.14);
+  background: #fff;
+  color: #282930;
+}
+
+.aspira-context-rail {
+  min-width: 0;
+}
+
+.aspira-context-tabs > button {
+  min-width: 0;
+  flex: 1 1 0%;
+  gap: 5px;
+  padding-inline: 6px;
+  line-height: 1.25;
+}
+
+.aspira-context-tabs > button svg {
+  flex: 0 0 auto;
+}
+
+.aspira-context-tabs > button:last-child {
+  flex: 0 0 auto;
+}
+
+.aspira-memory-category-row {
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.aspira-memory-category-row button {
+  white-space: nowrap;
+}
+
+.aspira-memory-form-row {
+  min-width: 0;
+}
+
+.aspira-memory-form-row input {
+  width: 100%;
+  min-width: 0;
+}
+
+.aspira-markdown {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.65rem;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.aspira-markdown p,
+.aspira-markdown h1,
+.aspira-markdown h2,
+.aspira-markdown h3,
+.aspira-markdown blockquote {
+  margin: 0;
+}
+
+.aspira-markdown h1,
+.aspira-markdown h2,
+.aspira-markdown h3 {
+  color: #282930;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  line-height: 1.3;
+}
+
+.aspira-markdown h1 { font-size: 1.2em; }
+.aspira-markdown h2 { font-size: 1.1em; }
+.aspira-markdown h3 { font-size: 1.02em; }
+
+.aspira-markdown ul,
+.aspira-markdown ol {
+  margin: 0;
+  padding-left: 1.4rem;
+}
+
+.aspira-markdown li + li {
+  margin-top: 0.25rem;
+}
+
+.aspira-markdown li::marker {
+  color: #7771c8;
+}
+
+.aspira-markdown blockquote {
+  border-left: 2px solid rgba(98, 88, 201, 0.35);
+  padding-left: 0.85rem;
+  color: #666872;
+}
+
+.aspira-inline-code {
+  border: 1px solid rgba(31, 36, 44, 0.09);
+  border-radius: 5px;
+  background: #f4f3ef;
+  padding: 0.08rem 0.3rem;
+  color: #4b4c56;
+  font-size: 0.88em;
+}
+
+.aspira-markdown-code {
+  position: relative;
+  overflow-x: auto;
+  border: 1px solid rgba(31, 36, 44, 0.09);
+  border-radius: 12px;
+  background: #f7f7f5;
+  padding: 1rem;
+  color: #343640;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.82em;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.aspira-markdown-code code {
+  font: inherit;
+  overflow-wrap: anywhere;
+}
+
+.aspira-markdown-language {
+  display: block;
+  margin-bottom: 0.45rem;
+  color: #888991;
+  font-size: 0.72em;
+  text-transform: uppercase;
+}
+
+.aspira-topbar {
+  min-height: 58px;
+  border: 1px solid rgba(31, 36, 44, 0.085);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: 0 8px 28px -24px rgba(30, 34, 42, 0.35);
+  backdrop-filter: blur(18px);
+}
+
+.aspira-conversation-surface {
+  border: 1px solid rgba(31, 36, 44, 0.075);
+  border-radius: 26px;
+  background: rgba(255, 255, 255, 0.84);
+  box-shadow: 0 16px 42px -34px rgba(30, 34, 42, 0.28);
+}
+
+.aspira-composer {
+  border: 1px solid rgba(31, 36, 44, 0.12);
+  border-radius: 21px;
+  background: #fff;
+  box-shadow: 0 12px 38px -28px rgba(30, 34, 42, 0.34), 0 2px 7px rgba(30, 34, 42, 0.035);
+}
+
+.aspira-provider-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.aspira-provider-chip {
+  min-height: 48px;
+  border-radius: 15px;
+  box-shadow: 0 2px 8px -6px rgba(30, 34, 42, 0.3);
+}
+
+.aspira-response-card {
+  border: 1px solid rgba(31, 36, 44, 0.075);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 8px 26px -25px rgba(30, 34, 42, 0.25);
+}
+
+.aspira-user-message {
+  border: 1px solid rgba(96, 90, 210, 0.12);
+  border-radius: 19px 19px 5px 19px;
+  background: #f0effb;
+  color: #292744;
+}
+
+.aspira-empty-prompt {
+  border: 1px solid rgba(31, 36, 44, 0.095);
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 3px 12px -10px rgba(30, 34, 42, 0.22);
+}
+
+.aspira-empty-prompt:hover {
+  border-color: rgba(96, 90, 210, 0.35);
+  background: #fdfdff;
+  transform: translateY(-1px);
+  box-shadow: 0 9px 22px -18px rgba(74, 68, 180, 0.32);
+}
+
+.aspira-vault-tab-label-short,
+.aspira-vault-tabs-hint {
+  display: none;
+}
+
+.aspira-vault-tabs {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(150, 151, 162, 0.75) transparent;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity;
+}
+
+.aspira-vault-tabs > button {
+  min-height: 44px;
+  flex: 0 0 auto;
+  scroll-snap-align: start;
+}
+
+.aspira-vault-body {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(150, 151, 162, 0.75) transparent;
+  overscroll-behavior-y: contain;
+}
+
+.aspira-vault-tabs::-webkit-scrollbar,
+.aspira-vault-body::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.aspira-vault-tabs::-webkit-scrollbar-thumb,
+.aspira-vault-body::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(150, 151, 162, 0.55);
+}
+
+.aspira-shell [class*="text-white"],
+.aspira-shell [class*="text-slate-50"],
+.aspira-shell [class*="text-slate-100"] {
+  color: #25262b;
+}
+
+.aspira-shell [class*="text-slate-200"],
+.aspira-shell [class*="text-slate-300"] {
+  color: #555761;
+}
+
+.aspira-shell [class*="text-slate-400"] {
+  color: #71737d;
+}
+
+.aspira-shell [class*="text-slate-500"],
+.aspira-shell [class*="text-slate-600"] {
+  color: #898b94;
+}
+
+.aspira-shell [class*="border-white/"] {
+  border-color: rgba(31, 36, 44, 0.1);
+}
+
+.aspira-shell [class*="bg-white/"] {
+  background-color: rgba(31, 36, 44, 0.035);
+}
+
+.aspira-shell [class*="bg-indigo-500/"] {
+  background-color: rgba(96, 90, 210, 0.09);
+}
+
+.aspira-shell [class*="border-indigo-400/"] {
+  border-color: rgba(96, 90, 210, 0.24);
+}
+
+.aspira-shell [class*="text-indigo-200"],
+.aspira-shell [class*="text-indigo-300"] {
+  color: #6258c9;
+}
+
+.aspira-shell [class*="text-emerald-200"],
+.aspira-shell [class*="text-emerald-300"] {
+  color: #287c67;
+}
+
+.aspira-shell [class*="text-rose-200"] {
+  color: #b9465c;
+}
+
+.aspira-shell [class*="placeholder:text-slate-"]::placeholder {
+  color: #8c8e97;
+}
+
+.aspira-shell .aspira-topbar,
+.aspira-shell .aspira-conversation-surface,
+.aspira-shell .aspira-composer,
+.aspira-shell .aspira-response-card,
+.aspira-shell .aspira-user-message,
+.aspira-shell .aspira-empty-prompt,
+.aspira-shell .aspira-provider-chip {
+  border-color: rgba(31, 36, 44, 0.095);
+}
+
+.aspira-shell .aspira-lock-backdrop {
+  background: rgba(35, 36, 42, 0.3);
+  backdrop-filter: blur(18px);
+}
+
+.aspira-shell .aspira-lock-card {
+  border-color: rgba(31, 36, 44, 0.12);
+  background: #fff;
+  box-shadow: 0 28px 90px -44px rgba(25, 27, 34, 0.42);
+}
+
+.aspira-shell .aspira-conversation-surface,
+.aspira-shell .aspira-response-card,
+.aspira-shell .aspira-empty-prompt,
+.aspira-shell .aspira-provider-chip,
+.aspira-shell .aspira-user-message {
+  background-color: #fff;
+}
+
+.aspira-shell .aspira-user-message {
+  background-color: #f0effb;
+}
+
+.aspira-shell .aspira-action-card {
+  border: 1px solid rgba(36, 132, 105, 0.2);
+  background: rgba(36, 132, 105, 0.055);
+}
+
+.aspira-shell .aspira-perspective-card {
+  border: 1px solid rgba(31, 36, 44, 0.075);
+  background: #f7f7f6;
+}
+
+.aspira-shell .aspira-composer {
+  min-height: 68px;
+}
+
+.aspira-shell .aspira-send-button,
+.aspira-shell .aspira-send-button [class*="text-white"] {
+  color: #fff;
+}
+
+.aspira-shell .aspira-send-button {
+  background: #292a31;
+}
+
+.aspira-shell .aspira-send-button:hover {
+  background: #44454d;
+}
+
+.aspira-shell .aspira-code {
+  color: #d5d7df;
+  background: #1d2028;
+  border-color: rgba(28, 32, 41, 0.16);
+}
+
+.aspira-shell .aspira-code [class*="text-slate-"] {
+  color: #d5d7df;
+}
+
+.aspira-shell .aspira-code-input {
+  color: #f4f4f5;
+  background: #1d2028;
+}
+
+.aspira-shell .aspira-code-input::placeholder {
+  color: #9195a2;
+}
+
+.aspira-shell input:not(.aspira-code-input),
+.aspira-shell select,
+.aspira-shell textarea:not(.aspira-code-input) {
+  color: #25262b;
+  border-color: rgba(31, 36, 44, 0.14);
+  background-color: #fafaf9;
+}
+
+.aspira-shell .aspira-composer textarea {
+  border-color: transparent;
+  background: transparent;
+}
+
+.aspira-shell .aspira-glass [class*="bg-black/"],
+.aspira-shell .aspira-glass-elevated [class*="bg-black/"] {
+  border-color: rgba(31, 36, 44, 0.1);
+  background-color: #f7f7f6;
+}
+
+.aspira-shell .aspira-glass .aspira-code,
+.aspira-shell .aspira-glass-elevated .aspira-code {
+  border-color: rgba(28, 32, 41, 0.16);
+  background: #1d2028;
+}
+
+.aspira-shell .aspira-glass .aspira-code [class*="text-slate-"],
+.aspira-shell .aspira-glass-elevated .aspira-code [class*="text-slate-"] {
+  color: #d5d7df;
+}
+
+.aspira-shell [class*="bg-[#14171d]"] {
+  background-color: #fff;
+}
+
+.aspira-shell button:disabled {
+  cursor: not-allowed;
+}
+
+@media (max-width: 720px) {
+  .aspira-shell {
+    min-height: 100dvh;
+    height: 100dvh;
+    padding: 12px;
+    gap: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+
+  .aspira-topbar {
+    min-height: 54px;
+  }
+
+  .aspira-provider-row {
+    gap: 6px;
+  }
+
+  .aspira-provider-chip {
+    min-height: 42px;
+    padding-inline: 10px;
+  }
+
+  .aspira-app-content {
+    width: 100%;
+    min-width: 0;
+    overflow: visible !important;
+  }
+
+  .aspira-topbar {
+    min-height: 56px;
+    padding-inline: 9px;
+  }
+
+  .aspira-conversation-surface {
+    padding: 16px;
+  }
+
+  .aspira-empty-state {
+    padding-block: 8px;
+  }
+
+  .aspira-empty-title {
+    margin-top: 8px;
+    font-size: 1.875rem;
+    line-height: 1.1;
+  }
+
+  .aspira-empty-intro {
+    margin-top: 8px;
+    font-size: 13px;
+    line-height: 1.4;
+  }
+
+  .aspira-empty-prompts {
+    margin-top: 14px;
+  }
+
+  .aspira-empty-prompt {
+    padding-block: 7px;
+  }
+
+  .aspira-empty-prompt > span + span {
+    line-height: 1.3;
+  }
+
+  .aspira-mobile-nav {
+    max-width: calc(100vw - 170px);
+  }
+
+  .aspira-mobile-nav button {
+    gap: 5px;
+    padding-inline: 7px;
+  }
+
+  .aspira-composer-toolbar {
+    gap: 4px;
+  }
+
+  .aspira-provider-summary {
+    min-width: 150px;
+  }
+
+  .aspira-composer-inputrow {
+    gap: 7px;
+    align-items: flex-end;
+  }
+
+  .aspira-context-rail {
+    bottom: 138px;
+  }
+}
+
+@media (max-width: 490px) {
+  .aspira-mobile-nav {
+    max-width: none;
+    flex: 0 0 auto;
+    gap: 0;
+    padding: 2px;
+  }
+
+  .aspira-mobile-nav button {
+    width: 44px;
+    min-width: 44px;
+    flex: 0 0 44px;
+    justify-content: center;
+    gap: 0;
+    padding: 0;
+  }
+
+  .aspira-mobile-nav-label,
+  .aspira-connect-label,
+  .aspira-lock-label {
+    display: none;
+  }
+
+  .aspira-topbar > div:last-child {
+    gap: 4px;
+  }
+
+  .aspira-topbar button[aria-label="Connections"],
+  .aspira-topbar button[aria-label="Lock this browser session"] {
+    width: 44px;
+    min-width: 44px;
+    justify-content: center;
+    gap: 0;
+    padding-inline: 0;
+  }
+}
+
+@media (max-width: 360px) {
+  .aspira-shell {
+    padding: 8px;
+  }
+
+  .aspira-topbar {
+    gap: 4px;
+    padding-inline: 6px;
+  }
+
+  .aspira-topbar > div:first-child {
+    flex: 0 0 auto;
+    gap: 0;
+  }
+
+  .aspira-mobile-nav {
+    max-width: none;
+    flex: 0 0 auto;
+    gap: 0;
+    padding: 2px;
+  }
+
+  .aspira-mobile-nav button {
+    width: 44px;
+    min-width: 44px;
+    flex: 0 0 44px;
+    justify-content: center;
+    gap: 0;
+    padding: 0;
+  }
+
+  .aspira-mobile-nav-label,
+  .aspira-connect-label,
+  .aspira-lock-label {
+    display: none;
+  }
+
+  .aspira-topbar > div:last-child {
+    gap: 4px;
+  }
+
+  .aspira-topbar button[aria-label="Connections"],
+  .aspira-topbar button[aria-label="Lock this browser session"] {
+    width: 44px;
+    min-width: 44px;
+    justify-content: center;
+    gap: 0;
+    padding-inline: 0;
+  }
+
+  .aspira-conversation-surface {
+    padding: 12px;
+    scrollbar-width: thin;
+    scrollbar-color: #c7c7d1 transparent;
+  }
+
+  .aspira-empty-state {
+    padding-block: 4px;
+  }
+
+  .aspira-empty-title {
+    margin-top: 6px;
+    font-size: 1.55rem;
+    line-height: 1.12;
+  }
+
+  .aspira-empty-intro {
+    margin-top: 6px;
+    font-size: 12px;
+    line-height: 1.35;
+  }
+
+  .aspira-empty-prompts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+    margin-top: 12px;
+  }
+
+  .aspira-empty-prompt {
+    min-width: 0;
+    padding: 7px 8px;
+    border-radius: 12px;
+  }
+
+  .aspira-empty-prompt > span:first-child {
+    font-size: 11px;
+    line-height: 1.2;
+  }
+
+  .aspira-empty-prompt > span + span {
+    font-size: 9px;
+    line-height: 1.3;
+  }
+}
+
+@media (max-width: 480px) {
+  .aspira-vault-dialog {
+    max-height: calc(100dvh - 16px);
+    border-radius: 22px;
+  }
+
+  .aspira-vault-header {
+    gap: 8px;
+    padding: 12px 14px;
+  }
+
+  .aspira-vault-header > div:first-child {
+    min-width: 0;
+    gap: 9px;
+  }
+
+  .aspira-vault-header > div:first-child > div:last-child {
+    min-width: 0;
+  }
+
+  .aspira-vault-header p {
+    max-width: 220px;
+    line-height: 1.35;
+  }
+
+  .aspira-vault-close {
+    flex: 0 0 44px;
+  }
+
+  .aspira-vault-tabs {
+    gap: 6px;
+    padding: 8px 14px 5px;
+  }
+
+  .aspira-vault-tabs > button {
+    gap: 6px;
+    padding-inline: 10px;
+  }
+
+  .aspira-vault-tab-label-full {
+    display: none;
+  }
+
+  .aspira-vault-tab-label-short {
+    display: inline;
+  }
+
+  .aspira-vault-tabs-hint {
+    display: block;
+    padding: 0 14px 6px;
+    color: #858791;
+    font-size: 10px;
+    line-height: 1.2;
+    text-align: right;
+  }
+
+  .aspira-vault-body {
+    padding: 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }
 

@@ -1,15 +1,19 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ArrowUp,
+  Check,
+  ChevronDown,
   FolderGit2,
+  History,
   KeyRound,
   Lock,
   Mic,
-  Orbit,
+  MessageSquare,
   Sliders,
   Square,
   Sparkles,
   Volume2,
+  X,
 } from 'lucide-react';
 import {
   BUILTIN_MODEL_PLUGINS,
@@ -27,9 +31,24 @@ import {
 import { ConversationMessageContext, runPantheonSynergy } from './plugins/models/synergyEngine';
 import { soundEngine } from './audio/soundEngine';
 import { SpatialModeDeck } from './components/SpatialModeDeck';
+import { ConversationHistoryPanel } from './components/ConversationHistoryPanel';
 import { PlugAndPlayVaultModal } from './components/PlugAndPlayVaultModal';
+import {
+  CONVERSATION_HISTORY_STORAGE_KEY,
+  createConversationId,
+  MAX_SAVED_CONVERSATIONS,
+  readConversationHistory,
+  SavedConversation,
+  titleForConversation,
+} from './plugins/models/conversationHistory';
 
 export const App: React.FC = () => {
+  const [initialConversationHistory] = useState(readConversationHistory);
+  const [savedConversations, setSavedConversations] = useState(initialConversationHistory.conversations);
+  const [activeConversationId, setActiveConversationId] = useState(initialConversationHistory.activeId);
+  const initialConversationTurns = initialConversationHistory.conversations
+    .find((conversation) => conversation.id === initialConversationHistory.activeId)?.turns ?? [];
+
   // Aspira opens directly into the workspace. Session locking is an optional setting.
   const [bootState, setBootState] = useState<'ignited' | 'locked'>('ignited');
 
@@ -86,8 +105,10 @@ export const App: React.FC = () => {
   // 3. Studio view, current conversation, saved context, and playbooks
   const [spatialMode, setSpatialMode] = useState<SpatialMode>('nexus');
   const selectedCapability = CAPABILITY_MATRIX[0];
-  const [latestResult, setLatestResult] = useState<SynergyExecutionResult | null>(null);
-  const [conversationTurns, setConversationTurns] = useState<ConversationTurn[]>([]);
+  const [latestResult, setLatestResult] = useState<SynergyExecutionResult | null>(
+    initialConversationTurns[initialConversationTurns.length - 1]?.result ?? null
+  );
+  const [conversationTurns, setConversationTurns] = useState<ConversationTurn[]>(initialConversationTurns);
   const [memories, setMemories] = useState<LivingMemoryItem[]>([]);
   const [memoriesLoaded, setMemoriesLoaded] = useState(false);
   const [routines, setRoutines] = useState<LocalPlaybook[]>([]);
@@ -105,16 +126,109 @@ export const App: React.FC = () => {
   const [isAgentSpeaking, setIsAgentSpeaking] = useState(false);
   const [voiceStatus, setVoiceStatus] = useState('Voice input is off');
   const [vaultModalOpen, setVaultModalOpen] = useState(false);
+  const [mobileHistoryOpen, setMobileHistoryOpen] = useState(false);
+  const [historySearchTerm, setHistorySearchTerm] = useState('');
+  const [historyPersistenceError, setHistoryPersistenceError] = useState(false);
 
   const duplexVoiceRef = useRef(duplexVoiceActive);
   duplexVoiceRef.current = duplexVoiceActive;
   const conversationTurnsRef = useRef(conversationTurns);
   conversationTurnsRef.current = conversationTurns;
+  const savedConversationsRef = useRef(savedConversations);
+  savedConversationsRef.current = savedConversations;
   const abortControllerRef = useRef<AbortController | null>(null);
   const defaultModelSelectionAppliedRef = useRef(false);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const voiceStreamRef = useRef<MediaStream | null>(null);
   const voiceChunksRef = useRef<Blob[]>([]);
+  const commandInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const mobileHistoryDialogRef = useRef<HTMLDivElement | null>(null);
+  const mobileHistoryTriggerRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    const input = commandInputRef.current;
+    if (!input) return;
+    input.style.height = 'auto';
+    const nextHeight = Math.min(input.scrollHeight, 128);
+    input.style.height = `${nextHeight}px`;
+    input.style.overflowY = input.scrollHeight > 128 ? 'auto' : 'hidden';
+  }, [commandInput]);
+
+  useEffect(() => {
+    if (conversationTurns.length === 0) return;
+
+    const id = activeConversationId || createConversationId();
+    const existing = savedConversationsRef.current.find((conversation) => conversation.id === id);
+    if (existing?.turns === conversationTurns) return;
+
+    if (!activeConversationId) setActiveConversationId(id);
+    const nextConversation: SavedConversation = {
+      id,
+      title: existing?.title || titleForConversation(conversationTurns),
+      updatedAt: new Date().toISOString(),
+      turns: conversationTurns,
+    };
+    setSavedConversations((previous) => [
+      nextConversation,
+      ...previous.filter((conversation) => conversation.id !== id),
+    ].slice(0, MAX_SAVED_CONVERSATIONS));
+  }, [conversationTurns, activeConversationId]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(CONVERSATION_HISTORY_STORAGE_KEY, JSON.stringify({
+        version: 1,
+        activeId: activeConversationId,
+        conversations: savedConversations,
+      }));
+      setHistoryPersistenceError(false);
+    } catch {
+      setHistoryPersistenceError(true);
+    }
+  }, [activeConversationId, savedConversations]);
+
+  useEffect(() => {
+    if (!mobileHistoryOpen) return;
+    const previouslyFocused = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+    const dialog = mobileHistoryDialogRef.current;
+    const focusableSelector = 'button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])';
+    const focusFrame = window.requestAnimationFrame(() => {
+      const first = dialog?.querySelector<HTMLElement>(focusableSelector);
+      (first || dialog)?.focus();
+    });
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setMobileHistoryOpen(false);
+        return;
+      }
+      if (event.key !== 'Tab' || !dialog) return;
+      const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(focusableSelector))
+        .filter((element) => element.getClientRects().length > 0);
+      if (focusable.length === 0) {
+        event.preventDefault();
+        dialog.focus();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && (document.activeElement === first || !dialog.contains(document.activeElement))) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && (document.activeElement === last || !dialog.contains(document.activeElement))) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.cancelAnimationFrame(focusFrame);
+      window.removeEventListener('keydown', onKeyDown);
+      if (previouslyFocused?.isConnected) previouslyFocused.focus();
+    };
+  }, [mobileHistoryOpen]);
 
   useEffect(() => {
     soundEngine.onSpeakingStateChange = (speaking) => {
@@ -559,12 +673,66 @@ export const App: React.FC = () => {
     setSpatialMode(mode);
   };
 
+  const startNewConversation = () => {
+    if (isExecuting) return;
+    setActiveConversationId(null);
+    setConversationTurns([]);
+    setLatestResult(null);
+    setCommandInput('');
+    setHistorySearchTerm('');
+    setSpatialMode('nexus');
+    setMobileHistoryOpen(false);
+    window.requestAnimationFrame(() => commandInputRef.current?.focus());
+  };
+
+  const selectConversation = (id: string) => {
+    if (isExecuting) return;
+    const conversation = savedConversations.find((item) => item.id === id);
+    if (!conversation) return;
+    setActiveConversationId(conversation.id);
+    setConversationTurns(conversation.turns);
+    setLatestResult(conversation.turns[conversation.turns.length - 1]?.result ?? null);
+    setCommandInput('');
+    setSpatialMode('nexus');
+    setHistorySearchTerm('');
+    setMobileHistoryOpen(false);
+  };
+
+  const deleteConversation = (id: string) => {
+    if (isExecuting) return;
+    const conversation = savedConversations.find((item) => item.id === id);
+    if (!conversation) return;
+    const confirmed = window.confirm(`Delete “${conversation.title}” from this browser?`);
+    if (!confirmed) return;
+    setSavedConversations((previous) => previous.filter((item) => item.id !== id));
+    if (activeConversationId === id) {
+      setActiveConversationId(null);
+      setConversationTurns([]);
+      setLatestResult(null);
+    }
+  };
+
+  const providerStatusLabel = (modelId: string) => {
+    if (apiKeys[modelId]) return 'API key saved';
+    if (subscriptionStatuses[modelId]?.authStatus === 'signed_in') return 'Signed in';
+    if (subscriptionStatuses[modelId]?.authStatus === 'signed_out') return 'Sign-in required';
+    if (subscriptionStatuses[modelId]?.cliPath) return 'CLI found';
+    if (models.find((model) => model.id === modelId)?.endpointConfig?.providerType === 'openai_compatible') return 'Local endpoint';
+    if (subscriptionStatuses[modelId]) return 'Connect provider';
+    return 'Checking status';
+  };
+
+  const primaryViews: { id: SpatialMode; label: string; icon: typeof MessageSquare }[] = [
+    { id: 'nexus', label: 'Studio', icon: MessageSquare },
+    { id: 'forge', label: 'Workbench', icon: FolderGit2 },
+  ];
+
   return (
-    <div className="relative w-screen h-screen overflow-hidden aspira-canvas-bg flex flex-col p-5">
+    <div className="aspira-shell relative flex h-screen w-screen overflow-hidden p-3 aspira-canvas-bg">
       {bootState === 'locked' && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-[#090b10]/90 p-6 backdrop-blur-xl">
+        <div className="aspira-lock-backdrop fixed inset-0 z-50 grid place-items-center bg-[#090b10]/90 p-6 backdrop-blur-xl">
           <form
-            className="w-full max-w-sm rounded-3xl border border-white/10 bg-[#11141b] p-7 shadow-2xl"
+            className="aspira-lock-card w-full max-w-sm rounded-3xl border border-white/10 bg-[#11141b] p-7 shadow-2xl"
             onSubmit={(event) => {
               event.preventDefault();
               if (!handleUnlockPasskey(unlockPhrase)) setUnlockError('That passphrase did not match.');
@@ -641,81 +809,183 @@ export const App: React.FC = () => {
         }}
       />
 
-      {/* =====================================================================
-          LAYER 1: FLOATING TOP GLASS NAVIGATION BAR
-         ===================================================================== */}
-      <header className="relative z-20 flex items-center justify-between gap-4 aspira-glass rounded-2xl px-4 py-2">
-        <div className="flex items-center gap-3">
-          <div className="w-7 h-7 rounded-xl bg-gradient-to-tr from-[#6E8EFB] via-[#A777E3] to-[#D97757] p-[1px]">
-            <div className="w-full h-full rounded-[11px] bg-[#090A0F] flex items-center justify-center">
-              <Sparkles className="w-3.5 h-3.5 text-[#93ADFF]" />
+      {mobileHistoryOpen && (
+        <div
+          className="aspira-mobile-history-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setMobileHistoryOpen(false);
+          }}
+        >
+          <div
+            ref={mobileHistoryDialogRef}
+            className="aspira-mobile-history-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="aspira-mobile-history-title"
+            tabIndex={-1}
+          >
+            <div className="aspira-mobile-history-header">
+              <div>
+                <h2 id="aspira-mobile-history-title">Your conversations</h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setMobileHistoryOpen(false)}
+                aria-label="Close conversations"
+                className="aspira-mobile-history-close"
+              >
+                <X aria-hidden="true" />
+              </button>
             </div>
+            <ConversationHistoryPanel
+              conversations={savedConversations}
+              activeId={activeConversationId}
+              searchTerm={historySearchTerm}
+              isExecuting={isExecuting}
+              persistenceError={historyPersistenceError}
+              onSearchChange={setHistorySearchTerm}
+              onNewChat={startNewConversation}
+              onSelect={selectConversation}
+              onDelete={deleteConversation}
+            />
           </div>
-          <span className="font-display text-sm font-semibold tracking-tight text-white">
-            Aspira
-          </span>
-          <span className="hidden md:inline-flex rounded-full border border-white/[0.06] bg-white/[0.03] px-2.5 py-1 text-[11px] text-slate-400">
-            {memoriesLoaded ? `${memories.length} saved memories` : 'Loading saved context…'}
-          </span>
+        </div>
+      )}
+
+      <aside className="aspira-sidebar hidden lg:flex">
+        <div className="aspira-sidebar-brand">
+          <div className="aspira-brand-mark"><Sparkles className="h-4 w-4" /></div>
+          <div>
+            <div className="font-display text-sm font-semibold tracking-tight">Aspira</div>
+            <div className="mt-0.5 text-[10px] text-slate-500">Personal AI workspace</div>
+          </div>
         </div>
 
-        {/* Primary workspace views */}
-        <nav className="flex items-center gap-1 bg-white/[0.03] p-1 rounded-xl border border-white/[0.06]">
-          {(
-            [
-              { id: 'nexus', label: 'Studio', icon: Orbit },
-              { id: 'forge', label: 'Workbench', icon: FolderGit2 },
-            ] as { id: SpatialMode; label: string; icon: any }[]
-          ).map((tab) => {
-            const Icon = tab.icon;
-            const active = spatialMode === tab.id;
+        <nav className="aspira-sidebar-nav" aria-label="Workspace navigation">
+          <p className="aspira-sidebar-label">Workspace</p>
+          {primaryViews.map((view) => {
+            const Icon = view.icon;
+            const active = spatialMode === view.id;
             return (
               <button
-                key={tab.id}
-                onClick={() => switchSpatialMode(tab.id)}
-                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-medium transition cursor-pointer ${
-                  active
-                    ? 'bg-white/[0.12] text-white border border-white/[0.12] shadow-sm'
-                    : 'text-slate-400 hover:text-white border border-transparent'
-                }`}
+                key={view.id}
+                type="button"
+                onClick={() => switchSpatialMode(view.id)}
+                aria-current={active ? 'page' : undefined}
+                className={`aspira-sidebar-link ${active ? 'is-active' : ''}`}
               >
-                <Icon className="w-3.5 h-3.5" />
-                <span>{tab.label}</span>
+                <Icon className="h-4 w-4" />
+                <span>{view.label}</span>
               </button>
             );
           })}
+          <button
+            type="button"
+            onClick={() => setVaultModalOpen(true)}
+            aria-haspopup="dialog"
+            className="aspira-sidebar-link"
+          >
+            <Sliders className="h-4 w-4" />
+            <span>Connections</span>
+          </button>
         </nav>
 
-        {/* Right: Workspace settings and optional session lock */}
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => {
-              setVaultModalOpen(true);
-            }}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl aspira-card-interactive text-xs font-medium text-slate-200 cursor-pointer"
-          >
-            <Sliders className="w-3.5 h-3.5 text-[#6E8EFB]" />
-            <span>Settings</span>
-          </button>
+        <ConversationHistoryPanel
+          conversations={savedConversations}
+          activeId={activeConversationId}
+          searchTerm={historySearchTerm}
+          isExecuting={isExecuting}
+          persistenceError={historyPersistenceError}
+          onSearchChange={setHistorySearchTerm}
+          onNewChat={startNewConversation}
+          onSelect={selectConversation}
+          onDelete={deleteConversation}
+        />
 
-          {passkeyLockEnabled && passkeyProfiles[0]?.phrase.trim() && (
-            <button
-              onClick={() => {
-                soundEngine.stopSpeaking();
-                if (recorderRef.current?.state === 'recording') recorderRef.current.stop();
-                setBootState('locked');
-                setUnlockPhrase('');
-                setUnlockError('');
-              }}
-              title="Lock this browser session"
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl aspira-card-interactive text-xs text-slate-300 hover:text-white cursor-pointer"
-            >
-              <Lock className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Lock</span>
-            </button>
-          )}
+        <div className="aspira-sidebar-footer">
+          <span className="aspira-sidebar-label">Saved context</span>
+          <span className="text-xs font-medium text-slate-700">
+            {memoriesLoaded ? `${memories.length} items` : 'Loading…'}
+          </span>
+          <span className="mt-1 text-[10px] leading-4 text-slate-500">Included with provider prompts when available.</span>
         </div>
-      </header>
+      </aside>
+
+      <div className="aspira-app-content flex min-w-0 flex-1 flex-col overflow-hidden">
+        <header className="aspira-topbar relative z-20 flex items-center justify-between gap-3 px-4 py-2">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="hidden sm:block">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">Personal workspace</p>
+              <p className="mt-0.5 text-xs font-medium text-slate-700">This Mac</p>
+            </div>
+            <nav className="aspira-mobile-nav flex items-center gap-1 rounded-xl border border-white/[0.06] bg-white/[0.03] p-1 lg:hidden" aria-label="Workspace navigation">
+              {primaryViews.map((view) => {
+                const Icon = view.icon;
+                const active = spatialMode === view.id;
+                return (
+                  <button
+                    key={view.id}
+                    type="button"
+                    onClick={() => switchSpatialMode(view.id)}
+                    aria-current={active ? 'page' : undefined}
+                    aria-label={view.label}
+                    title={view.label}
+                    className={`flex min-h-11 items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition ${
+                      active ? 'border-white/[0.12] bg-white/[0.12] text-white' : 'border-transparent text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <Icon className="h-3.5 w-3.5" />
+                    <span className="aspira-mobile-nav-label">{view.label}</span>
+                  </button>
+                );
+              })}
+              <button
+                ref={mobileHistoryTriggerRef}
+                type="button"
+                onClick={() => setMobileHistoryOpen(true)}
+                aria-label="Recent conversations"
+                aria-haspopup="dialog"
+                title="Recent conversations"
+                className="aspira-history-trigger flex min-h-11 items-center gap-1.5 rounded-lg border border-transparent px-2.5 py-1.5 text-xs font-medium text-slate-400 transition hover:text-white"
+              >
+                <History className="h-3.5 w-3.5" />
+                <span className="aspira-mobile-nav-label">Chats</span>
+              </button>
+            </nav>
+          </div>
+
+          <div className="flex shrink-0 items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setVaultModalOpen(true)}
+              aria-haspopup="dialog"
+              aria-label="Connections"
+              title="Connections"
+              className="aspira-card-interactive flex min-h-11 items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-medium text-slate-700 lg:hidden"
+            >
+              <Sliders className="h-3.5 w-3.5" />
+              <span className="aspira-connect-label hidden min-[430px]:inline">Connections</span>
+              <span className="aspira-connect-label min-[430px]:hidden">Connect</span>
+            </button>
+            {passkeyLockEnabled && passkeyProfiles[0]?.phrase.trim() && (
+              <button
+                onClick={() => {
+                  soundEngine.stopSpeaking();
+                  if (recorderRef.current?.state === 'recording') recorderRef.current.stop();
+                  setBootState('locked');
+                  setUnlockPhrase('');
+                  setUnlockError('');
+                }}
+                title="Lock this browser session"
+                aria-label="Lock this browser session"
+                className="aspira-card-interactive flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs text-slate-700"
+              >
+                <Lock className="h-3.5 w-3.5" />
+                <span className="aspira-lock-label">Lock</span>
+              </button>
+            )}
+          </div>
+        </header>
 
       {/* Subtle Unlock Notification Pill */}
       {awayBriefingBanner && (
@@ -731,9 +1001,6 @@ export const App: React.FC = () => {
         </div>
       )}
 
-      {/* =====================================================================
-          LAYER 2: TRANSFORMATIVE STUDIO STAGE (Conversational + Action OS)
-         ===================================================================== */}
       <main className="relative z-10 mx-auto my-4 w-full max-w-[1440px] flex-1 overflow-hidden">
         <SpatialModeDeck
           spatialMode={spatialMode}
@@ -758,81 +1025,7 @@ export const App: React.FC = () => {
         />
       </main>
 
-      {/* =====================================================================
-          LAYER 3: 2-TIER FLOATING AGENT CONSTELLATION DOCK + UNIFIED COMPOSER
-         ===================================================================== */}
-      <footer className="relative z-20 mx-auto flex w-full max-w-[1120px] flex-col gap-3">
-        {/* TIER A: Tactile Agent Constellation Pill Dock */}
-        <div className="flex items-center justify-center flex-wrap gap-2">
-          {models.map((model) => {
-            const isAwake = awakeModelIds.includes(model.id);
-            const providerStatus = apiKeys[model.id]
-              ? 'API key'
-              : subscriptionStatuses[model.id]?.authStatus === 'signed_in'
-              ? 'Signed in'
-              : subscriptionStatuses[model.id]?.authStatus === 'signed_out'
-              ? 'Sign in'
-              : subscriptionStatuses[model.id]?.cliPath
-              ? 'CLI detected'
-              : model.endpointConfig?.providerType === 'openai_compatible'
-              ? 'Endpoint'
-              : subscriptionStatuses[model.id]
-              ? 'Connect'
-              : 'Checking';
-            return (
-              <button
-                key={model.id}
-                type="button"
-                onClick={() => toggleModelAwake(model)}
-                style={{
-                  borderColor: isAwake ? `${model.accentHex}66` : 'rgba(255,255,255,0.07)',
-                  backgroundColor: isAwake
-                    ? 'rgba(22, 25, 34, 0.85)'
-                    : 'rgba(15, 17, 23, 0.55)',
-                }}
-                className="flex items-center gap-2.5 rounded-xl border px-3.5 py-2 transition-all cursor-pointer group"
-                title={`${model.tagline} · ${isAwake ? 'Selected for this conversation' : 'Not selected'}`}
-              >
-                <span
-                  style={{
-                    backgroundColor: isAwake ? model.accentHex : '#475569',
-                    boxShadow: isAwake ? `0 0 10px ${model.accentHex}` : 'none',
-                  }}
-                  className="w-2 h-2 rounded-full transition"
-                />
-                <div className="text-left">
-                  <div className="flex items-center gap-1.5">
-                    <span
-                      className={`text-xs font-semibold ${
-                        isAwake ? 'text-white' : 'text-slate-400 group-hover:text-slate-200'
-                      }`}
-                    >
-                      {model.codeName}
-                    </span>
-                    <span className="text-[10px] text-slate-500">
-                      {isAwake ? 'Selected' : 'Select'}
-                    </span>
-                  </div>
-                  <div className="text-[9px] text-slate-500">{providerStatus}</div>
-                </div>
-              </button>
-            );
-          })}
-
-          <button
-            type="button"
-            onClick={() => {
-              defaultModelSelectionAppliedRef.current = true;
-              setAwakeModelIds(models.map((m) => m.id));
-            }}
-            className="px-3 py-2 rounded-xl aspira-card-interactive text-xs font-medium text-slate-300 hover:text-white cursor-pointer"
-          >
-            Select all
-          </button>
-
-        </div>
-
-        {/* TIER B: Conversational & Action-Executing Composer Bar */}
+      <footer className="relative z-20 mx-auto flex w-full max-w-[1440px] flex-col">
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -840,58 +1033,145 @@ export const App: React.FC = () => {
             handleRunDirective(commandInput, 'text', true);
             setCommandInput('');
           }}
-          className="aspira-glass-elevated rounded-2xl px-4 py-2.5 flex items-center gap-3"
+          className="aspira-composer flex w-full max-w-[955px] flex-col gap-2 px-3 py-2.5"
         >
-          <button
-            type="button"
-            onClick={toggleVoiceInput}
-            className="flex items-center gap-2 text-xs text-slate-400 shrink-0 cursor-pointer"
-            title="Record a voice message locally"
-          >
-            <Mic
-              className={`w-4 h-4 ${
-                duplexVoiceActive ? 'text-emerald-400 animate-pulse' : 'text-slate-500'
-              }`}
-            />
-            <span className="hidden sm:inline font-mono-tech text-[11px] text-slate-300">
-              {duplexVoiceActive ? 'Stop recording' : 'Voice'}
-            </span>
-          </button>
+          <div className="aspira-composer-toolbar">
+            <details
+              className="aspira-provider-picker"
+              aria-label="Choose models for this reply"
+              onKeyDown={(event) => {
+                if (event.key === 'Escape' && event.currentTarget.open) {
+                  event.preventDefault();
+                  event.currentTarget.open = false;
+                  event.currentTarget.querySelector('summary')?.focus();
+                }
+              }}
+            >
+              <summary className="aspira-provider-summary">
+                <span className="flex min-w-0 flex-col text-left">
+                  <span className="text-[10px] font-medium uppercase tracking-wide text-slate-500">Responding with</span>
+                  <span className="max-w-[240px] truncate text-xs font-semibold text-slate-800">
+                    {awakeModelIds.length === 0
+                      ? 'No model selected'
+                      : awakeModelIds.length === 1
+                      ? models.find((model) => model.id === awakeModelIds[0])?.codeName || '1 model'
+                      : `${awakeModelIds.length} models selected`}
+                  </span>
+                </span>
+                <ChevronDown className="h-4 w-4 shrink-0 text-slate-500" />
+              </summary>
+              <div className="aspira-provider-options" role="group" aria-label="Models included in replies">
+                <div className="mb-2 flex items-center justify-between gap-3 border-b border-slate-200 pb-2">
+                  <div>
+                    <p className="text-xs font-semibold text-slate-800">Choose models</p>
+                    <p className="mt-0.5 text-[10px] leading-4 text-slate-500">Choose providers for chat. Local actions remain available without one.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      defaultModelSelectionAppliedRef.current = true;
+                      setAwakeModelIds(models.map((model) => model.id));
+                    }}
+                    className="shrink-0 rounded-lg px-2 py-1 text-[10px] font-medium text-indigo-700 hover:bg-indigo-50"
+                  >
+                    Select all
+                  </button>
+                </div>
+                {models.map((model) => {
+                  const isAwake = awakeModelIds.includes(model.id);
+                  const status = providerStatusLabel(model.id);
+                  return (
+                    <button
+                      key={model.id}
+                      type="button"
+                      onClick={() => toggleModelAwake(model)}
+                      aria-pressed={isAwake}
+                      aria-label={`${model.codeName}, ${status}, ${isAwake ? 'selected' : 'not selected'}`}
+                      className={`aspira-provider-option ${isAwake ? 'is-selected' : ''}`}
+                      style={{ '--provider-accent': model.accentHex } as React.CSSProperties}
+                    >
+                      <span className="aspira-provider-indicator" aria-hidden="true">
+                        {isAwake && <Check className="h-3 w-3" />}
+                      </span>
+                      <span className="flex min-w-0 flex-1 flex-col text-left">
+                        <span className="text-xs font-semibold text-slate-800">{model.codeName}</span>
+                        <span className="text-[10px] text-slate-500">{status}</span>
+                      </span>
+                      <span className="text-[10px] text-slate-500">{isAwake ? 'On' : 'Off'}</span>
+                    </button>
+                  );
+                })}
+                <button
+                  type="button"
+                  onClick={() => setVaultModalOpen(true)}
+                  aria-haspopup="dialog"
+                  className="mt-2 w-full border-t border-slate-200 pt-2 text-left text-[11px] font-medium text-indigo-700 hover:text-indigo-900"
+                >
+                  Manage connections
+                </button>
+              </div>
+            </details>
+            <span className="hidden text-[10px] text-slate-500 sm:inline">Enter to send · Shift+Enter for a new line</span>
+          </div>
 
-          <input
-            type="text"
-            value={commandInput}
-            onChange={(e) => setCommandInput(e.target.value)}
-            placeholder={
-              liveTranscript
-                ? `Heard: “${liveTranscript}”`
-                : 'Ask a question, describe a task, or ask your agents to take an action…'
-            }
-            className="flex-1 bg-transparent text-xs sm:text-sm text-white placeholder:text-slate-400 focus:outline-none"
-          />
-
-          {isExecuting && canCancelRequest ? (
+          <div className="aspira-composer-inputrow">
             <button
               type="button"
-              onClick={() => abortControllerRef.current?.abort()}
-              title="Stop the agent response. A local action already started may still finish."
-              className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl border border-rose-400/25 bg-rose-400/10 text-rose-200 hover:bg-rose-400/20 text-xs font-semibold transition cursor-pointer"
+              onClick={toggleVoiceInput}
+              aria-pressed={duplexVoiceActive}
+              className="aspira-voice-control flex shrink-0 items-center gap-2 text-xs text-slate-600"
+              title="Record a voice message locally"
             >
-              <Square className="h-3 w-3 fill-current" />
-              <span>Stop</span>
+              <Mic className={`h-4 w-4 ${duplexVoiceActive ? 'text-emerald-600' : 'text-slate-500'}`} />
+              <span className="hidden sm:inline text-[11px] font-medium">
+                {duplexVoiceActive ? 'Stop recording' : 'Voice'}
+              </span>
             </button>
-          ) : (
-            <button
-              type="submit"
-              disabled={isExecuting}
-              className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl bg-white text-black hover:bg-white/90 text-xs font-semibold transition cursor-pointer disabled:opacity-50"
-            >
-              <span>{isExecuting ? 'Acting...' : 'Send'}</span>
-              <ArrowUp className="w-3.5 h-3.5" />
-            </button>
-          )}
+
+            <textarea
+              ref={commandInputRef}
+              rows={1}
+              value={commandInput}
+              onChange={(e) => setCommandInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  e.currentTarget.form?.requestSubmit();
+                }
+              }}
+              placeholder={
+                liveTranscript
+                  ? `Heard: “${liveTranscript}”`
+                  : 'Message Aspira…'
+              }
+              aria-label="Message Aspira"
+              className="aspira-message-input max-h-32 min-h-10 flex-1 resize-none py-2 text-sm leading-6 placeholder:text-slate-400 focus:outline-none"
+            />
+
+            {isExecuting && canCancelRequest ? (
+              <button
+                type="button"
+                onClick={() => abortControllerRef.current?.abort()}
+                title="Stop the agent response. A local action already started may still finish."
+                className="aspira-stop-button flex items-center gap-1.5 rounded-xl px-4 py-2 text-xs font-semibold transition"
+              >
+                <Square className="h-3 w-3 fill-current" />
+                <span>Stop</span>
+              </button>
+            ) : (
+              <button
+                type="submit"
+                disabled={isExecuting}
+                className="aspira-send-button flex items-center gap-1.5 rounded-xl px-4 py-2 text-xs font-semibold text-white transition disabled:opacity-50"
+              >
+                <span>{isExecuting ? 'Acting...' : 'Send'}</span>
+                <ArrowUp className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
         </form>
       </footer>
+      </div>
     </div>
   );
 };

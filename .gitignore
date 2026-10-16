@@ -8,3 +8,7 @@ dist/
 # User-created data stays on this Mac, not in the public source repository.
 server/data/memory.json
 server/data/routines.json
+
+# Local browser QA screenshots and temporary viewport captures.
+.playwright-cli/
+output/playwright/

@@ -30,13 +30,12 @@ const CHILD_ENV = {
   PATH: ENHANCED_PATH,
   HOME: homeDir,
 };
-// A stalled personal MCP server should not block every chat turn. Preserve a
-// user's explicit Claude Code timeout; otherwise skip slow MCP startup after 5s.
-const CLAUDE_CHILD_ENV = {
-  ...CHILD_ENV,
-  MCP_TIMEOUT: process.env.MCP_TIMEOUT || '5000',
-};
-
+const SUBSCRIPTION_CHILD_ENV = { ...CHILD_ENV };
+for (const variable of Object.keys(SUBSCRIPTION_CHILD_ENV)) {
+  if (/(?:^|_)(?:API_KEY|TOKEN|SECRET|PASSWORD|CREDENTIALS?)(?:_|$)/i.test(variable)) {
+    delete SUBSCRIPTION_CHILD_ENV[variable];
+  }
+}
 if (!fs.existsSync(dataDir)) {
   fs.mkdirSync(dataDir, { recursive: true });
 }
@@ -135,7 +134,7 @@ export function detectSubscriptions() {
       cliPath: codexCli,
       desktopAppPath: chatgptDesktopApp,
       methodLabel: codexCli
-        ? 'Codex CLI found · sign-in checked on first request'
+        ? 'Codex CLI found · sign-in status checked locally'
         : chatgptDesktopApp
         ? 'ChatGPT desktop app found · install Codex CLI to connect inference'
         : 'Not connected',
@@ -145,15 +144,15 @@ export function detectSubscriptions() {
 }
 
 // Run a CLI binary safely with argument array (no shell injection) and timeout
-function runCliProcess(binary, args, timeoutMs = 16000, signal, env = CHILD_ENV) {
+function runCliProcess(binary, args, timeoutMs = 16000, signal, env = CHILD_ENV, inputText, cwd = rootDir) {
   return new Promise((resolve, reject) => {
     let stdout = '';
     let stderr = '';
     let settled = false;
     const child = spawn(binary, args, {
-      cwd: rootDir,
+      cwd,
       env,
-      stdio: ['ignore', 'pipe', 'pipe'],
+      stdio: [inputText === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
     });
 
     const finish = (callback, value) => {
@@ -174,6 +173,8 @@ function runCliProcess(binary, args, timeoutMs = 16000, signal, env = CHILD_ENV)
     signal?.addEventListener('abort', onAbort, { once: true });
     if (signal?.aborted) onAbort();
 
+    if (inputText !== undefined) child.stdin.end(inputText);
+
     child.stdout.on('data', (chunk) => {
       stdout += chunk.toString();
     });
@@ -193,14 +194,15 @@ function runCliProcess(binary, args, timeoutMs = 16000, signal, env = CHILD_ENV)
   });
 }
 
-function runCliStatus(binary, args, timeoutMs = 7000, signal) {
+function runCliStatus(binary, args, timeoutMs = 7000, signal, env = CHILD_ENV) {
   return new Promise((resolve, reject) => {
     let stdout = '';
+    let stderr = '';
     let settled = false;
     const child = spawn(binary, args, {
       cwd: rootDir,
-      env: CHILD_ENV,
-      stdio: ['ignore', 'pipe', 'ignore'],
+      env,
+      stdio: ['ignore', 'pipe', 'pipe'],
     });
     const finish = (callback, value) => {
       if (settled) return;
@@ -222,11 +224,14 @@ function runCliStatus(binary, args, timeoutMs = 7000, signal) {
     child.stdout.on('data', (chunk) => {
       if (stdout.length < 20000) stdout += chunk.toString();
     });
+    child.stderr.on('data', (chunk) => {
+      if (stderr.length < 20000) stderr += chunk.toString();
+    });
     child.on('error', (error) => {
       finish(reject, error);
     });
     child.on('close', (code) => {
-      finish(resolve, { stdout, code });
+      finish(resolve, { stdout, stderr, code });
     });
   });
 }
@@ -236,7 +241,7 @@ async function getSubscriptionStatuses() {
   const claude = subscriptions.claude;
   if (claude?.cliPath) {
     try {
-      const result = await runCliStatus(claude.cliPath, ['auth', 'status', '--json']);
+      const result = await runCliStatus(claude.cliPath, ['auth', 'status', '--json'], 7000, undefined, SUBSCRIPTION_CHILD_ENV);
       const status = JSON.parse(result.stdout || '{}');
       claude.authStatus = result.code === 0 && status.loggedIn === true
         ? 'signed_in'
@@ -245,6 +250,20 @@ async function getSubscriptionStatuses() {
         : 'unknown';
     } catch {
       claude.authStatus = 'unknown';
+    }
+  }
+  const codex = subscriptions.gpt;
+  if (codex?.cliPath) {
+    try {
+      const result = await runCliStatus(codex.cliPath, ['login', 'status'], 7000, undefined, SUBSCRIPTION_CHILD_ENV);
+      const statusText = `${result.stdout}\n${result.stderr}`.toLowerCase();
+      codex.authStatus = /not logged in|not authenticated|signed out/.test(statusText)
+        ? 'signed_out'
+        : result.code === 0 && /\blogged in\b|authenticated/.test(statusText)
+        ? 'signed_in'
+        : 'unknown';
+    } catch {
+      codex.authStatus = 'unknown';
     }
   }
   return subscriptions;
@@ -265,120 +284,167 @@ function summarizeProviderFailure(providerName, error) {
 async function runSubscriptionInference(modelId, fullPrompt, subs, signal) {
   let error = null;
   const timeoutMs = 90000;
-  // Run the supported Antigravity CLI headless; never read its credential store.
-  if (modelId === 'argon' && subs.argon?.cliPath) {
-    try {
-      const out = await runCliProcess(
-        subs.argon.cliPath,
-        ['--sandbox', '--mode', 'plan', '-p', fullPrompt, '--output-format', 'text', '--print-timeout', '90s'],
-        timeoutMs,
-        signal
-      );
-      if (out) return { text: out, badge: 'ANTIGRAVITY_CLI' };
-    } catch (err) {
-      if (signal?.aborted) throw err;
-      error = summarizeProviderFailure('Antigravity', err);
-    }
-  }
+  // Give provider tools an empty working directory. Aspira remains the only
+  // path to the selected project and its registered local actions.
+  const isolatedDir = fs.mkdtempSync(path.join(os.tmpdir(), 'aspira-provider-'));
+  fs.chmodSync(isolatedDir, 0o700);
+  const promptFile = path.join(isolatedDir, 'prompt.txt');
 
-  // 2. CLAUDE SUBSCRIPTION (via ~/.local/bin/claude -p)
-  if (modelId === 'claude' && subs.claude?.cliPath) {
-    try {
+  try {
+    // Run the supported Antigravity CLI headless; never read its credential store.
+    if (modelId === 'argon' && subs.argon?.cliPath) {
       try {
-        const status = await runCliStatus(subs.claude.cliPath, ['auth', 'status', '--json'], 7000, signal);
-        const auth = JSON.parse(status.stdout || '{}');
-        if (auth.loggedIn === false) {
-          return { error: 'Claude Code is signed out. Use Settings → Connections → Open CLI sign-in, then retry.' };
+        const out = await runCliProcess(
+          subs.argon.cliPath,
+          [
+            '--sandbox', '--mode', 'plan', '--disable-slash-commands',
+            '--input-format', 'text', '--output-format', 'text', '--print-timeout', '90s', '-p',
+          ],
+          timeoutMs,
+          signal,
+          SUBSCRIPTION_CHILD_ENV,
+          fullPrompt,
+          isolatedDir
+        );
+        if (out) return { text: out, badge: 'ANTIGRAVITY_CLI' };
+      } catch (err) {
+        if (signal?.aborted) throw err;
+        error = summarizeProviderFailure('Antigravity', err);
+      }
+    }
+
+    // 2. CLAUDE SUBSCRIPTION (via ~/.local/bin/claude -p)
+    if (modelId === 'claude' && subs.claude?.cliPath) {
+      try {
+        try {
+        const status = await runCliStatus(subs.claude.cliPath, ['auth', 'status', '--json'], 7000, signal, SUBSCRIPTION_CHILD_ENV);
+          const auth = JSON.parse(status.stdout || '{}');
+          if (auth.loggedIn === false) {
+            return { error: 'Claude Code is signed out. Use Settings → Connections → Open CLI sign-in, then retry.' };
+          }
+        } catch (err) {
+          if (signal?.aborted) throw err;
+          // Continue to a real request; report its result if the status check is unavailable.
+        }
+        const out = await runCliProcess(
+          subs.claude.cliPath,
+          [
+            '-p', '--input-format', 'text', '--output-format', 'text',
+            '--system-prompt', 'You are Claude responding inside Aspira. Follow the instructions in the user message and answer naturally and honestly.',
+            '--tools', '', '--disallowedTools', 'mcp__*',
+            '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}',
+            '--safe-mode', '--no-session-persistence', '--permission-mode', 'plan', '--max-turns', '1',
+          ],
+          timeoutMs,
+          signal,
+          SUBSCRIPTION_CHILD_ENV,
+          fullPrompt,
+          isolatedDir
+        );
+        if (out) {
+          return { text: out, badge: 'CLAUDE_SUBSCRIPTION' };
         }
       } catch (err) {
         if (signal?.aborted) throw err;
-        // Continue to a real request; report its result if the status check is unavailable.
+        error = summarizeProviderFailure('Claude Code', err);
       }
-      const out = await runCliProcess(
-        subs.claude.cliPath,
-        ['-p', fullPrompt, '--output-format', 'text', '--permission-mode', 'plan', '--max-turns', '1'],
+    }
+
+    // 3. GROK SUBSCRIPTION (via ~/.grok/bin/grok -p)
+    if (modelId === 'grok' && subs.grok?.cliPath) {
+      try {
+        fs.writeFileSync(promptFile, fullPrompt, { mode: 0o600, flag: 'wx' });
+        const out = await runCliProcess(
+          subs.grok.cliPath,
+          [
+            '--prompt-file', promptFile,
+            '--output-format',
+            'plain',
+            '--permission-mode',
+            'plan',
+            '--sandbox',
+            'strict',
+            '--tools',
+            '',
+            '--deny',
+            'MCPTool',
+            '--disable-web-search',
+            '--no-subagents',
+            '--no-auto-update',
+            '--max-turns',
+            '1',
+          ],
+          timeoutMs,
+          signal,
+          SUBSCRIPTION_CHILD_ENV,
+          undefined,
+          isolatedDir
+        );
+        if (out) {
+          return { text: out, badge: 'GROK_SUBSCRIPTION' };
+        }
+      } catch (err) {
+        if (signal?.aborted) throw err;
+        error = summarizeProviderFailure('Grok Build', err);
+      }
+    }
+
+    // 4. CHATGPT PLUS/PRO SUBSCRIPTION (via /opt/homebrew/bin/codex exec)
+    if (modelId === 'gpt' && subs.gpt?.cliPath) {
+      const tmpOut = path.join(isolatedDir, 'response.txt');
+      try {
+        await runCliProcess(
+          subs.gpt.cliPath,
+          [
+            'exec',
+            '--ephemeral',
+          '--ignore-user-config',
+          '--ignore-rules',
+          '--strict-config',
+            '--skip-git-repo-check',
+            '--color',
+            'never',
+          '-C', isolatedDir,
+          '-c', 'default_permissions="aspira-bridge"',
+          '-c', 'permissions.aspira-bridge.extends=":read-only"',
+          '-c', `permissions.aspira-bridge.workspace_roots={"${isolatedDir}"=true}`,
+          '-c', 'permissions.aspira-bridge.filesystem={":root"="deny",":minimal"="read",":workspace_roots"={"."="read"}}',
+            '-o',
+            tmpOut,
+          '-',
+          ],
         timeoutMs,
         signal,
-        CLAUDE_CHILD_ENV
+        SUBSCRIPTION_CHILD_ENV,
+        fullPrompt,
+        isolatedDir
       );
-      if (out) {
-        return { text: out, badge: 'CLAUDE_SUBSCRIPTION' };
-      }
-    } catch (err) {
-      if (signal?.aborted) throw err;
-      error = summarizeProviderFailure('Claude Code', err);
-    }
-  }
-
-  // 3. GROK SUBSCRIPTION (via ~/.grok/bin/grok -p)
-  if (modelId === 'grok' && subs.grok?.cliPath) {
-    try {
-      const out = await runCliProcess(
-        subs.grok.cliPath,
-        [
-          '-p',
-          fullPrompt,
-          '--output-format',
-          'plain',
-          '--permission-mode',
-          'plan',
-          '--no-subagents',
-          '--no-auto-update',
-          '--max-turns',
-          '1',
-        ],
-        timeoutMs,
-        signal
-      );
-      if (out) {
-        return { text: out, badge: 'GROK_SUBSCRIPTION' };
-      }
-    } catch (err) {
-      if (signal?.aborted) throw err;
-      error = summarizeProviderFailure('Grok Build', err);
-    }
-  }
-
-  // 4. CHATGPT PLUS/PRO SUBSCRIPTION (via /opt/homebrew/bin/codex exec)
-  if (modelId === 'gpt' && subs.gpt?.cliPath) {
-    const tmpOut = path.join(os.tmpdir(), `aspira-codex-${Date.now()}.txt`);
-    try {
-      await runCliProcess(
-        subs.gpt.cliPath,
-        [
-          'exec',
-          '--ephemeral',
-          '--skip-git-repo-check',
-          '--color',
-          'never',
-          '-s',
-          'read-only',
-          '-o',
-          tmpOut,
-          fullPrompt,
-        ],
-        timeoutMs,
-        signal
-      );
-      if (fs.existsSync(tmpOut)) {
-        const text = fs.readFileSync(tmpOut, 'utf8').trim();
-        fs.unlinkSync(tmpOut);
-        if (text) {
-          return { text, badge: 'CHATGPT_SUBSCRIPTION' };
+        if (fs.existsSync(tmpOut)) {
+          const text = fs.readFileSync(tmpOut, 'utf8').trim();
+          fs.unlinkSync(tmpOut);
+          if (text) {
+            return { text, badge: 'CHATGPT_SUBSCRIPTION' };
+          }
+        }
+      } catch (err) {
+        if (signal?.aborted) throw err;
+        error = summarizeProviderFailure('Codex', err);
+        try {
+          if (fs.existsSync(tmpOut)) fs.unlinkSync(tmpOut);
+        } catch {
+          // ignore
         }
       }
-    } catch (err) {
-      if (signal?.aborted) throw err;
-      error = summarizeProviderFailure('Codex', err);
-      try {
-        if (fs.existsSync(tmpOut)) fs.unlinkSync(tmpOut);
-      } catch {
-        // ignore
-      }
+    }
+
+    return error ? { error } : null;
+  } finally {
+    try {
+      fs.rmSync(isolatedDir, { recursive: true, force: true });
+    } catch {
+      // Keep provider cleanup best-effort so a failed model request is still reportable.
     }
   }
-
-  return error ? { error } : null;
 }
 
 // User-managed context stays in ignored server/data/memory.json.
@@ -479,10 +545,117 @@ function resolveWorkspacePath(input) {
   }
   const realAncestor = fs.realpathSync(existingAncestor);
   if (!isInsideDirectory(realRoot, realAncestor)) throw new Error('Symlink paths outside the workspace are not permitted.');
-  if (fs.existsSync(fullPath) && !isInsideDirectory(realRoot, fs.realpathSync(fullPath))) {
+  const resolvedTarget = fs.existsSync(fullPath)
+    ? fs.realpathSync(fullPath)
+    : path.resolve(realAncestor, path.relative(existingAncestor, fullPath));
+  if (!isInsideDirectory(realRoot, resolvedTarget)) {
     throw new Error('Symlink paths outside the workspace are not permitted.');
   }
-  return { fullPath, relPath };
+  return { fullPath, relPath, safeRelPath: path.relative(realRoot, resolvedTarget) };
+}
+
+const WORKSPACE_IGNORED_NAMES = new Set([
+  '.git', 'node_modules', 'dist', 'build', 'coverage', '.next', '.venv', 'venv',
+]);
+const WORKSPACE_TEXT_EXTENSIONS = new Set([
+  '.md', '.mdx', '.txt', '.json', '.ts', '.tsx', '.js', '.jsx', '.css', '.html',
+  '.py', '.yml', '.yaml', '.toml', '.xml', '.sh', '.sql', '.swift', '.go', '.rs',
+]);
+
+function isSensitiveWorkspacePath(relPath) {
+  return /(^|[\\/])(?:\.env(?:\.[^\\/]*)?|\.ssh|\.gnupg|credentials?(?:\.[^\\/]*)?|secrets?(?:\.[^\\/]*)?|id_rsa|id_ed25519)(?:[\\/]|$)|\.(?:pem|p12|pfx|key)$/i.test(relPath);
+}
+
+function assertReadableWorkspacePath(relPath) {
+  if (isSensitiveWorkspacePath(relPath)) {
+    throw new Error('This path is excluded from agent file access because it may contain credentials.');
+  }
+  const segments = relPath.split(/[\\/]+/).filter((segment) => segment && segment !== '.');
+  if (
+    segments.some((segment) => segment.startsWith('.') || WORKSPACE_IGNORED_NAMES.has(segment)) ||
+    /^server[\\/]data(?:[\\/]|$)/i.test(relPath)
+  ) {
+    throw new Error('Hidden, generated, dependency, and private local-data paths are excluded from agent file access.');
+  }
+}
+
+function listWorkspaceFiles(relativeDirectory = '.', limit = 160) {
+  const { fullPath, relPath, safeRelPath } = resolveWorkspacePath(relativeDirectory || '.');
+  assertReadableWorkspacePath(relPath);
+  assertReadableWorkspacePath(safeRelPath);
+  if (!fs.existsSync(fullPath) || !fs.statSync(fullPath).isDirectory()) {
+    throw new Error('Choose a workspace directory to list.');
+  }
+  const entries = [];
+  const maxEntries = Math.max(1, Math.min(Number(limit) || 160, 240));
+
+  const walk = (directory, depth) => {
+    if (depth > 5 || entries.length >= maxEntries) return;
+    const children = fs.readdirSync(directory, { withFileTypes: true })
+      .sort((left, right) => left.name.localeCompare(right.name));
+    for (const child of children) {
+      if (entries.length >= maxEntries) break;
+      if (child.name.startsWith('.') || WORKSPACE_IGNORED_NAMES.has(child.name) || child.isSymbolicLink()) continue;
+      const fullChildPath = path.join(directory, child.name);
+      const relativeChildPath = path.relative(rootDir, fullChildPath);
+      if (relativeChildPath === 'server/data' || relativeChildPath.startsWith(`server${path.sep}data${path.sep}`)) continue;
+      if (isSensitiveWorkspacePath(relativeChildPath)) continue;
+      entries.push(`${child.isDirectory() ? 'dir ' : 'file'} ${relativeChildPath}`);
+      if (child.isDirectory()) walk(fullChildPath, depth + 1);
+    }
+  };
+
+  walk(fullPath, 0);
+  const base = relPath === '.' ? '.' : relPath;
+  return entries.length ? `Workspace files under ${base}:\n${entries.join('\n')}` : `No readable files found under ${base}.`;
+}
+
+function redactLikelySecrets(text) {
+  return String(text)
+    .replace(/\b(?:sk-ant|sk-proj|xai)-[A-Za-z0-9_-]{20,}\b/g, '[redacted credential]')
+    .replace(/\bAIza[0-9A-Za-z_-]{25,}\b/g, '[redacted credential]')
+    .replace(/\bBearer\s+[A-Za-z0-9._~-]{20,}/gi, 'Bearer [redacted credential]')
+    .replace(/((?:api[_-]?key|access[_-]?token|client[_-]?secret|password)\s*[:=]\s*)[^\s,;]+/gi, '$1[redacted]');
+}
+
+function searchWorkspaceText(query, limit = 24) {
+  const normalizedQuery = String(query || '').trim().slice(0, 120);
+  if (normalizedQuery.length < 2) throw new Error('Enter at least two characters to search the workspace.');
+  const matches = [];
+  const maxMatches = Math.max(1, Math.min(Number(limit) || 24, 40));
+  let visitedFiles = 0;
+
+  const walk = (directory, depth) => {
+    if (depth > 5 || matches.length >= maxMatches || visitedFiles >= 5000) return;
+    const children = fs.readdirSync(directory, { withFileTypes: true });
+    for (const child of children) {
+      if (matches.length >= maxMatches || visitedFiles >= 5000) break;
+      if (child.name.startsWith('.') || WORKSPACE_IGNORED_NAMES.has(child.name) || child.isSymbolicLink()) continue;
+      const fullChildPath = path.join(directory, child.name);
+      const relativeChildPath = path.relative(rootDir, fullChildPath);
+      if (relativeChildPath === 'server/data' || relativeChildPath.startsWith(`server${path.sep}data${path.sep}`)) continue;
+      if (isSensitiveWorkspacePath(relativeChildPath)) continue;
+      if (child.isDirectory()) {
+        walk(fullChildPath, depth + 1);
+        continue;
+      }
+      if (!WORKSPACE_TEXT_EXTENSIONS.has(path.extname(child.name).toLowerCase()) || /^package-lock\./i.test(child.name)) continue;
+      const stat = fs.statSync(fullChildPath);
+      if (!stat.isFile() || stat.size > 400_000) continue;
+      visitedFiles += 1;
+      const lines = fs.readFileSync(fullChildPath, 'utf8').split(/\r?\n/);
+      for (let index = 0; index < lines.length && matches.length < maxMatches; index += 1) {
+        if (lines[index].toLowerCase().includes(normalizedQuery.toLowerCase())) {
+          matches.push(`${relativeChildPath}:${index + 1}: ${redactLikelySecrets(lines[index].trim()).slice(0, 280)}`);
+        }
+      }
+    }
+  };
+
+  walk(rootDir, 0);
+  return matches.length
+    ? `Matches for "${normalizedQuery}":\n${matches.join('\n')}`
+    : `No matches found for "${normalizedQuery}" in readable workspace files.`;
 }
 
 async function runWorkspaceCommand(command) {
@@ -572,7 +745,7 @@ async function runWorkspaceCommand(command) {
   return output.slice(0, 2500);
 }
 
-async function executeAgentTool(tool, args = {}) {
+async function executeAgentTool(tool, args = {}, signal) {
   const start = Date.now();
   try {
     switch (tool) {
@@ -709,25 +882,47 @@ async function executeAgentTool(tool, args = {}) {
       }
 
       case 'fs_write': {
-        const { fullPath, relPath } = resolveWorkspacePath(args.path || 'workspace-note.md');
-        fs.mkdirSync(path.dirname(fullPath), { recursive: true });
-        fs.writeFileSync(fullPath, String(args.content || ''), 'utf8');
+        const { fullPath, relPath, safeRelPath } = resolveWorkspacePath(args.path || 'workspace-note.md');
+        assertReadableWorkspacePath(relPath);
+        assertReadableWorkspacePath(safeRelPath);
+        const parent = path.dirname(fullPath);
+        if (!fs.existsSync(parent) || !fs.statSync(parent).isDirectory()) {
+          throw new Error('The parent folder must already exist inside the workspace.');
+        }
+        const realParent = fs.realpathSync(parent);
+        if (!isInsideDirectory(fs.realpathSync(rootDir), realParent)) {
+          throw new Error('Symlink paths outside the workspace are not permitted.');
+        }
+        const content = String(args.content || '');
+        if (content.length > 200_000) throw new Error('New files are limited to 200 KB.');
+        const descriptor = fs.openSync(fullPath, 'wx', 0o600);
+        try {
+          fs.writeFileSync(descriptor, content, 'utf8');
+        } finally {
+          fs.closeSync(descriptor);
+        }
         return {
           id: `act-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
           tool: 'fs_write',
           title: `Wrote File: ${relPath}`,
           status: 'success',
-          output: `Saved ${String(args.content || '').length} bytes to ${relPath}`,
+          output: `Created ${content.length} bytes at ${relPath}`,
           durationMs: Date.now() - start,
         };
       }
 
       case 'fs_read': {
-        const { fullPath, relPath } = resolveWorkspacePath(args.path || 'README.md');
+        const { fullPath, relPath, safeRelPath } = resolveWorkspacePath(args.path || 'README.md');
+        assertReadableWorkspacePath(relPath);
+        assertReadableWorkspacePath(safeRelPath);
         if (!fs.existsSync(fullPath) || !fs.statSync(fullPath).isFile()) {
           throw new Error(`File not found: ${relPath}`);
         }
-        const content = fs.readFileSync(fullPath, 'utf8').slice(0, 2500);
+        if (!WORKSPACE_TEXT_EXTENSIONS.has(path.extname(fullPath).toLowerCase())) {
+          throw new Error('Aspira reads text and source files only.');
+        }
+        if (fs.statSync(fullPath).size > 1_000_000) throw new Error('This file is too large to read through Aspira.');
+        const content = redactLikelySecrets(fs.readFileSync(fullPath, 'utf8')).slice(0, 5000);
         return {
           id: `act-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
           tool: 'fs_read',
@@ -738,12 +933,37 @@ async function executeAgentTool(tool, args = {}) {
         };
       }
 
+      case 'fs_list': {
+        const output = listWorkspaceFiles(args.path || '.', args.limit);
+        return {
+          id: `act-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          tool: 'fs_list',
+          title: 'Listed workspace files',
+          status: 'success',
+          output,
+          durationMs: Date.now() - start,
+        };
+      }
+
+      case 'fs_search': {
+        const output = searchWorkspaceText(args.query, args.limit);
+        return {
+          id: `act-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          tool: 'fs_search',
+          title: `Searched workspace for "${String(args.query || '').slice(0, 80)}"`,
+          status: 'success',
+          output,
+          durationMs: Date.now() - start,
+        };
+      }
+
       case 'web_search': {
         const query = String(args.query || 'AI agents');
         const results = [];
         try {
           const ddgRes = await fetch(
-            `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1`
+            `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1`,
+            { signal }
           );
           if (ddgRes.ok) {
             const ddg = await ddgRes.json();
@@ -762,12 +982,12 @@ async function executeAgentTool(tool, args = {}) {
 
         try {
           if (results.length < 2) {
-            const hnRes = await fetch('https://hacker-news.firebaseio.com/v0/topstories.json');
+            const hnRes = await fetch('https://hacker-news.firebaseio.com/v0/topstories.json', { signal });
             if (hnRes.ok) {
               const ids = (await hnRes.json()).slice(0, 5);
               const stories = await Promise.all(
                 ids.map((id) =>
-                  fetch(`https://hacker-news.firebaseio.com/v0/item/${id}.json`).then((r) => r.json())
+                  fetch(`https://hacker-news.firebaseio.com/v0/item/${id}.json`, { signal }).then((r) => r.json())
                 )
               );
               for (const s of stories) {
@@ -852,6 +1072,277 @@ async function executeAgentTool(tool, args = {}) {
       durationMs: Date.now() - start,
     };
   }
+}
+
+const MODEL_ACTION_TOOLS = `Available Aspira tools:
+- workspace.git_status {}: read the current branch and working-tree status.
+- workspace.list_files {path?: string}: list non-hidden workspace files under a relative folder.
+- workspace.search_text {query: string}: search readable source and documentation files.
+- workspace.read_file {path: string}: read a workspace text file; credential files are blocked.
+- workspace.create_file {path: string, content: string}: create a new file only; existing files cannot be overwritten.
+- system.status {}: read basic Mac CPU, memory, battery, and detected provider CLI status.
+- app.open {app: string}: open one of Safari, Notes, Calendar, Calculator, Terminal, Finder, Mail, Messages, Reminders, Music, Preview, Activity Monitor, System Settings, Cursor, ChatGPT, Claude, Gemini, Ollama, Spotify, or Xcode.
+- browser.open_url {url: string}: open a public HTTP(S) URL in the default browser.
+- web.search {query: string}: search public web sources; use only when the user asks for search or current information.
+- memory.save {content: string, category?: "goal"|"task"|"preference"|"insight"}: save context only when the user explicitly asks Aspira to remember it.
+
+To request a tool, return exactly one JSON object and no prose:
+{"type":"aspira_tool_call","tool":"workspace.git_status","arguments":{}}
+Use a tool only when it materially helps the request. Do not claim it ran until the app returns its result. Never request credentials, hidden files, arbitrary shell commands, or edits to existing files. After a tool result, either request one more tool or answer naturally.`;
+
+function parseModelToolCall(text) {
+  let candidate = String(text || '').trim();
+  const fenced = candidate.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+  if (fenced) candidate = fenced[1].trim();
+  try {
+    const value = JSON.parse(candidate);
+    if (value?.type !== 'aspira_tool_call' || typeof value.tool !== 'string') return null;
+    return {
+      tool: value.tool,
+      arguments: value.arguments && typeof value.arguments === 'object' && !Array.isArray(value.arguments)
+        ? value.arguments
+        : {},
+    };
+  } catch {
+    return null;
+  }
+}
+
+function toolAuthorizationError(tool, prompt) {
+  const text = String(prompt || '').toLowerCase();
+  const namesWorkspaceFile = /(?:^|[\s`'"(])(?:[\w.-]+\/)*[\w.-]+\.(?:md|mdx|txt|json|ts|tsx|js|jsx|css|html|py|yml|yaml|toml|xml|sh|sql|swift|go|rs)\b/i.test(text);
+  const hasWorkspaceIntent = namesWorkspaceFile || /\b(workspace|repository|repo|codebase|project|folder|file|files|source|git|branch|diff|code)\b/.test(text);
+  if (tool.startsWith('workspace.') && !hasWorkspaceIntent) {
+    return 'Aspira can inspect workspace files only when the user asks about the project, code, files, or repository.';
+  }
+  if (tool === 'workspace.git_status' && !/\b(git|repository|repo|branch|working tree|changes|diff|status)\b/.test(text)) {
+    return 'The user did not ask to inspect Git or repository changes.';
+  }
+  if (tool === 'workspace.create_file' && !/\b(create|write|save|generate|make)\b/.test(text)) {
+    return 'Creating a file requires an explicit request to create or write one.';
+  }
+  if (tool === 'system.status' && !/\b(system|mac|macos|cpu|memory|ram|battery|power|hardware)\b/.test(text)) {
+    return 'The user did not ask for local system information.';
+  }
+  if (tool === 'app.open' && !/\b(open|launch|start)\b/.test(text)) {
+    return 'Opening an app requires an explicit request to open or launch it.';
+  }
+  if (tool === 'browser.open_url' && !/\b(open|visit|go to|browse to)\b/.test(text)) {
+    return 'Opening a URL requires an explicit request to open or visit it.';
+  }
+  if (tool === 'web.search' && !/\b(search|look up|latest|current|news|research|browse)\b/.test(text)) {
+    return 'Public web search requires an explicit search, research, or current-information request.';
+  }
+  if (tool === 'memory.save' && !/\b(remember|save to memory|don't forget|do not forget)\b/.test(text)) {
+    return 'Saving a memory requires an explicit request to remember or save it.';
+  }
+  return null;
+}
+
+function makeToolFailure(tool, message) {
+  return {
+    id: `act-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    tool,
+    title: `Tool request not run: ${tool}`,
+    status: 'error',
+    output: message,
+    durationMs: 0,
+  };
+}
+
+async function executeModelToolCall(toolCall, userPrompt, leadAgent, signal) {
+  const { tool, arguments: args } = toolCall;
+  const denied = toolAuthorizationError(tool, userPrompt);
+  if (denied) return makeToolFailure(tool, denied);
+
+  switch (tool) {
+    case 'workspace.git_status':
+      return executeAgentTool('shell_exec', { command: 'git status' }, signal);
+    case 'workspace.list_files':
+      return executeAgentTool('fs_list', { path: args.path || '.', limit: 160 }, signal);
+    case 'workspace.search_text':
+      return executeAgentTool('fs_search', { query: String(args.query || '').slice(0, 120) }, signal);
+    case 'workspace.read_file': {
+      const filePath = String(args.path || '').trim();
+      if (!filePath) return makeToolFailure(tool, 'A relative workspace file path is required.');
+      return executeAgentTool('fs_read', { path: filePath }, signal);
+    }
+    case 'workspace.create_file': {
+      const filePath = String(args.path || '').trim();
+      if (!filePath) return makeToolFailure(tool, 'A relative path for the new file is required.');
+      return executeAgentTool('fs_write', {
+        path: filePath,
+        content: String(args.content || ''),
+      }, signal);
+    }
+    case 'system.status':
+      return executeAgentTool('system_status', {}, signal);
+    case 'app.open': {
+      const allowedApps = new Set([
+        'safari', 'notes', 'calendar', 'calculator', 'terminal', 'finder', 'mail', 'messages',
+        'reminders', 'music', 'preview', 'activity monitor', 'system settings', 'cursor',
+        'chatgpt', 'claude', 'gemini', 'ollama', 'spotify', 'xcode',
+      ]);
+      const app = String(args.app || '').trim();
+      if (!allowedApps.has(app.toLowerCase())) return makeToolFailure(tool, 'That app is not in Aspira’s local app allowlist.');
+      return executeAgentTool('macos_app', { app }, signal);
+    }
+    case 'browser.open_url': {
+      const url = String(args.url || '').trim();
+      if (!url) return makeToolFailure(tool, 'A public HTTP(S) URL is required.');
+      return executeAgentTool('open_url', { url }, signal);
+    }
+    case 'web.search': {
+      const query = String(args.query || '').trim().slice(0, 200);
+      if (!query) return makeToolFailure(tool, 'A search query is required.');
+      return executeAgentTool('web_search', { query }, signal);
+    }
+    case 'memory.save': {
+      const content = String(args.content || '').trim().slice(0, 1000);
+      if (!content) return makeToolFailure(tool, 'Memory content is required.');
+      const categories = new Set(['goal', 'task', 'preference', 'insight']);
+      const category = categories.has(args.category) ? args.category : 'insight';
+      return executeAgentTool('memory_store', { content, category, sourceAgent: leadAgent }, signal);
+    }
+    default:
+      return makeToolFailure(tool, 'That tool is not available in Aspira.');
+  }
+}
+
+async function requestProviderCompletion({
+  modelId,
+  cliPrompt,
+  systemPrompt,
+  userPrompt,
+  apiKeys,
+  endpointConfig,
+  signal,
+  providerFetch,
+}) {
+  let lastError = null;
+  const subscriptions = detectSubscriptions();
+
+  if (!apiKeys[modelId]) {
+    const subscription = await runSubscriptionInference(modelId, cliPrompt, subscriptions, signal);
+    if (subscription?.text) {
+      return { source: 'SUBSCRIPTION_OAUTH', subscriptionBadge: subscription.badge, text: subscription.text };
+    }
+    if (subscription?.error) lastError = subscription.error;
+  }
+
+  const responseText = async (response, extract) => {
+    if (!response.ok) {
+      lastError = `The ${modelId} provider returned HTTP ${response.status}.`;
+      return null;
+    }
+    const data = await response.json();
+    const text = extract(data);
+    if (typeof text === 'string' && text.trim()) return text.trim();
+    lastError = `The ${modelId} provider returned no text response.`;
+    return null;
+  };
+
+  const geminiKey = apiKeys.argon;
+  if (modelId === 'argon' && geminiKey) {
+    const response = await providerFetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contents: [{ parts: [{ text: `${systemPrompt}\n\n${userPrompt}` }] }] }),
+      }
+    );
+    const text = await responseText(response, (data) => data?.candidates?.[0]?.content?.parts?.[0]?.text);
+    if (text) return { source: 'LIVE_API', text };
+  }
+
+  const claudeKey = apiKeys.claude;
+  if (modelId === 'claude' && claudeKey) {
+    const response = await providerFetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': claudeKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-3-7-sonnet-latest',
+        max_tokens: 1200,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: userPrompt }],
+      }),
+    });
+    const text = await responseText(response, (data) => data?.content?.[0]?.text);
+    if (text) return { source: 'LIVE_API', text };
+  }
+
+  const grokKey = apiKeys.grok;
+  if (modelId === 'grok' && grokKey) {
+    const response = await providerFetch('https://api.x.ai/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${grokKey}` },
+      body: JSON.stringify({
+        model: 'grok-3-latest',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+      }),
+    });
+    const text = await responseText(response, (data) => data?.choices?.[0]?.message?.content);
+    if (text) return { source: 'LIVE_API', text };
+  }
+
+  const gptKey = apiKeys.gpt;
+  if (modelId === 'gpt' && gptKey) {
+    const response = await providerFetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${gptKey}` },
+      body: JSON.stringify({
+        model: 'gpt-4o',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+      }),
+    });
+    const text = await responseText(response, (data) => data?.choices?.[0]?.message?.content);
+    if (text) return { source: 'LIVE_API', text };
+  }
+
+  if (endpointConfig?.baseUrl) {
+    let endpoint;
+    try {
+      endpoint = new URL(endpointConfig.baseUrl);
+    } catch {
+      return { error: 'The configured model endpoint URL is invalid.' };
+    }
+    if (!['http:', 'https:'].includes(endpoint.protocol) || endpoint.username || endpoint.password) {
+      return { error: 'The configured model endpoint must be an HTTP(S) URL without embedded credentials.' };
+    }
+    const customKey = apiKeys[modelId] || '';
+    const headers = { 'Content-Type': 'application/json' };
+    if (customKey) headers.Authorization = `Bearer ${customKey}`;
+    const response = await providerFetch(`${endpointConfig.baseUrl.replace(/\/$/, '')}/chat/completions`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        model: endpointConfig.apiModelId || modelId,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+      }),
+    });
+    const text = await responseText(response, (data) => data?.choices?.[0]?.message?.content);
+    if (text) return { source: 'LIVE_API', text };
+  }
+
+  return {
+    error: lastError || (subscriptions[modelId]?.cliPath
+      ? `${modelId} CLI did not return a response. Check its sign-in and connection, then retry.`
+      : `${modelId} is not connected. Sign in to its supported CLI or configure a provider in Settings.`),
+  };
 }
 
 // ============================================================================
@@ -1338,7 +1829,9 @@ app.post('/api/tts', async (req, res) => {
         voice,
         response_format: 'wav',
       }),
-      signal: AbortSignal.timeout(90000),
+      // First use may fetch and load a multi-gigabyte local model. Give the
+      // on-device service time to complete its cold start before failing.
+      signal: AbortSignal.timeout(5 * 60 * 1000),
     });
     if (r.ok) {
       const arrayBuffer = await r.arrayBuffer();
@@ -1410,7 +1903,10 @@ app.post('/api/dispatch', async (req, res) => {
     if (!res.writableFinished) requestAbort.abort();
   });
   const providerFetch = (input, init = {}) =>
-    fetch(input, { ...init, signal: requestAbort.signal });
+    fetch(input, {
+      ...init,
+      signal: AbortSignal.any([requestAbort.signal, AbortSignal.timeout(60_000)]),
+    });
 
   const {
     modelId,
@@ -1423,9 +1919,9 @@ app.post('/api/dispatch', async (req, res) => {
   } = req.body || {};
   const startTime = Date.now();
 
-  // 1. If this agent is the lead executor for this turn, detect & execute real host actions first!
+  // Keep deterministic local actions available when the user did not select a model.
   let executedActions = [];
-  if (executeActions && prompt) {
+  if (modelId === 'local' && executeActions && prompt) {
     executedActions = await detectAndRunNaturalActions(prompt, modelId);
   }
   if (requestAbort.signal.aborted) return;
@@ -1439,13 +1935,6 @@ app.post('/api/dispatch', async (req, res) => {
           .join('\n')}`
       : '';
 
-  const actionBlock =
-    executedActions.length > 0
-      ? `\n\n[REAL ACTIONS ALREADY EXECUTED ON USER'S MAC FOR THIS TURN]:\n${executedActions
-          .map((a) => `- Tool \`${a.tool}\` (${a.title}): ${a.output}`)
-          .join('\n')}\nAcknowledge these completed actions naturally and conversationally in your response.`
-      : '';
-
   const recentHistoryText =
     Array.isArray(conversationHistory) && conversationHistory.length > 0
       ? `\n\n[RECENT CONVERSATION HISTORY]:\n${conversationHistory
@@ -1456,10 +1945,7 @@ app.post('/api/dispatch', async (req, res) => {
 
   const fullSystemPrompt = `${
     systemPrompt || 'You are a conversational personal AI assistant inside Aspira.'
-  }\nRespond naturally and be concise. Be clear about completed actions and uncertainty. Do not claim to have used a tool unless its result is included here.${memoryBlock}${actionBlock}`;
-
-  const combinedPromptForCli = `${fullSystemPrompt}${recentHistoryText}\n\nUser: ${prompt}\n\nRespond directly in 2-3 concise conversational sentences:`;
-  let unavailableReason = 'No connected model returned a response. Check its connection in Settings.';
+  }\nRespond naturally and be concise. Be clear about completed actions and uncertainty. Do not claim to have used a tool unless its result is included here.${memoryBlock}${executeActions ? `\n\n${MODEL_ACTION_TOOLS}` : ''}`;
 
   if (modelId === 'local') {
     if (!executedActions.length) {
@@ -1485,205 +1971,94 @@ app.post('/api/dispatch', async (req, res) => {
     });
   }
 
+  const baseUserPrompt = `${recentHistoryText}\n\nUser: ${prompt}`;
+  const toolResults = [];
+  let completion = null;
+  let toolCallCount = 0;
+  const maxToolCalls = 3;
+
   try {
-    // ========================================================================
-    // TIER 1: Provider CLI subscription bridge (API keys remain optional).
-    const subs = detectSubscriptions();
-    if (!apiKeys[modelId] && !subs[modelId]?.cliPath && !endpointConfig?.baseUrl) {
-      unavailableReason = `${modelId} is not connected. Sign in to its supported CLI or configure a provider in Settings.`;
-    } else if (subs[modelId]?.cliPath) {
-      unavailableReason = `${modelId} CLI did not return a response. Sign in or refresh its session, then try again.`;
-    }
-    if (!apiKeys[modelId]) {
-      const subOut = await runSubscriptionInference(modelId, combinedPromptForCli, subs, requestAbort.signal);
-      if (subOut?.text) {
-        return res.json({
-          source: 'SUBSCRIPTION_OAUTH',
-          subscriptionBadge: subOut.badge,
+    while (!requestAbort.signal.aborted) {
+      const toolResultContext = toolResults.length
+        ? `\n\n[ASPIRA TOOL RESULTS]\n${toolResults.map((action, index) =>
+            `${index + 1}. ${action.tool} — ${action.status}: ${action.title}\n${String(action.output || '').slice(0, 3500)}`
+          ).join('\n\n')}`
+        : '';
+      const currentSystemPrompt = toolCallCount >= maxToolCalls
+        ? `${fullSystemPrompt}\n\nDo not request more tools. Give the best concise answer using the results already provided.`
+        : fullSystemPrompt;
+      const currentUserPrompt = `${baseUserPrompt}${toolResultContext}\n\nRespond conversationally and be clear about what you did.`;
+      const cliPrompt = `${currentSystemPrompt}\n\n${currentUserPrompt}`;
+      completion = await requestProviderCompletion({
+        modelId,
+        cliPrompt,
+        systemPrompt: currentSystemPrompt,
+        userPrompt: currentUserPrompt,
+        apiKeys,
+        endpointConfig,
+        signal: requestAbort.signal,
+        providerFetch,
+      });
+
+      if (requestAbort.signal.aborted) return;
+      if (!completion?.text) {
+        return res.status(503).json({
+          source: 'UNAVAILABLE',
           modelId,
-          text: subOut.text,
+          text: null,
+          error: completion?.error || 'The selected provider did not return a response.',
           executedActions,
           memories: loadMemories(),
           latencyMs: Date.now() - startTime,
         });
       }
-      if (subOut?.error) unavailableReason = subOut.error;
+
+      const toolCall = executeActions && toolCallCount < maxToolCalls
+        ? parseModelToolCall(completion.text)
+        : null;
+      if (!toolCall) break;
+
+      toolCallCount += 1;
+      const action = await executeModelToolCall(toolCall, prompt, modelId, requestAbort.signal);
+      if (requestAbort.signal.aborted) return;
+      action.tool = toolCall.tool;
+      const modelToolTitles = {
+        'workspace.git_status': 'Read Git status',
+        'workspace.list_files': 'List workspace files',
+        'workspace.search_text': 'Search workspace files',
+        'workspace.read_file': 'Read workspace file',
+        'workspace.create_file': 'Create workspace file',
+        'system.status': 'Read system status',
+        'app.open': `Open ${String(toolCall.arguments.app || 'app')}`,
+        'browser.open_url': 'Open URL in browser',
+        'web.search': 'Search public web',
+        'memory.save': 'Save requested memory',
+      };
+      action.title = modelToolTitles[toolCall.tool] || action.title;
+      executedActions.push(action);
+      toolResults.push(action);
     }
-
-    // ========================================================================
-    // TIER 2: OPTIONAL CLOUD API KEYS (If user explicitly configured BYOK)
-    // ========================================================================
-    const geminiKey = apiKeys.argon || process.env.GEMINI_API_KEY;
-    if (modelId === 'argon' && geminiKey) {
-      const r = await providerFetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: combinedPromptForCli }] }],
-          }),
-        }
-      );
-      if (r.ok) {
-        const data = await r.json();
-        const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (text) {
-          return res.json({
-            source: 'LIVE_API',
-            modelId,
-            text,
-            executedActions,
-            memories: loadMemories(),
-            latencyMs: Date.now() - startTime,
-          });
-        }
-      }
-    }
-
-    const claudeKey = apiKeys.claude || process.env.ANTHROPIC_API_KEY;
-    if (modelId === 'claude' && claudeKey) {
-      const r = await providerFetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': claudeKey,
-          'anthropic-version': '2023-06-01',
-        },
-        body: JSON.stringify({
-          model: 'claude-3-7-sonnet-latest',
-          max_tokens: 600,
-          system: fullSystemPrompt,
-          messages: [{ role: 'user', content: `${recentHistoryText}\n\nUser: ${prompt}` }],
-        }),
-      });
-      if (r.ok) {
-        const data = await r.json();
-        const text = data?.content?.[0]?.text;
-        if (text) {
-          return res.json({
-            source: 'LIVE_API',
-            modelId,
-            text,
-            executedActions,
-            memories: loadMemories(),
-            latencyMs: Date.now() - startTime,
-          });
-        }
-      }
-    }
-
-    const grokKey = apiKeys.grok || process.env.XAI_API_KEY;
-    if (modelId === 'grok' && grokKey) {
-      const r = await providerFetch('https://api.x.ai/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${grokKey}`,
-        },
-        body: JSON.stringify({
-          model: 'grok-3-latest',
-          messages: [
-            { role: 'system', content: fullSystemPrompt },
-            { role: 'user', content: `${recentHistoryText}\n\nUser: ${prompt}` },
-          ],
-        }),
-      });
-      if (r.ok) {
-        const data = await r.json();
-        const text = data?.choices?.[0]?.message?.content;
-        if (text) {
-          return res.json({
-            source: 'LIVE_API',
-            modelId,
-            text,
-            executedActions,
-            memories: loadMemories(),
-            latencyMs: Date.now() - startTime,
-          });
-        }
-      }
-    }
-
-    const gptKey = apiKeys.gpt || process.env.OPENAI_API_KEY;
-    if (modelId === 'gpt' && gptKey) {
-      const r = await providerFetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${gptKey}`,
-        },
-        body: JSON.stringify({
-          model: 'gpt-4o',
-          messages: [
-            { role: 'system', content: fullSystemPrompt },
-            { role: 'user', content: `${recentHistoryText}\n\nUser: ${prompt}` },
-          ],
-        }),
-      });
-      if (r.ok) {
-        const data = await r.json();
-        const text = data?.choices?.[0]?.message?.content;
-        if (text) {
-          return res.json({
-            source: 'LIVE_API',
-            modelId,
-            text,
-            executedActions,
-            memories: loadMemories(),
-            latencyMs: Date.now() - startTime,
-          });
-        }
-      }
-    }
-
-    // ========================================================================
-    // TIER 3: CUSTOM OPENAI-COMPATIBLE OR CLIProxyAPI SUBSCRIPTION BRIDGE
-    // ========================================================================
-    if (endpointConfig?.baseUrl) {
-      const customKey = apiKeys[modelId] || '';
-      const headers = { 'Content-Type': 'application/json' };
-      if (customKey) headers.Authorization = `Bearer ${customKey}`;
-
-      const r = await providerFetch(`${endpointConfig.baseUrl.replace(/\/$/, '')}/chat/completions`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          model: endpointConfig.apiModelId || modelId,
-          messages: [
-            { role: 'system', content: fullSystemPrompt },
-            { role: 'user', content: `${recentHistoryText}\n\nUser: ${prompt}` },
-          ],
-        }),
-      });
-      if (r.ok) {
-        const data = await r.json();
-        const text = data?.choices?.[0]?.message?.content;
-        if (text) {
-          return res.json({
-            source: 'LIVE_API',
-            modelId,
-            text,
-            executedActions,
-            memories: loadMemories(),
-            latencyMs: Date.now() - startTime,
-          });
-        }
-      }
-    }
-
   } catch (error) {
     if (requestAbort.signal.aborted) return;
-    unavailableReason = error instanceof Error ? error.message : unavailableReason;
+    const message = error instanceof Error ? error.message : 'The provider request failed.';
+    return res.status(503).json({
+      source: 'UNAVAILABLE',
+      modelId,
+      text: null,
+      error: message,
+      executedActions,
+      memories: loadMemories(),
+      latencyMs: Date.now() - startTime,
+    });
   }
 
   if (requestAbort.signal.aborted) return;
-
-  return res.status(503).json({
-    source: 'UNAVAILABLE',
+  return res.json({
+    source: completion?.source || 'UNAVAILABLE',
+    subscriptionBadge: completion?.subscriptionBadge,
     modelId,
-    text: null,
-    error: unavailableReason,
+    text: completion?.text || null,
+    error: completion?.text ? undefined : 'The selected provider did not return a response.',
     executedActions,
     memories: loadMemories(),
     latencyMs: Date.now() - startTime,

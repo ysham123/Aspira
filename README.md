@@ -23,24 +23,26 @@ Aspira can call these command-line tools when they are installed and signed in o
 
 | Provider | CLI | Connection notes |
 | --- | --- | --- |
-| Google models | Antigravity CLI (`agy`) | Sign in through the CLI. Aspira calls its documented headless prompt mode with sandboxing and plan mode. |
-| Anthropic | Claude Code (`claude`) | Sign in through Claude Code. Aspira uses print mode with plan permissions and caps MCP startup at 5 seconds by default. Set `MCP_TIMEOUT` in Aspira's environment to choose a different cap. |
-| OpenAI | Codex CLI (`codex`) | Sign in with ChatGPT. Aspira invokes `codex exec` in read-only mode. |
-| xAI | Grok Build (`grok`) | Sign in through Grok Build. Aspira uses its headless prompt mode. |
+| Google models | Antigravity CLI (`agy`) | Sign in through the CLI. Aspira sends prompts over stdin and uses a fresh working directory, sandboxing, plan mode, and disabled slash-command expansion. |
+| Anthropic | Claude Code (`claude`) | Sign in through Claude Code. Aspira starts a safe-mode print session with the CLI's own tools, MCP connectors, hooks, skills, project instructions, and transcript persistence disabled. Aspira sends the prompt over stdin and provides its own bounded tool actions. |
+| OpenAI | Codex CLI (`codex`) | Sign in with ChatGPT. Aspira ignores user/project config and rules, starts an ephemeral read-only session in a private temporary directory, and restricts its filesystem profile to that directory plus minimal runtime paths. |
+| xAI | Grok Build (`grok`) | Sign in through Grok Build. Aspira uses a single headless turn in a private temporary directory, with an empty built-in tool list, MCP calls denied, strict sandboxing, web search disabled, and no subagents. |
 
-The **Connections** screen shows which CLI binaries it can find. For Claude Code, Aspira asks the CLI for a signed-in status without reading credential files. Other providers are confirmed only when a real request succeeds. A desktop or web-app login is not treated as an active model connection. When it finds a signed-in provider, Aspira selects that one provider for the first conversation; you can switch or add models from the bottom dock.
+The **Connections** screen distinguishes an available CLI from a verified sign-in. Claude Code and Codex report their signed-in status through their own local status commands; Antigravity and Grok are confirmed only when a real request succeeds. Aspira does not read credential files or expose account details. A desktop or web-app login is not treated as an active model connection. When it finds a signed-in provider, Aspira selects that one provider for the first conversation; you can switch or add models from the bottom dock.
 
-You can also add an OpenAI-compatible endpoint in **Settings → Agents & Hot-Plug**. For example, an Ollama server can run locally at `http://127.0.0.1:11434/v1`. Aspira does not silently substitute a different model when the selected provider is unavailable.
+You can also add an OpenAI-compatible endpoint in **Settings → Agents & Hot-Plug**. For example, an Ollama server can run locally at `http://127.0.0.1:11434/v1`. API keys entered in Aspira are separate from subscription CLIs. Aspira does not silently substitute a different model or use an API key from the shell environment when the selected provider is unavailable.
+
+Subscription CLIs run from a fresh, private temporary working directory so repository instructions and files are not inherited as their workspace. Aspira passes prompts over stdin or through a mode-0600 temporary prompt file and removes temporary files after the response. Provider-native tool access is disabled where the CLI exposes that control; the Codex read-only profile was verified to block access to a sibling directory. Grok Build still uses its installed account configuration for sign-in; Aspira blocks its MCP tool calls and built-in tools for these turns.
 
 ## What works today
 
-The chat supports provider responses and a small set of explicit local actions. Try `Run git status and tell me whether there are changes`, `Check my Mac memory and battery`, `Read README.md`, `Open Calculator`, or `Create a file called notes.md with ...`. The local tool registry also supports opening a URL, a local notification, public quick lookups, and saving context when you explicitly ask Aspira to remember something. Workspace files stay inside the project directory, and terminal actions use an exact read-only allowlist. While a provider is responding, **Stop** cancels the request and terminates the provider CLI; a local action that already started may still finish.
+The selected lead model can request tools from Aspira's server-validated action set, then use each real result in its next response. Try `Read README.md and explain how to start the app`, `Run git status and tell me whether there are changes`, `Check my Mac memory and battery`, `Open Calculator`, or `Create a file called notes.md with ...`. Tools can list, search, and read workspace text/source files; create a new file; inspect Git status or basic system status; open an allowlisted Mac app or a URL; search the public web; and save a memory when you explicitly ask. Aspira allows up to three tool actions per provider turn. With no model selected, a small intent parser still handles supported local requests.
 
-The action layer is still an explicit intent parser, not a general model tool-calling loop. It does not run arbitrary shell commands, edit arbitrary existing files, or run playbooks on a schedule. Requests outside the supported action set need a connected model for a conversational answer.
+This is a bounded text-based tool protocol, not arbitrary computer control. Aspira does not run arbitrary shell commands, overwrite existing files, or run playbooks on a schedule. Workspace reads exclude hidden, generated, dependency, local-data, and likely credential paths. File creation is limited to new files of at most 200 KB in an existing workspace folder. Terminal execution remains an exact read-only command allowlist. While a provider is responding, **Stop** cancels the request and terminates the provider CLI; a local action that already started may still finish.
 
 ## Local data
 
-Saved memories and user-created playbooks live in `server/data/` and are ignored by Git. They remain on this Mac. Memories are added only when you ask Aspira to save one. Conversation turns are currently held in the open browser tab and clear when the page reloads.
+Saved memories and user-created playbooks live in `server/data/` and are ignored by Git. They remain on this Mac. Memories are added only when you ask Aspira to save one. Aspira keeps up to 24 conversations in this browser's local storage so you can search, reopen, and delete them; this data is not synced or encrypted. When you use a provider, Aspira sends your prompt, a small recent conversation window, and up to eight saved memory notes as context. If the model reads a workspace file or runs another tool, Aspira sends that tool's bounded result to the same provider so it can answer.
 
 ## Optional local voice
 
