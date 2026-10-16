@@ -114,6 +114,7 @@ export const App: React.FC = () => {
   const [routines, setRoutines] = useState<LocalPlaybook[]>([]);
   const [subscriptionStatuses, setSubscriptionStatuses] = useState<Record<string, SubscriptionStatus>>({});
   const [isExecuting, setIsExecuting] = useState(false);
+  const [activeTaskLabel, setActiveTaskLabel] = useState('');
   const [canCancelRequest, setCanCancelRequest] = useState(false);
   const [commandInput, setCommandInput] = useState('');
   const [awayBriefingBanner, setAwayBriefingBanner] = useState<string | null>(null);
@@ -398,9 +399,12 @@ export const App: React.FC = () => {
       const cap = selectedCapability;
       if (!cleanPrompt) return;
 
+      const concisePrompt = cleanPrompt.replace(/\s+/g, ' ');
+      const taskLabel = concisePrompt.length > 88 ? `${concisePrompt.slice(0, 85)}…` : concisePrompt;
       const controller = new AbortController();
       abortControllerRef.current = controller;
       setCanCancelRequest(true);
+      setActiveTaskLabel(`Working on: ${taskLabel}`);
       setIsExecuting(true);
       try {
         const activeList = models.filter((m) => awakeModelIds.includes(m.id));
@@ -453,6 +457,7 @@ export const App: React.FC = () => {
       } finally {
         if (abortControllerRef.current === controller) abortControllerRef.current = null;
         setCanCancelRequest(false);
+        setActiveTaskLabel('');
         setIsExecuting(false);
       }
     },
@@ -462,6 +467,8 @@ export const App: React.FC = () => {
   // Run a user-triggered local playbook.
   const handleRunRoutine = useCallback(
     async (routineId: string) => {
+      const routineTitle = routines.find((routine) => routine.id === routineId)?.title;
+      setActiveTaskLabel(routineTitle ? `Running ${routineTitle}` : 'Running local playbook');
       setIsExecuting(true);
       try {
         const res = await fetch(`/api/routines/${routineId}/run`, { method: 'POST' });
@@ -523,15 +530,19 @@ export const App: React.FC = () => {
           error instanceof Error ? error.message : 'Aspira could not run that playbook.'
         );
       } finally {
+        setActiveTaskLabel('');
         setIsExecuting(false);
       }
     },
-    [appendLocalNotice]
+    [appendLocalNotice, routines]
   );
 
   // Execute a Direct Single Tool Action (e.g. clicking "Open Calculator" or "Send macOS Notification")
   const handleExecuteDirectAction = useCallback(
     async (tool: string, args: Record<string, unknown>, label: string) => {
+      const conciseLabel = label.replace(/\s+/g, ' ').trim();
+      const taskLabel = conciseLabel.length > 88 ? `${conciseLabel.slice(0, 85)}…` : conciseLabel;
+      setActiveTaskLabel(`Running ${taskLabel}`);
       setIsExecuting(true);
       try {
         const res = await fetch('/api/execute-action', {
@@ -587,6 +598,7 @@ export const App: React.FC = () => {
           error instanceof Error ? error.message : 'Aspira could not reach its local action service.'
         );
       } finally {
+        setActiveTaskLabel('');
         setIsExecuting(false);
       }
     },
@@ -1024,6 +1036,7 @@ export const App: React.FC = () => {
           onRunRoutine={handleRunRoutine}
           onExecuteDirectAction={handleExecuteDirectAction}
           isExecuting={isExecuting}
+          activeTaskLabel={activeTaskLabel}
           onRunPrompt={(prompt) => handleRunDirective(prompt, 'text', true)}
           onOpenConnections={() => setVaultModalOpen(true)}
           duplexVoiceActive={duplexVoiceActive}

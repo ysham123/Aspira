@@ -57,6 +57,7 @@ interface SpatialModeDeckProps {
   onRunRoutine: (routineId: string) => void;
   onExecuteDirectAction: (tool: string, args: Record<string, unknown>, label: string) => void;
   isExecuting: boolean;
+  activeTaskLabel: string;
   onRunPrompt: (prompt: string) => void;
   onOpenConnections: () => void;
   duplexVoiceActive: boolean;
@@ -89,6 +90,7 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
   onRunRoutine,
   onExecuteDirectAction,
   isExecuting,
+  activeTaskLabel,
   onRunPrompt,
   onOpenConnections,
   duplexVoiceActive,
@@ -587,12 +589,12 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
             })}
 
             {isExecuting && (
-              <div className="aspira-progress-state" role="status" aria-live="polite">
+              <div className="aspira-progress-state" role="status" aria-live="polite" aria-atomic="true">
                 <span className="aspira-progress-indicator" aria-hidden="true" />
-                <span>
-                  {awakeModelIds.length
+                <span className="min-w-0 break-words">
+                  {activeTaskLabel || (awakeModelIds.length
                     ? `Thinking with ${awakeModelIds.map((id) => models.find((model) => model.id === id)?.codeName || id).join(' and ')}…`
-                    : 'Running your request…'}
+                    : 'Running your request…')}
                 </span>
               </div>
             )}
