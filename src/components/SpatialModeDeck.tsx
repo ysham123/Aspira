@@ -366,13 +366,13 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
                               {stream.codeName}
                               <span
                                 className={`text-[10px] font-mono ${
-                                  stream.source === 'SUBSCRIPTION_OAUTH'
+                                  stream.source === 'PROVIDER_CLI' || stream.source === 'SUBSCRIPTION_OAUTH'
                                     ? 'text-emerald-300'
                                     : 'text-slate-400'
                                 }`}
                               >
-                                {stream.source === 'SUBSCRIPTION_OAUTH'
-                                  ? '· Subscription OAuth'
+                                {stream.source === 'PROVIDER_CLI' || stream.source === 'SUBSCRIPTION_OAUTH'
+                                  ? '· Provider CLI'
                                   : stream.source === 'LOCAL_OLLAMA'
                                   ? '· Ollama Local'
                                   : stream.source === 'LIVE_API'

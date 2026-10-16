@@ -43,7 +43,7 @@ if (!fs.existsSync(dataDir)) {
 const memoryFile = path.join(dataDir, 'memory.json');
 const routinesFile = path.join(dataDir, 'routines.json');
 
-// Provider CLI discovery and subscription-first inference bridge.
+// Provider CLI discovery and account-backed inference bridge.
 function firstExistingPath(candidates) {
   for (const p of candidates) {
     try {
@@ -56,8 +56,9 @@ function firstExistingPath(candidates) {
 }
 
 export function detectSubscriptions() {
-  // Detect local sign-in state. A desktop app alone does not provide an inference bridge.
-  // 1. CLAUDE (Claude Pro / Max via `claude` CLI OAuth)
+  // Detect supported CLIs and only the sign-in details reported by those CLIs.
+  // A desktop app alone does not provide an inference bridge; plan tier is not checked.
+  // 1. Anthropic Claude Code CLI
   const claudeCli = firstExistingPath([
     path.join(homeDir, '.local', 'bin', 'claude'),
     '/opt/homebrew/bin/claude',
@@ -68,7 +69,7 @@ export function detectSubscriptions() {
     '/Applications/Claude Science.app',
   ]);
 
-  // 2. GPT / CHATGPT (ChatGPT Plus / Pro via `codex` CLI OAuth)
+  // 2. OpenAI Codex CLI
   const codexCli = firstExistingPath([
     '/opt/homebrew/bin/codex',
     path.join(homeDir, '.local', 'bin', 'codex'),
@@ -79,7 +80,7 @@ export function detectSubscriptions() {
     '/Applications/ChatGPT Classic.app',
   ]);
 
-  // 3. GROK (SuperGrok / X Premium+ via `grok` CLI OAuth ~/.grok/auth.json)
+  // 3. xAI Grok Build CLI
   const grokCli = firstExistingPath([
     path.join(homeDir, '.grok', 'bin', 'grok'),
     '/opt/homebrew/bin/grok',
@@ -108,7 +109,7 @@ export function detectSubscriptions() {
     },
     claude: {
       modelId: 'claude',
-      providerName: 'Claude Pro / Max Subscription',
+      providerName: 'Claude Code CLI',
       cliPath: claudeCli,
       desktopAppPath: claudeDesktopApp,
       methodLabel: claudeCli
@@ -120,7 +121,7 @@ export function detectSubscriptions() {
     },
     grok: {
       modelId: 'grok',
-      providerName: 'Grok / X Premium+ Subscription',
+      providerName: 'Grok Build CLI',
       cliPath: grokCli,
       desktopAppPath: null,
       methodLabel: grokCli
@@ -130,7 +131,7 @@ export function detectSubscriptions() {
     },
     gpt: {
       modelId: 'gpt',
-      providerName: 'ChatGPT Plus / Pro Subscription',
+      providerName: 'Codex CLI',
       cliPath: codexCli,
       desktopAppPath: chatgptDesktopApp,
       methodLabel: codexCli
@@ -342,7 +343,7 @@ async function runSubscriptionInference(modelId, fullPrompt, subs, signal) {
           isolatedDir
         );
         if (out) {
-          return { text: out, badge: 'CLAUDE_SUBSCRIPTION' };
+          return { text: out, badge: 'CLAUDE_CODE_CLI' };
         }
       } catch (err) {
         if (signal?.aborted) throw err;
@@ -381,7 +382,7 @@ async function runSubscriptionInference(modelId, fullPrompt, subs, signal) {
           isolatedDir
         );
         if (out) {
-          return { text: out, badge: 'GROK_SUBSCRIPTION' };
+          return { text: out, badge: 'GROK_BUILD_CLI' };
         }
       } catch (err) {
         if (signal?.aborted) throw err;
@@ -423,7 +424,7 @@ async function runSubscriptionInference(modelId, fullPrompt, subs, signal) {
           const text = fs.readFileSync(tmpOut, 'utf8').trim();
           fs.unlinkSync(tmpOut);
           if (text) {
-            return { text, badge: 'CHATGPT_SUBSCRIPTION' };
+            return { text, badge: 'CODEX_CLI' };
           }
         }
       } catch (err) {
@@ -1225,7 +1226,7 @@ async function requestProviderCompletion({
   if (!apiKeys[modelId]) {
     const subscription = await runSubscriptionInference(modelId, cliPrompt, subscriptions, signal);
     if (subscription?.text) {
-      return { source: 'SUBSCRIPTION_OAUTH', subscriptionBadge: subscription.badge, text: subscription.text };
+      return { source: 'PROVIDER_CLI', providerBadge: subscription.badge, text: subscription.text };
     }
     if (subscription?.error) lastError = subscription.error;
   }
@@ -2055,7 +2056,7 @@ app.post('/api/dispatch', async (req, res) => {
   if (requestAbort.signal.aborted) return;
   return res.json({
     source: completion?.source || 'UNAVAILABLE',
-    subscriptionBadge: completion?.subscriptionBadge,
+    providerBadge: completion?.providerBadge,
     modelId,
     text: completion?.text || null,
     error: completion?.text ? undefined : 'The selected provider did not return a response.',

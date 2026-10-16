@@ -228,7 +228,7 @@ export interface SynergyExecutionResult {
     latencyMs: number;
     ttftMs: number;
     tokensPerSec: number;
-    source: 'SUBSCRIPTION_OAUTH' | 'LIVE_API' | 'LOCAL_OLLAMA' | 'UNAVAILABLE';
+    source: 'PROVIDER_CLI' | 'SUBSCRIPTION_OAUTH' | 'LIVE_API' | 'LOCAL_OLLAMA' | 'UNAVAILABLE'; // Keep the former label readable in saved chats.
     keyInsight: string;
     uniqueNuance: string;
     confidence: number;

@@ -161,7 +161,7 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
   if (!open) return null;
 
   const handleSubscriptionLogin = async (modelId: string) => {
-    setLoginStatusMsg(`Launching subscription sign-in for ${modelId.toUpperCase()}...`);
+    setLoginStatusMsg(`Opening ${modelId.toUpperCase()} CLI sign-in...`);
     try {
       const res = await fetch('/api/subscriptions/login', {
         method: 'POST',
@@ -173,7 +173,7 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
         setSubscriptions(data.subscriptions);
         onSubscriptionsUpdated(data.subscriptions);
       }
-      setLoginStatusMsg(data?.message || 'Subscription login launched.');
+      setLoginStatusMsg(data?.message || 'Provider CLI sign-in launched.');
     } catch {
       setLoginStatusMsg('Could not launch terminal sign-in.');
     }
@@ -313,14 +313,14 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
 
         {/* MODAL BODY */}
         <div className="aspira-vault-body p-7 overflow-y-auto custom-scrollbar space-y-6 flex-1 min-h-0">
-          {/* TAB 1: PERSONAL LLM SUBSCRIPTIONS (ZERO API KEYS REQUIRED) & VOICE AI */}
+          {/* TAB 1: PROVIDER CLI CONNECTIONS AND OPTIONAL API ENDPOINTS */}
           {activeTab === 'subscriptions' && (
             <div className="space-y-6">
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <div>
                   <h3 className="text-sm font-semibold text-white">Provider connections</h3>
                   <p className="text-xs text-slate-400 mt-0.5">
-                    Aspira can send prompts through supported, signed-in command-line tools. Having a provider’s desktop app installed does not connect its model here.
+                    Aspira connects through provider CLIs and reports sign-in only when the CLI exposes it. Plan tier is not checked; a desktop app alone does not connect a model here.
                   </p>
                 </div>
                 <button
@@ -345,7 +345,7 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
                 </div>
               )}
 
-              {/* 4 Flagship Subscription Cards */}
+              {/* Supported provider CLI connections */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
                 {(['claude', 'gpt', 'grok', 'argon'] as const).map((id) => {
                   const sub = subscriptions[id];
@@ -421,7 +421,7 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
                       Optional: Developer API Key Override (BYOK)
                     </div>
                     <div className="text-[11px] text-slate-500">
-                          Use an API-compatible provider when a CLI subscription connection is unavailable.
+                          Use an API-compatible provider when a CLI connection is unavailable.
                     </div>
                   </div>
                   {showByokSection ? (

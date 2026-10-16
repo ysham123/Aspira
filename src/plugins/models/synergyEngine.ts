@@ -10,8 +10,8 @@ import {
 } from './manifest';
 
 interface DispatchModelResponse {
-  source: 'SUBSCRIPTION_OAUTH' | 'LIVE_API' | 'LOCAL_OLLAMA' | 'UNAVAILABLE';
-  subscriptionBadge?: string;
+  source: 'PROVIDER_CLI' | 'LIVE_API' | 'LOCAL_OLLAMA' | 'UNAVAILABLE';
+  providerBadge?: string;
   modelId: string;
   text: string | null;
   error?: string;
@@ -43,7 +43,7 @@ async function fetchModelStream(
   executeActions: boolean,
   signal?: AbortSignal
 ): Promise<{
-  source: 'SUBSCRIPTION_OAUTH' | 'LIVE_API' | 'LOCAL_OLLAMA' | 'UNAVAILABLE';
+  source: 'PROVIDER_CLI' | 'LIVE_API' | 'LOCAL_OLLAMA' | 'UNAVAILABLE';
   text: string;
   executedActions: AgentActionExecution[];
   memories?: LivingMemoryItem[];
