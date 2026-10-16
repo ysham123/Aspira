@@ -791,6 +791,13 @@ export const App: React.FC = () => {
         models={models}
         initialSubscriptions={subscriptionStatuses}
         onSubscriptionsUpdated={setSubscriptionStatuses}
+        awakeModelIds={awakeModelIds}
+        onUseModel={(modelId) => {
+          defaultModelSelectionAppliedRef.current = true;
+          setAwakeModelIds((prev) => prev.includes(modelId) ? prev : [...prev, modelId]);
+          setSpatialMode('nexus');
+          setVaultModalOpen(false);
+        }}
         onAddCustomModel={(newPlugin) => {
           const id = models.some((model) => model.id === newPlugin.id)
             ? `${newPlugin.id}_${Date.now().toString(36)}`

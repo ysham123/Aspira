@@ -28,6 +28,8 @@ interface PlugAndPlayVaultModalProps {
   models: ModelPluginManifest[];
   initialSubscriptions: Record<string, SubscriptionStatus>;
   onSubscriptionsUpdated: (subscriptions: Record<string, SubscriptionStatus>) => void;
+  awakeModelIds: string[];
+  onUseModel: (modelId: string) => void;
   onAddCustomModel: (plugin: ModelPluginManifest) => void;
   passkeyProfiles: PasskeyProfile[];
   passkeyLockEnabled: boolean;
@@ -67,6 +69,8 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
   models,
   initialSubscriptions,
   onSubscriptionsUpdated,
+  awakeModelIds,
+  onUseModel,
   onAddCustomModel,
   passkeyProfiles,
   passkeyLockEnabled,
@@ -399,7 +403,11 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
                   const sub = subscriptions[id];
                   const model = models.find((m) => m.id === id);
                   const cliAvailable = Boolean(sub?.cliPath);
-                  const connectionLabel = !sub
+                  const hasSavedApiKey = Boolean(apiKeys[id]);
+                  const canUseInStudio = hasSavedApiKey || (cliAvailable && sub?.authStatus === 'signed_in');
+                  const connectionLabel = hasSavedApiKey
+                    ? 'API key saved'
+                    : !sub
                     ? subscriptionScanState === 'checking'
                       ? 'Checking'
                       : subscriptionScanState === 'error'
@@ -414,7 +422,9 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
                     : sub.authStatus === 'signed_out'
                     ? 'Sign-in required'
                     : 'CLI found';
-                  const connectionDetail = sub?.methodLabel || (
+                  const connectionDetail = hasSavedApiKey
+                    ? 'Saved in this browser. Aspira checks it when you request a response.'
+                    : sub?.methodLabel || (
                     subscriptionScanState === 'checking'
                       ? 'Checking local CLI status…'
                       : subscriptionScanState === 'error'
@@ -458,14 +468,40 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
                       </div>
 
                       <div className="flex items-center gap-2 pt-1">
-                        <button
-                          type="button"
-                          onClick={() => handleSubscriptionLogin(id)}
-                          className="flex-1 py-2 px-3 rounded-xl bg-indigo-500/20 hover:bg-indigo-500/30 border border-indigo-400/30 text-indigo-200 text-xs font-medium flex items-center justify-center gap-1.5 transition-all"
-                        >
-                          <ExternalLink className="w-3.5 h-3.5" />
-                          {sub?.cliPath ? 'Open CLI sign-in' : 'Connection help'}
-                        </button>
+                        {canUseInStudio ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              onUseModel(id);
+                              onClose();
+                            }}
+                            className="flex-1 py-2 px-3 rounded-xl bg-indigo-500/20 hover:bg-indigo-500/30 border border-indigo-400/30 text-indigo-200 text-xs font-medium flex items-center justify-center gap-1.5 transition-all"
+                          >
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            {awakeModelIds.includes(id) ? 'Return to Studio' : 'Use in Studio'}
+                          </button>
+                        ) : cliAvailable ? (
+                          <button
+                            type="button"
+                            onClick={() => handleSubscriptionLogin(id)}
+                            className="flex-1 py-2 px-3 rounded-xl bg-indigo-500/20 hover:bg-indigo-500/30 border border-indigo-400/30 text-indigo-200 text-xs font-medium flex items-center justify-center gap-1.5 transition-all"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                            {connectionLabel === 'Sign-in required' ? 'Sign in in Terminal' : 'Open CLI in Terminal'}
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShowByokSection(true);
+                              setLoginStatusMsg(`${model?.codeName || sub?.providerName || 'This provider'} has no supported CLI. Add an API key below to use it in Aspira.`);
+                            }}
+                            className="flex-1 py-2 px-3 rounded-xl bg-indigo-500/20 hover:bg-indigo-500/30 border border-indigo-400/30 text-indigo-200 text-xs font-medium flex items-center justify-center gap-1.5 transition-all"
+                          >
+                            <KeyRound className="w-3.5 h-3.5" />
+                            Add API key
+                          </button>
+                        )}
                       </div>
                     </div>
                   );
