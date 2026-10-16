@@ -770,6 +770,7 @@ export const App: React.FC = () => {
         open={vaultModalOpen}
         onClose={() => setVaultModalOpen(false)}
         models={models}
+        initialSubscriptions={subscriptionStatuses}
         onSubscriptionsUpdated={setSubscriptionStatuses}
         onAddCustomModel={(newPlugin) => {
           const id = models.some((model) => model.id === newPlugin.id)

@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
+  AlertTriangle,
   Check,
   CheckCircle2,
   ChevronDown,
@@ -25,6 +26,7 @@ interface PlugAndPlayVaultModalProps {
   open: boolean;
   onClose: () => void;
   models: ModelPluginManifest[];
+  initialSubscriptions: Record<string, SubscriptionStatus>;
   onSubscriptionsUpdated: (subscriptions: Record<string, SubscriptionStatus>) => void;
   onAddCustomModel: (plugin: ModelPluginManifest) => void;
   passkeyProfiles: PasskeyProfile[];
@@ -36,6 +38,7 @@ interface PlugAndPlayVaultModalProps {
 }
 
 type VaultTab = 'subscriptions' | 'models' | 'voice' | 'passkeys';
+type SubscriptionScanState = 'idle' | 'checking' | 'ready' | 'error';
 
 const OSS_MODEL_PRESETS = [
   {
@@ -62,6 +65,7 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
   open,
   onClose,
   models,
+  initialSubscriptions,
   onSubscriptionsUpdated,
   onAddCustomModel,
   passkeyProfiles,
@@ -73,6 +77,8 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<VaultTab>('subscriptions');
   const [subscriptions, setSubscriptions] = useState<Record<string, SubscriptionStatus>>({});
+  const [subscriptionScanState, setSubscriptionScanState] = useState<SubscriptionScanState>('idle');
+  const [hasVerifiedSubscriptionStatus, setHasVerifiedSubscriptionStatus] = useState(false);
   const [loginStatusMsg, setLoginStatusMsg] = useState<string | null>(null);
   const [showByokSection, setShowByokSection] = useState(false);
 
@@ -95,17 +101,36 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
   const [ttsSavedBanner, setTtsSavedBanner] = useState(false);
   const [ttsStatus, setTtsStatus] = useState('');
   const dialogRef = useRef<HTMLDivElement | null>(null);
+  const subscriptionRequestIdRef = useRef(0);
 
-  const refreshSubscriptions = () => {
-    fetch('/api/subscriptions')
-      .then((r) => r.json())
-      .then((data) => {
-        if (data?.subscriptions) {
-          setSubscriptions(data.subscriptions);
-          onSubscriptionsUpdated(data.subscriptions);
-        }
-      })
-      .catch(() => {});
+  useEffect(() => {
+    if (Object.keys(initialSubscriptions).length === 0) return;
+    setSubscriptions(initialSubscriptions);
+    setHasVerifiedSubscriptionStatus(true);
+  }, [initialSubscriptions]);
+
+  const refreshSubscriptions = async () => {
+    const requestId = ++subscriptionRequestIdRef.current;
+    setSubscriptionScanState('checking');
+
+    try {
+      const response = await fetch('/api/subscriptions');
+      if (!response.ok) throw new Error(`Provider status request failed (${response.status}).`);
+      const data = await response.json();
+      if (!data?.subscriptions || typeof data.subscriptions !== 'object' || Array.isArray(data.subscriptions)) {
+        throw new Error('Provider status response was invalid.');
+      }
+      if (requestId !== subscriptionRequestIdRef.current) return;
+
+      setSubscriptions(data.subscriptions);
+      setHasVerifiedSubscriptionStatus(true);
+      setSubscriptionScanState('ready');
+      onSubscriptionsUpdated(data.subscriptions);
+    } catch {
+      if (requestId !== subscriptionRequestIdRef.current) return;
+      // Keep any earlier result visible, but never present it as a fresh check.
+      setSubscriptionScanState('error');
+    }
   };
 
   useEffect(() => {
@@ -171,6 +196,8 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
       const data = await res.json();
       if (data?.subscriptions) {
         setSubscriptions(data.subscriptions);
+        setHasVerifiedSubscriptionStatus(true);
+        setSubscriptionScanState('ready');
         onSubscriptionsUpdated(data.subscriptions);
       }
       setLoginStatusMsg(data?.message || 'Provider CLI sign-in launched.');
@@ -277,36 +304,36 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
         <div className="aspira-vault-tabs-shell border-b border-white/[0.06]">
           <div className="aspira-vault-tabs flex items-center gap-2 overflow-x-auto px-7 pt-4 pb-2" role="group" aria-label="Settings sections">
             {[
-            { id: 'subscriptions', label: 'Connections', icon: CheckCircle2 },
-            { id: 'models', label: 'Agents & Hot-Plug', icon: Layers },
-            { id: 'voice', label: 'Voice', icon: Volume2 },
-            { id: 'passkeys', label: 'Passkey lock', icon: Lock },
-          ].map((tab) => {
-            const Icon = tab.icon;
-            const active = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => {
-                  setActiveTab(tab.id as VaultTab);
-                }}
-                aria-label={tab.label}
-                aria-pressed={active}
-                className={`px-4 py-2 rounded-xl text-xs font-medium flex items-center gap-2 transition-all whitespace-nowrap ${
-                  active
-                    ? 'bg-white/[0.1] text-white border border-white/[0.14] shadow-sm'
-                    : 'text-slate-400 hover:text-slate-200 hover:bg-white/[0.04] border border-transparent'
-                }`}
-              >
-                <Icon className="w-3.5 h-3.5 text-indigo-400" />
-                <span className="aspira-vault-tab-label-full">{tab.label}</span>
-                <span className="aspira-vault-tab-label-short" aria-hidden="true">
-                  {tab.id === 'models' ? 'Agents' : tab.id === 'passkeys' ? 'Passkeys' : tab.label}
-                </span>
-              </button>
-            );
-          })}
+              { id: 'subscriptions', label: 'Connections', icon: CheckCircle2 },
+              { id: 'models', label: 'Models', icon: Layers },
+              { id: 'voice', label: 'Voice', icon: Volume2 },
+              { id: 'passkeys', label: 'Passkey lock', icon: Lock },
+            ].map((tab) => {
+              const Icon = tab.icon;
+              const active = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => {
+                    setActiveTab(tab.id as VaultTab);
+                  }}
+                  aria-label={tab.label}
+                  aria-pressed={active}
+                  className={`px-4 py-2 rounded-xl text-xs font-medium flex items-center gap-2 transition-all whitespace-nowrap ${
+                    active
+                      ? 'bg-white/[0.1] text-white border border-white/[0.14] shadow-sm'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-white/[0.04] border border-transparent'
+                  }`}
+                >
+                  <Icon className="w-3.5 h-3.5 text-indigo-400" />
+                  <span className="aspira-vault-tab-label-full">{tab.label}</span>
+                  <span className="aspira-vault-tab-label-short" aria-hidden="true">
+                    {tab.id === 'passkeys' ? 'Passkeys' : tab.label}
+                  </span>
+                </button>
+              );
+            })}
           </div>
           <p className="aspira-vault-tabs-hint" aria-hidden="true">More sections →</p>
         </div>
@@ -324,17 +351,38 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
                   </p>
                 </div>
                 <button
+                  type="button"
+                  disabled={subscriptionScanState === 'checking'}
                   onClick={() => {
-                    refreshSubscriptions();
+                    void refreshSubscriptions();
                   }}
-                  className="px-3 py-1.5 rounded-xl bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] text-xs text-slate-200 flex items-center gap-1.5"
+                  aria-label={subscriptionScanState === 'checking' ? 'Checking provider status' : 'Refresh provider status'}
+                  className="px-3 py-1.5 rounded-xl bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] text-xs text-slate-200 flex items-center gap-1.5 disabled:cursor-wait disabled:opacity-60"
                 >
-                  <RefreshCw className="w-3.5 h-3.5 text-indigo-400" /> Re-Scan Mac
+                  <RefreshCw className={`w-3.5 h-3.5 text-indigo-400 ${subscriptionScanState === 'checking' ? 'animate-spin' : ''}`} />
+                  {subscriptionScanState === 'checking' ? 'Checking…' : 'Refresh status'}
                 </button>
               </div>
 
+              {subscriptionScanState === 'checking' && (
+                <p className="text-xs text-slate-400" role="status" aria-live="polite">
+                  Checking local provider CLIs. Sign-in is shown only when the CLI exposes it.
+                </p>
+              )}
+
+              {subscriptionScanState === 'error' && (
+                <div className="aspira-connection-scan-error" role="alert">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                  <span>
+                    {hasVerifiedSubscriptionStatus
+                      ? 'Could not refresh provider status. Showing the last checked results.'
+                      : 'Could not check provider status. Sign-in state is unknown until a refresh succeeds.'}
+                  </span>
+                </div>
+              )}
+
               {loginStatusMsg && (
-                <div className="p-3 rounded-2xl bg-indigo-500/15 border border-indigo-400/30 text-xs text-indigo-200 flex items-center justify-between">
+                <div className="p-3 rounded-2xl bg-indigo-500/15 border border-indigo-400/30 text-xs text-indigo-200 flex items-center justify-between" role="status" aria-live="polite">
                   <span>{loginStatusMsg}</span>
                   <button
                     onClick={() => setLoginStatusMsg(null)}
@@ -352,17 +400,32 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
                   const model = models.find((m) => m.id === id);
                   const cliAvailable = Boolean(sub?.cliPath);
                   const connectionLabel = !sub
-                    ? 'CHECKING'
+                    ? subscriptionScanState === 'checking'
+                      ? 'Checking'
+                      : subscriptionScanState === 'error'
+                      ? 'Status unknown'
+                      : subscriptionScanState === 'ready'
+                      ? 'Not detected'
+                      : 'Not checked'
                     : !cliAvailable
-                    ? 'NO CLI BRIDGE'
+                    ? 'CLI not found'
                     : sub.authStatus === 'signed_in'
-                    ? 'SIGNED IN'
+                    ? 'Signed in'
                     : sub.authStatus === 'signed_out'
-                    ? 'SIGN-IN REQUIRED'
-                    : 'CLI AVAILABLE';
-                  const connectionColor = connectionLabel === 'SIGNED IN'
+                    ? 'Sign-in required'
+                    : 'CLI found';
+                  const connectionDetail = sub?.methodLabel || (
+                    subscriptionScanState === 'checking'
+                      ? 'Checking local CLI status…'
+                      : subscriptionScanState === 'error'
+                      ? 'This provider status could not be verified.'
+                      : subscriptionScanState === 'ready'
+                      ? 'No provider status was returned.'
+                      : 'Status has not been checked yet.'
+                  );
+                  const connectionColor = connectionLabel === 'Signed in'
                     ? 'bg-emerald-500/15 text-emerald-300 border-emerald-400/30'
-                    : connectionLabel === 'SIGN-IN REQUIRED'
+                    : connectionLabel === 'Sign-in required'
                     ? 'bg-amber-500/15 text-amber-300 border-amber-400/30'
                     : 'bg-white/[0.04] text-slate-300 border-white/[0.1]';
 
@@ -383,14 +446,14 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
                             </span>
                           </div>
                           <span
-                            className={`text-[10px] font-mono px-2.5 py-0.5 rounded-full border ${connectionColor}`}
+                            className={`text-[10px] font-medium px-2.5 py-1 rounded-full border ${connectionColor}`}
                           >
                             {connectionLabel}
                           </span>
                         </div>
 
-                        <div className="text-xs text-slate-300 font-mono bg-black/30 rounded-xl px-3 py-2 border border-white/[0.05]">
-                          {sub?.methodLabel || 'Checking for a supported CLI…'}
+                        <div className="text-xs leading-5 text-slate-300 bg-black/30 rounded-xl px-3 py-2 border border-white/[0.05]">
+                          {connectionDetail}
                         </div>
                       </div>
 
@@ -409,7 +472,7 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
                 })}
               </div>
 
-              {/* Collapsible Optional Developer API Key Override */}
+              {/* Collapsible optional API key fallback */}
               <div className="rounded-2xl bg-white/[0.02] border border-white/[0.07] p-4">
                 <button
                   type="button"
@@ -418,10 +481,10 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
                 >
                   <div>
                     <div className="text-xs font-semibold text-slate-300">
-                      Optional: Developer API Key Override (BYOK)
+                      Optional API keys
                     </div>
                     <div className="text-[11px] text-slate-500">
-                          Use an API-compatible provider when a CLI connection is unavailable.
+                      Add an API key if you want direct API access or a CLI is unavailable.
                     </div>
                   </div>
                   {showByokSection ? (
