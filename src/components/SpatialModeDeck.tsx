@@ -125,11 +125,9 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
     command: string;
     output: string;
     timestamp: string;
-  }>({
-    command: 'git status -s',
-    output: 'Ready. Choose a preset or run one of the listed read-only commands.',
-    timestamp: new Date().toLocaleTimeString(),
-  });
+  } | null>(null);
+  const [terminalError, setTerminalError] = useState('');
+  const [activeTerminalCommand, setActiveTerminalCommand] = useState('');
   const [runningTerminal, setRunningTerminal] = useState(false);
 
   useEffect(() => {
@@ -234,6 +232,16 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
   }, [spatialMode, workbenchTab, selectedFile?.id]);
 
   const runTerminalPreset = async (preset: string, customCommand?: string) => {
+    const presetLabels: Record<string, string> = {
+      'git-status': 'git status and recent commits',
+      'sys-procs': 'top processes',
+      'disk-df': 'disk free',
+      'net-stat': 'network interfaces',
+      'tree-scan': 'source tree',
+    };
+    setActiveTerminalCommand(customCommand?.trim() || presetLabels[preset] || preset);
+    setTerminalError('');
+    setTerminalLog(null);
     setRunningTerminal(true);
     try {
       const res = await fetch('/api/terminal', {
@@ -241,12 +249,15 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(customCommand ? { customCommand } : { preset }),
       });
-      if (res.ok) {
-        const data = await res.json();
-        setTerminalLog(data);
-      }
-    } catch {
-      // ignore
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.output || data?.error || `The command returned ${res.status}.`);
+      setTerminalLog({
+        command: data?.command || customCommand?.trim() || presetLabels[preset] || preset,
+        output: data?.output || '(No output)',
+        timestamp: data?.timestamp || new Date().toISOString(),
+      });
+    } catch (error) {
+      setTerminalError(error instanceof Error ? error.message : 'Could not run this local command.');
     } finally {
       setRunningTerminal(false);
     }
@@ -363,7 +374,14 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
 
                   {/* Local actions executed during this turn */}
                   {turn.result.executedActions && turn.result.executedActions.length > 0 && (
-                    <div className="flex flex-col gap-2 pl-2">
+                    <div
+                      className="aspira-action-receipts flex flex-col gap-2 pl-2"
+                      role="group"
+                      aria-label={`${turn.result.executedActions.length} local action ${turn.result.executedActions.length === 1 ? 'receipt' : 'receipts'}`}
+                    >
+                      <p className="px-2 text-[10px] font-medium uppercase tracking-[0.12em] text-slate-500">
+                        {turn.result.executedActions.length === 1 ? 'Local action' : `${turn.result.executedActions.length} local actions`}
+                      </p>
                       {turn.result.executedActions.map((act: AgentActionExecution) => {
                         const StatusIcon = act.status === 'success'
                           ? CheckCircle2
@@ -378,26 +396,28 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
                         return (
                           <div
                             key={act.id}
+                            role="group"
+                            aria-label={`${act.title}. ${statusLabel} in ${act.durationMs} milliseconds.`}
                             className={`aspira-action-card aspira-action-card--${act.status} flex flex-col gap-1.5 rounded-2xl px-4 py-3`}
                           >
-                            <div className="flex items-center justify-between gap-3">
+                            <div className="flex flex-wrap items-start justify-between gap-2">
                               <div className="flex min-w-0 items-center gap-2">
                                 <StatusIcon className="aspira-action-status-icon h-4 w-4 shrink-0" aria-hidden="true" />
-                                <span className="aspira-action-title min-w-0 text-[12px] font-semibold">
+                                <span className="aspira-action-title min-w-0 break-words text-[12px] font-semibold">
                                   {act.title}
                                 </span>
                               </div>
-                              <span className="aspira-action-state shrink-0 text-[10px] font-medium">
+                              <span className="aspira-action-state text-[10px] font-medium">
                                 {statusLabel} · {act.durationMs}ms
                               </span>
                             </div>
                             {act.output && (
                               <details className="aspira-action-details" open={act.status !== 'success'}>
                                 <summary className="aspira-action-details-summary">
-                                  <span>{act.status === 'success' ? 'Show raw result' : 'View action details'}</span>
+                                  <span>{act.status === 'success' ? 'View output' : act.status === 'blocked' ? 'Why it was blocked' : 'What went wrong'}</span>
                                   <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
                                 </summary>
-                                <pre className="aspira-code mt-2 text-[11px] font-mono text-slate-300 bg-black/40 rounded-xl p-2.5 overflow-x-auto whitespace-pre-wrap leading-relaxed border border-white/[0.05]">
+                                <pre aria-label={`Output from ${act.title}`} className="aspira-code mt-2 text-[11px] font-mono text-slate-300 bg-black/40 rounded-xl p-2.5 overflow-x-auto whitespace-pre-wrap leading-relaxed border border-white/[0.05]">
                                   {act.output}
                                 </pre>
                               </details>
@@ -864,8 +884,8 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
     const codeLines = (selectedFile?.preview || '// Select a file to inspect source').split('\n');
 
     return (
-      <div className="w-full h-full grid grid-cols-12 gap-5 overflow-hidden">
-        <div className="col-span-12 lg:col-span-4 aspira-glass rounded-3xl p-4 flex flex-col gap-3 h-full overflow-hidden">
+      <div className="aspira-workbench-layout flex h-full min-h-0 w-full flex-col gap-3 overflow-y-auto custom-scrollbar lg:grid lg:grid-cols-12 lg:gap-5 lg:overflow-hidden">
+        <div className="col-span-12 lg:col-span-4 aspira-glass rounded-3xl p-4 flex flex-col gap-3 h-32 min-[361px]:h-40 shrink-0 overflow-hidden lg:h-full lg:shrink">
           <div className="flex items-center justify-between px-1">
             <div className="flex items-center gap-2">
               <FolderGit2 className="w-4 h-4 text-indigo-400" />
@@ -881,10 +901,13 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
               const active = selectedFile?.id === node.id;
               return (
                 <button
+                  type="button"
                   key={node.id}
                   onClick={() => {
                     setSelectedFile(node);
                   }}
+                  aria-pressed={active}
+                  aria-label={`${node.label}, ${node.id}, ${node.lines} lines${node.previewTruncated ? ', preview shortened' : ''}`}
                   className={`w-full text-left px-3 py-2.5 rounded-xl flex items-center justify-between transition-all ${
                     active
                       ? 'bg-indigo-500/15 border border-indigo-400/35 text-white'
@@ -911,12 +934,12 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
           </div>
         </div>
 
-        <div className="col-span-12 lg:col-span-8 flex flex-col gap-4 h-full overflow-hidden">
-          <div className="aspira-glass-elevated rounded-3xl p-5 flex-1 flex flex-col gap-3 overflow-hidden">
-            <div className="flex items-center justify-between border-b border-white/[0.07] pb-3">
-              <div className="flex items-center gap-3">
+        <div className="col-span-12 lg:col-span-8 flex h-[420px] min-h-0 shrink-0 flex-col gap-3 overflow-hidden lg:h-full lg:min-h-0 lg:shrink lg:gap-4">
+          <div className="aspira-glass-elevated rounded-3xl p-4 lg:p-5 flex min-h-0 flex-1 flex-col gap-3 overflow-hidden">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/[0.07] pb-3">
+              <div className="flex min-w-0 items-center gap-3">
                 <Code2 className="w-4 h-4 text-indigo-400" />
-                <div>
+                <div className="min-w-0">
                   <div className="text-sm font-semibold text-white">
                     {selectedFile?.id || 'src/App.tsx'}
                   </div>
@@ -927,10 +950,12 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
-                <div className="flex items-center bg-white/[0.04] p-0.5 rounded-xl border border-white/[0.07]">
+              <div className="flex flex-wrap items-center gap-2">
+                <div role="group" aria-label="Workbench preview mode" className="flex items-center bg-white/[0.04] p-0.5 rounded-xl border border-white/[0.07]">
                   <button
+                    type="button"
                     onClick={() => setWorkbenchTab('source')}
+                    aria-pressed={workbenchTab === 'source'}
                     className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${
                       workbenchTab === 'source' ? 'bg-white/[0.12] text-white' : 'text-slate-400'
                     }`}
@@ -938,7 +963,9 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
                     Source
                   </button>
                   <button
+                    type="button"
                     onClick={() => setWorkbenchTab('diff')}
+                    aria-pressed={workbenchTab === 'diff'}
                     className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${
                       workbenchTab === 'diff' ? 'bg-white/[0.12] text-white' : 'text-slate-400'
                     }`}
@@ -948,7 +975,10 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
                 </div>
 
                 <button
+                  type="button"
                   onClick={() => setTerminalOpen((prev) => !prev)}
+                  aria-expanded={terminalOpen}
+                  aria-controls="workbench-terminal-panel"
                   className="px-3 py-1.5 rounded-xl bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] text-xs text-slate-200 flex items-center gap-1.5"
                 >
                   <Terminal className="w-3.5 h-3.5 text-emerald-400" />
@@ -958,7 +988,7 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
             </div>
 
             {workbenchTab === 'source' ? (
-              <div className="aspira-code flex-1 overflow-y-auto custom-scrollbar font-mono text-xs leading-relaxed bg-black/30 rounded-2xl p-4 border border-white/[0.05]">
+              <div className="aspira-code min-h-0 flex-1 overflow-y-auto custom-scrollbar font-mono text-xs leading-relaxed bg-black/30 rounded-2xl p-4 border border-white/[0.05]">
                 {codeLines.slice(0, 120).map((line, idx) => (
                   <div key={idx} className="flex gap-4 hover:bg-white/[0.02] px-1 rounded">
                     <span className="w-8 text-right text-slate-600 select-none">{idx + 1}</span>
@@ -967,11 +997,11 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
                 ))}
               </div>
             ) : (
-              <div className="aspira-code flex-1 overflow-y-auto custom-scrollbar rounded-2xl bg-black/30 p-4 font-mono text-xs leading-relaxed">
+              <div className="aspira-code min-h-0 flex-1 overflow-y-auto custom-scrollbar rounded-2xl bg-black/30 p-4 font-mono text-xs leading-relaxed">
                 {diffLoading ? (
-                  <p className="text-slate-500">Loading Git diff…</p>
+                  <p role="status" aria-live="polite" className="text-slate-500">Loading Git diff…</p>
                 ) : fileDiffError ? (
-                  <p className="text-rose-300">Could not load Git diff: {fileDiffError}</p>
+                  <p role="alert" className="text-rose-300">Could not load Git diff: {fileDiffError}</p>
                 ) : !fileDiff?.workingDiff && !fileDiff?.stagedDiff ? (
                   <div>
                     <p className="font-sans text-sm text-slate-200">No Git changes for this file.</p>
@@ -997,7 +1027,7 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
           </div>
 
           {terminalOpen && (
-            <div className="aspira-glass rounded-3xl p-4 h-56 flex flex-col gap-2.5 shrink-0">
+            <section id="workbench-terminal-panel" aria-label="Read-only local commands and results" className="aspira-glass rounded-3xl p-4 h-48 lg:h-56 flex flex-col gap-2.5 shrink-0">
               <div className="flex items-center justify-between gap-2 flex-wrap">
                 <div className="flex items-center gap-2">
                   <Terminal className="w-4 h-4 text-emerald-400" />
@@ -1007,18 +1037,23 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
                 </div>
                 <div className="flex items-center gap-1.5 flex-wrap">
                   {[
-                    { id: 'git-status', label: 'git status' },
-                    { id: 'sys-procs', label: 'top processes' },
-                    { id: 'disk-df', label: 'disk free' },
-                    { id: 'tree-scan', label: 'src tree' },
+                    { id: 'git-status', label: 'Git status', compactLabel: 'Git', fullLabel: 'Git status and recent commits' },
+                    { id: 'sys-procs', label: 'Processes', compactLabel: 'Top', fullLabel: 'Top processes' },
+                    { id: 'disk-df', label: 'Disk', compactLabel: 'Disk', fullLabel: 'Disk free' },
+                    { id: 'tree-scan', label: 'Source tree', compactLabel: 'Tree', fullLabel: 'Source tree' },
                   ].map((p) => (
                     <button
+                      type="button"
                       key={p.id}
                       onClick={() => runTerminalPreset(p.id)}
                       disabled={runningTerminal}
-                      className="px-2.5 py-1 rounded-lg bg-white/[0.04] hover:bg-white/[0.09] border border-white/[0.07] text-[11px] font-mono text-slate-300 transition-all"
+                      aria-busy={runningTerminal}
+                      aria-label={`Run ${p.fullLabel}`}
+                      title={p.fullLabel}
+                      className="min-h-9 whitespace-nowrap rounded-lg border border-white/[0.07] bg-white/[0.04] px-1 py-1 font-mono text-[10px] text-slate-300 transition-all hover:bg-white/[0.09]"
                     >
-                      {p.label}
+                      <span className="hidden min-[361px]:inline">{p.label}</span>
+                      <span className="min-[361px]:hidden">{p.compactLabel}</span>
                     </button>
                   ))}
                 </div>
@@ -1038,24 +1073,46 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
                   type="text"
                   value={customShellCmd}
                   onChange={(e) => setCustomShellCmd(e.target.value)}
+                  aria-label="Custom read-only command"
                   placeholder="Try: git status -s, git diff --stat, ls -la src/components, df -h ."
                   className="aspira-code-input flex-1 bg-black/30 border border-white/[0.07] rounded-xl px-3 py-1 text-xs font-mono text-white placeholder-slate-500 focus:outline-none focus:border-emerald-400/40"
                 />
                 <button
                   type="submit"
+                  disabled={runningTerminal || !customShellCmd.trim()}
+                  aria-busy={runningTerminal}
                   className="px-3 py-1 rounded-xl bg-emerald-500/20 border border-emerald-400/30 text-emerald-200 text-xs font-mono"
                 >
-                  Run
+                  {runningTerminal ? 'Running…' : 'Run'}
                 </button>
               </form>
 
-              <div className="aspira-code flex-1 overflow-y-auto custom-scrollbar bg-black/40 rounded-2xl p-3 font-mono text-[11px] text-slate-300 border border-white/[0.05]">
-                <div className="text-emerald-400 mb-1">$ {terminalLog.command}</div>
-                <pre className="whitespace-pre-wrap text-slate-300 leading-relaxed">
-                  {terminalLog.output}
-                </pre>
+              <div id="workbench-terminal-output" aria-busy={runningTerminal} className="aspira-code flex-1 overflow-y-auto custom-scrollbar bg-black/40 rounded-2xl p-3 max-[360px]:p-2 font-mono text-[11px] text-slate-300 border border-white/[0.05]">
+                {runningTerminal ? (
+                  <div role="status" aria-live="polite">
+                    <div className="text-emerald-400 mb-1">Running command</div>
+                    <p className="break-all text-slate-300">{activeTerminalCommand}</p>
+                  </div>
+                ) : terminalError ? (
+                  <div role="alert" aria-live="assertive">
+                    <div className="mb-1 font-sans text-xs font-medium text-rose-300">Command could not be completed</div>
+                    <pre className="whitespace-pre-wrap break-words text-slate-300 leading-relaxed">{terminalError}</pre>
+                  </div>
+                ) : terminalLog ? (
+                  <div>
+                    <div className="text-emerald-400 mb-1 break-all">$ {terminalLog.command}</div>
+                    <pre className="whitespace-pre-wrap break-words text-slate-300 leading-relaxed">{terminalLog.output}</pre>
+                    <p role="status" aria-live="polite" className="mt-2 border-t border-white/[0.06] pt-2 font-sans text-[10px] text-slate-500">
+                      Command completed · {new Date(terminalLog.timestamp).toLocaleTimeString()}
+                    </p>
+                  </div>
+                ) : (
+                  <p className="font-sans text-xs leading-relaxed text-slate-400">
+                    Choose a command above or enter one.
+                  </p>
+                )}
               </div>
-            </div>
+            </section>
           )}
         </div>
       </div>

@@ -1,56 +1,64 @@
-# Aspira design reference brief
+# Aspira design and frontend brief
 
-**Research date:** 2026-10-16
-**Scope:** Public design guidance from Checklist Design and Mobbin, mapped to the current Aspira frontend. This brief is for a premium, conversational personal-agent workspace. Keep the calm light palette and familiar app conventions; remove any remaining cockpit, arcade, or sci-fi HUD language and decoration. Use interaction principles, not copied branding, icons, or screen layouts.
+**Reviewed:** 2026-10-16
+**Goal:** A premium personal-agent workspace where conversation is the main way to work. Keep the current warm, restrained visual base and familiar app controls. Avoid cockpit language, floating HUD decoration, and branded screen or asset imitation.
 
-## What I inspected
+## Evidence and scope
 
-Checklist Design’s public pages provided detailed checklists for chat, inputs, settings, empty states, loading, errors, and success feedback. I inspected Mobbin’s public homepage/gallery and its public MCP showcase. I did not access Mobbin’s full app-specific screen collections, so this brief makes no claims about screens that were not publicly visible in that pass.
+I reviewed the public interaction checklists on [Checklist Design](https://www.checklist.design/) and the public [Mobbin homepage/gallery](https://mobbin.com/) and [Mobbin MCP showcase](https://mobbin.com/mcp). Mobbin’s public pages show the library categories and an example of an agent request, visible search progress, result count, and synthesis. I did not inspect full app-specific screen collections, so recommendations below do not depend on unseen Mobbin screens.
 
-The current Aspira frontend was checked at desktop and 390 × 844. It already has a warm neutral surface, a `Studio` chat view, a `Workbench`, recent chats, a fixed composer, and a `Connections` dialog. On desktop, the saved-context rail can occupy a large part of the first screen. On mobile, the main navigation becomes mostly icon-led and the composer stays at the bottom. Relevant code lives in [App.tsx](../src/App.tsx), [SpatialModeDeck.tsx](../src/components/SpatialModeDeck.tsx), [ConversationHistoryPanel.tsx](../src/components/ConversationHistoryPanel.tsx), [PlugAndPlayVaultModal.tsx](../src/components/PlugAndPlayVaultModal.tsx), and [styles.css](../src/styles.css).
+I inspected Aspira at 1280 × 720 and 390 × 844, and read the current frontend in [App.tsx](../src/App.tsx), [SpatialModeDeck.tsx](../src/components/SpatialModeDeck.tsx), [ConversationHistoryPanel.tsx](../src/components/ConversationHistoryPanel.tsx), [PlugAndPlayVaultModal.tsx](../src/components/PlugAndPlayVaultModal.tsx), and [styles.css](../src/styles.css). At 390 px, the document width is 390 px and the composer is visible at the bottom. I did not test with a real phone keyboard.
 
-## Observed patterns and how Aspira should use them
+## Current UI critique
 
-| Pattern and public evidence | Aspira application |
-|---|---|
-| **Conversation thread:** [Checklist Design: Web app chat](https://www.checklist.design/web-app/chat) specifies a chronological thread, recent messages at the bottom, multiline composition, and grouping consecutive messages. It cautions that new arrivals should not interrupt someone reading older messages. | Keep one continuous conversation as the product’s main surface. Keep agent actions and their results attached to the user turn that caused them. Auto-scroll only when the user is already near the latest message; otherwise preserve their reading position and offer a clear jump-to-latest control. The current composer already supports Enter to send and Shift+Enter for a newline. |
-| **Phone chat:** [Checklist Design: Mobile chat](https://www.checklist.design/mobile/chat) calls for a bottom input bar that remains reachable when the keyboard opens, inline media previews, and a way to return to the latest message while scrolled up. | Preserve the bottom composer on narrow screens. Verify the on-screen keyboard does not cover it or hide the send, model, or voice controls. Keep conversation scrolling independent from surrounding chrome. |
-| **Navigation and visual hierarchy:** Mobbin’s [public library](https://mobbin.com/) groups references into Apps, Sites, Screens, Flows, Animations, and UI Elements; its public gallery shows platform and sort/filter controls above screen cards. | Keep the top-level Aspira map small and task-based: chat first, Workbench and Connections as supporting destinations. Group model choices by understandable source/type as the list grows instead of adding more named “modes.” Keep the selected destination visually clear on desktop and mobile. |
-| **Agent progress and synthesis:** Mobbin’s [public MCP showcase](https://mobbin.com/mcp) demonstrates a natural-language request followed by a visible search, a result count, and a short synthesis of the strongest patterns. The complete design-library results shown there are part of Mobbin’s product, not a claim about publicly accessible app screens. | Use the same legible progress shape for Aspira actions: say what is happening in plain language, show whether it is still working, then place the useful result in the conversation. Avoid exposing internal tool names as the primary user-facing label. |
-| **Settings:** [Checklist Design: Web app settings](https://www.checklist.design/web-app/settings) recommends logical categories, elevating commonly changed settings, separating security controls, and isolating destructive actions. | In `Connections`, put provider connection state and the next useful action first. Group provider CLIs, local/custom models, voice, and optional passkey controls with clear section names. Keep the optional passkey feature distinct from ordinary model connection. |
-| **Input fields:** [Checklist Design: Input field](https://www.checklist.design/design-system/input-field) recommends readable text, a visible label, example placeholders that are visually distinct from entered values, and a hint when the expected format may be unclear. | Apply this to model endpoint, API key, voice endpoint, and passkey settings. Keep labels visible after typing; state which fields are optional, give examples for endpoint/model formats, and place validation beside the field it describes. |
-| **Empty states:** [Checklist Design: Empty state](https://www.checklist.design/web-app/empty-state) calls for a contextual heading, a brief explanation, a useful next action, and separate treatments for genuinely empty data, no search results, and failed loading. | Keep the existing “What are you working on?” starter prompts in the new-chat state. Add a direct connect action when no model is available. Give empty history, unmatched chat search, and failed history/context loading different messages and recovery actions. |
-| **Loading and completion:** [Checklist Design: Loading](https://www.checklist.design/design-system/loading) recommends specific progress text when a wait is meaningful. [Submitting a form](https://www.checklist.design/flows/submitting-a-form) calls for visible loading, success, and failure feedback. | Show concise task-specific activity in the conversation or connection card, such as “Connecting to Claude Code” or “Checking local voice,” with a stop/retry path when applicable. Confirm successful saves and connections in place; distinguish a provider that is unavailable from one that is simply not selected. |
-| **Error and success language:** [Checklist Design: Showing input error](https://www.checklist.design/flows/showing-input-error), [Alert](https://www.checklist.design/design-system/alert), and [Toast](https://www.checklist.design/design-system/toast) recommend explaining what happened and how to fix it, using icon plus semantic color, placing feedback near the relevant control, and keeping transient toasts concise and dismissible. | Give blocked actions, provider sign-in failures, invalid fields, and network errors distinct plain-language states. Put the corrective action beside the message. Use color as reinforcement, never as the only signal; keep successful action details collapsed when they are raw/technical output. |
+Aspira has a good foundation: a warm neutral palette, a central Studio conversation, starter prompts, recent chats, a persistent composer, and a separate Workbench. The context rail now starts closed on ordinary laptop widths. The chat has a progress indicator, preserves scroll position when the user has moved away from the bottom, and offers “Jump to latest.” Action receipts distinguish completed, blocked, and failed work, with raw output tucked behind disclosure.
 
-## Prioritized acceptance criteria for the next frontend pass
+The next pass should fix hierarchy and state clarity before adding more surfaces:
 
-### P0 — Make conversation the clear primary experience
+- Model selection appears in both the top bar and the composer. Keep one clear selector that names active models; show provider connection health separately.
+- Progress currently says which model is thinking, but not what the agent is doing. Add a short task phase in the same conversation, then show the result there.
+- On the mobile view, destination labels are hidden and navigation depends on icons. Keep the selected destination identifiable at a glance, with accessible names and touch-sized controls.
+- Connection cards distinguish “Signed in,” “Sign-in required,” “CLI found,” and “Status unknown,” which is useful. Match each card’s primary button to its state; a signed-in card should not lead with a sign-in action unless that action is explicitly a reconnect.
+- The empty conversation is already useful: it explains readiness and offers concrete starting tasks. Preserve this instead of replacing it with a decorative dashboard.
 
-- The first screen gives the conversation and message composer the most space. Saved context stays collapsed until requested or directly relevant; opening it does not squeeze the thread on common laptop widths.
-- The user can see which model or models will answer in one obvious place. Provider connection state is shown separately from selection state.
-- New replies do not pull the viewport away from older messages. When the user is not at the bottom, show a jump-to-latest affordance.
-- Each local action has a plain-language title, an in-progress/completed/blocked/failed state, and a readable result. Raw diagnostic output remains available on demand.
+## Design principles from the public references
 
-### P1 — Make setup and recovery understandable
+1. **Make the conversation the home surface.** [Checklist’s web chat checklist](https://www.checklist.design/web-app/chat) emphasizes ordered messages, a multiline composer, and keeping the latest message at the bottom without interrupting someone reading older turns. Keep prompts, action receipts, model attribution, and results in one timeline. Only auto-scroll when the user is following the latest turn.
 
-- Connections are grouped by task, with the connection’s actual state and one clear next action per provider. Local models and optional voice/passkey controls are easy to find without crowding the chat.
-- Every settings field has a persistent label, a short hint or example when needed, visible validation, and a clear saved/failed result.
-- New chat, no model, no history, no search results, loading failure, and request failure each have distinct copy and recovery actions.
-- Progress copy names the operation and target. Success and error messages explain what happened in text and iconography, not color alone.
+2. **Keep mobile chat reachable.** [Checklist’s mobile chat checklist](https://www.checklist.design/mobile/chat) calls out keyboard-aware bottom composition and a clear route back to the newest message. Keep the composer visible above the mobile keyboard, and keep conversation scrolling independent from navigation and context panels.
 
-### P1 — Preserve the experience on small screens
+3. **Use task-based navigation and grouping.** Mobbin’s [public library](https://mobbin.com/) organizes examples by product type and by screens, flows, animations, and UI elements, with platform and filter controls. Aspira should keep a small, stable navigation set: Studio, Workbench, Connections. Organize model and settings choices by what the user wants to do, not by internal architecture.
 
-- At 390 × 844 and 320 × 720, there is no horizontal page overflow; chat text and action cards wrap without clipping.
-- With a mobile keyboard open, the composer and its send/model controls remain visible and reachable. The latest-message control remains available after scrolling upward.
-- Mobile navigation shows the active destination clearly. Icon-only controls have accessible names and sufficiently large targets.
+4. **Show the agent’s work in plain language.** Mobbin’s [public MCP showcase](https://mobbin.com/mcp) depicts a prompt, a visible search step, a result count, and then a short synthesis. For Aspira, show a concise activity phase such as “Checking the workspace” or “Waiting for Claude Code,” followed by the useful result in chat. Keep internal tool IDs and raw output secondary.
 
-### P2 — Finish the visual system
+5. **Make connection state actionable.** [Checklist’s settings checklist](https://www.checklist.design/web-app/settings) recommends logical categories and elevating common controls. Put provider status and its next action first, then group local models and optional voice/passkey settings. Keep “not checked,” “not detected,” “CLI available,” “signed in,” and “sign-in required” visually and verbally distinct.
 
-- Retain a restrained neutral canvas and a small accent palette. Use consistent type scale, spacing, border, and status treatments across chat, Workbench, and Connections.
-- Raise low-contrast micro-labels and very small secondary text to comfortable reading sizes, especially in the chat history, model status, and settings cards.
-- Remove remaining “reactor,” “overwatch,” “ignition,” “core,” orbital, scanner, and telemetry motifs from user-facing copy and visuals. The interface should feel like a carefully finished AI workspace, not a themed control panel.
+6. **Label fields and explain failures where they happen.** [Checklist’s input-field guidance](https://www.checklist.design/design-system/input-field) favors readable text, persistent labels, differentiated example placeholders, and useful hints. [Its input-error flow](https://www.checklist.design/flows/showing-input-error) advises letting people finish typing before validation. Use this in model, voice, and optional passkey forms; place specific errors and corrective actions beside the relevant field.
 
-## Source limits
+7. **Give empty, loading, success, and failure states different jobs.** [Empty-state guidance](https://www.checklist.design/web-app/empty-state) separates new/empty data, no search results, and load failure. [Loading](https://www.checklist.design/design-system/loading) and [form submission](https://www.checklist.design/flows/submitting-a-form) call for visible progress and a clear completion or failure outcome. [Alerts](https://www.checklist.design/design-system/alert) and [toasts](https://www.checklist.design/design-system/toast) favor descriptive copy, semantic color plus an icon, and feedback near the affected control. Give each Aspira state a recovery action; do not use a generic spinner or success label for all cases.
 
-Only Checklist Design and Mobbin were used for online design inspiration. Mobbin’s full app-specific screen/flow collections were not accessed; the public homepage/gallery and MCP showcase were the evidence used here. Checklist Design pages above are public and expose their checklist text directly.
+8. **Let restraint create the premium feel.** Retain the soft neutral canvas, generous spacing, strong readable type, and restrained accent color. Reserve status color for state. Avoid layering glass, glows, tiny technical labels, faux telemetry, and decorative motion over the conversation.
+
+## Acceptance criteria
+
+### P0: Conversation and agent feedback
+
+- A new user sees the conversation, a clear model selector, and useful starter tasks without opening a secondary panel.
+- There is one model-selection control. Provider health and whether a model is selected are separate states.
+- Agent progress names the current task or phase, appears in the conversation, and has an understandable stop state when cancellation is available.
+- Action receipts show a plain-language action, status, and useful result. Raw diagnostics stay collapsed after success and open by default only when they help explain a failure or block.
+- Reading older turns is never interrupted by incoming output; a jump-to-latest control appears when needed.
+
+### P1: Connections, states, and responsive layout
+
+- Every provider card’s status and primary action agree. Refresh failures say whether the status is unknown or last-known, and provide a retry.
+- Empty chat, no model, empty history, no search match, loading, save success, and request failure have distinct copy and next steps.
+- At 390 px and 320 px, there is no horizontal page overflow; chat text, provider cards, and action details wrap without clipping.
+- With a mobile keyboard open, the composer and its send/model controls remain reachable. The active destination is visually discoverable, including when navigation labels are compacted.
+
+### P2: Visual finish
+
+- Use a consistent type scale, spacing, border, and status system across Studio, Workbench, and Connections. Keep important supporting text readable; avoid relying on 9–10 px labels for meaning.
+- Keep the UI calm and familiar. Do not reintroduce clap-to-start, floating model orbs, reactor/overwatch terminology, or ornamental telemetry.
+
+**Source boundary:** Only Checklist Design and Mobbin were used for online inspiration. Mobbin’s app-specific screen collections were not accessed. The recommendations abstract visible patterns; they do not reproduce a product’s exact screen, copy, icon, or visual identity.

@@ -1349,25 +1349,6 @@ select:focus-visible {
   }
 }
 
-/* Conversation-first studio polish. Keep the visual language quiet and let
-   active models, replies, and actions carry the color. */
-.aspira-model-count {
-  min-height: 34px;
-  align-items: center;
-  gap: 8px;
-  padding: 0 11px;
-  border: 1px solid rgba(31, 36, 44, 0.08);
-  border-radius: 11px;
-  background: #f8f8f6;
-  color: #73757e;
-  font-size: 11px;
-  font-weight: 550;
-}
-
-.aspira-model-count svg {
-  color: #6b63bd;
-}
-
 .aspira-shell > .aspira-app-content > footer {
   align-items: center;
 }
@@ -1785,6 +1766,7 @@ select:focus-visible {
 
   .aspira-shell .aspira-context-rail {
     gap: 9px;
+    max-height: min(46vh, calc(100dvh - 220px));
     border-color: #e2e2de;
     border-radius: 20px;
     background: rgba(250, 250, 248, 0.98);
@@ -1926,4 +1908,128 @@ select:focus-visible {
 }
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.25);
+}
+
+/* State feedback: keep semantic colors readable on the light workspace. */
+.aspira-shell [class*="text-rose-300"] {
+  color: #a3344a;
+}
+
+.aspira-shell [class*="text-amber-200"],
+.aspira-shell [class*="text-amber-300"],
+.aspira-shell [class*="text-amber-400"] {
+  color: #805b1e;
+}
+
+.aspira-shell .aspira-code [class*="text-rose-300"] {
+  color: #fca5a5;
+}
+
+.aspira-shell .aspira-code [class*="text-amber-300"] {
+  color: #fcd34d;
+}
+
+.aspira-shell .aspira-action-card {
+  min-width: 0;
+  border-radius: 15px;
+  overflow-wrap: anywhere;
+}
+
+.aspira-shell .aspira-action-title {
+  color: #3e4048;
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.aspira-shell .aspira-action-state {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 4px 7px;
+  border-radius: 8px;
+  font-size: 11px;
+  line-height: 1.25;
+}
+
+.aspira-shell .aspira-action-card--success .aspira-action-state {
+  background: rgba(36, 132, 105, 0.09);
+}
+
+.aspira-shell .aspira-action-card--error .aspira-action-state {
+  background: rgba(190, 54, 74, 0.08);
+}
+
+.aspira-shell .aspira-action-card--blocked .aspira-action-state {
+  background: rgba(185, 125, 36, 0.1);
+}
+
+.aspira-shell .aspira-action-details-summary {
+  min-height: 40px;
+  color: #636570;
+  font-size: 11px;
+}
+
+.aspira-shell .aspira-action-details-summary:focus-visible {
+  border-radius: 8px;
+  outline: 2px solid rgba(96, 90, 210, 0.76);
+  outline-offset: 2px;
+}
+
+.aspira-shell .aspira-code {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  line-height: 1.55;
+}
+
+.aspira-shell .aspira-memory-category-row > button {
+  min-height: 34px;
+  font-size: 10px;
+}
+
+.aspira-shell .aspira-memory-form-row input {
+  min-height: 40px;
+  font-size: 12px;
+}
+
+.aspira-shell .aspira-memory-card button[title^="Click to cycle status"] {
+  min-height: 28px;
+  font-size: 10px;
+}
+
+.aspira-shell ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.aspira-shell ::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  background: #d5d6d2;
+  background-clip: padding-box;
+}
+
+.aspira-shell ::-webkit-scrollbar-thumb:hover {
+  background: #bfc1bc;
+  background-clip: padding-box;
+}
+
+@media (max-width: 490px) {
+  .aspira-shell .aspira-action-card > div:first-child {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .aspira-shell .aspira-action-state {
+    margin-left: 24px;
+  }
+
+  .aspira-shell .aspira-action-details-summary {
+    min-height: 44px;
+  }
+}
+
+@media (max-width: 360px) {
+  .aspira-shell .aspira-context-rail {
+    max-height: min(50vh, calc(100dvh - 220px));
+  }
 }

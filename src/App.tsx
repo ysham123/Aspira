@@ -475,9 +475,15 @@ export const App: React.FC = () => {
 
           const routine: LocalPlaybook = data.routine;
           const results = data.results || [];
-          const summaryText = `Ran **${routine.title}** across ${results.length} local steps:\n\n${results
-            .map((r: any, idx: number) => `${idx + 1}. **${r.stepLabel || r.title}**: ${r.output.slice(0, 260)}`)
-            .join('\n\n')}`;
+          const succeededSteps = results.filter((result: any) => result.status === 'success').length;
+          const attentionSteps = results.length - succeededSteps;
+          const summaryText = results.length
+            ? `Ran **${routine.title}** across ${results.length} local steps. ${
+                attentionSteps
+                  ? `${succeededSteps} of ${results.length} succeeded; ${attentionSteps} need attention.`
+                  : `All ${results.length} steps succeeded.`
+              } Expand a step receipt below to inspect its output.`
+            : `Ran **${routine.title}**, but the local service returned no step results.`;
 
           const syntheticResult: SynergyExecutionResult = {
             id: `syn-routine-${Date.now()}`,
@@ -539,6 +545,7 @@ export const App: React.FC = () => {
           if (Array.isArray(data?.memories)) setMemories(data.memories);
           const act = data.result;
           const succeeded = act?.status === 'success';
+          const actionTitle = act?.title || label;
           const syntheticResult: SynergyExecutionResult = {
             id: `syn-act-${Date.now()}`,
             timestamp: new Date().toLocaleTimeString(),
@@ -548,11 +555,11 @@ export const App: React.FC = () => {
             synergyMode: 'fusion',
             participatingModels: [],
             consensusScore: null,
-            executiveHeadline: succeeded ? `Local action · ${act.title}` : `Action failed · ${act.title}`,
+            executiveHeadline: succeeded ? `Local action · ${actionTitle}` : `Action failed · ${actionTitle}`,
             synthesizedOutput: succeeded
-              ? `Done. ${act.title}.\n\n${act.output}`
-              : `Could not complete ${act?.title || label}.\n\n${act?.output || 'No result was returned.'}`,
-            spokenReply: succeeded ? `Done. ${act.title}.` : '',
+              ? `Done. ${actionTitle}. Expand the action receipt below to inspect the result.`
+              : `Could not complete ${actionTitle}. Expand the action receipt below for details.`,
+            spokenReply: succeeded ? `Done. ${actionTitle}.` : '',
             executedActions: [act],
             followUpSuggestions: [],
             attributionPills: [],
@@ -956,14 +963,6 @@ export const App: React.FC = () => {
           </div>
 
           <div className="flex shrink-0 items-center gap-2">
-            <div className="aspira-model-count hidden lg:flex" aria-live="polite">
-              <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
-              <span>
-                {awakeModelIds.length === 0
-                  ? 'No model selected'
-                  : `${awakeModelIds.length} ${awakeModelIds.length === 1 ? 'model' : 'models'} selected`}
-              </span>
-            </div>
             <button
               type="button"
               onClick={() => setVaultModalOpen(true)}
