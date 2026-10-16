@@ -1,19 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
-import ts from 'typescript';
+import { loadTypeScript } from './typeScriptTestUtils.js';
 import { createDispatchResponse } from './dispatchResponse.js';
 
-// Run the browser-independent TypeScript logic through the same compiler used by
-// the app, without raising the project's Node 20 minimum just for test loading.
-async function loadTypeScript(relativePath) {
-  const source = await readFile(new URL(relativePath, import.meta.url), 'utf8');
-  const { outputText } = ts.transpileModule(source, {
-    compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
-  });
-  return import(`data:text/javascript;base64,${Buffer.from(outputText).toString('base64')}`);
-}
 const { readDispatchResponse } = await loadTypeScript('../src/plugins/models/dispatchStream.ts');
 const { createPendingTurn, applyTurnProgress, interruptedTurnResult } = await loadTypeScript('../src/plugins/models/turnProgress.ts');
 const { modelConversationContext } = await loadTypeScript('../src/plugins/models/conversationContext.ts');

@@ -46,6 +46,8 @@ Your message appears as soon as you send it. The live turn shows real provider s
 
 Saved memories and user-created playbooks live in `server/data/` and are ignored by Git. They remain on this Mac. Memories are added only when you ask Aspira to save one. Aspira keeps up to 24 conversations in this browser's local storage so you can search, reopen, and delete them; this data is not synced or encrypted. When you use a provider, Aspira sends your prompt, a small recent conversation window, and up to eight saved memory notes as context. If the model reads a workspace file or runs another tool, Aspira sends that tool's bounded result to the same provider so it can answer.
 
+Active conversational turns and unsent drafts are also saved in this tab's session storage. Reloading the same tab restores received replies and action receipts and marks an unfinished response as interrupted. It does not rerun actions or continue the provider request in the background. Drafts are kept separately for each conversation, including a new chat with no sent message. Recovery checkpoints are cleared only after the corresponding turn is saved to chat history; they and drafts are scoped to this tab's browser session, rather than synced across tabs or devices. Storage failures appear beside the composer.
+
 When you explicitly ask Aspira to search the web, it sends the search query to DuckDuckGo and returns up to five result titles, snippets, and links. If search returns no readable results or fails, Aspira reports that instead of substituting unrelated stories.
 
 ## Built-in voice

@@ -67,6 +67,17 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+.aspira-persistence-notice {
+  margin: 0 0 .65rem;
+  padding: .75rem 1rem;
+  border: 1px solid #ead9bd;
+  border-radius: .9rem;
+  background: #fffaf1;
+  color: #7b603b;
+  font-size: .75rem;
+  line-height: 1.5;
+}
+
 /* Whisper-soft Aurora Radial Backdrop (Zero Grids, Zero Scanlines) */
 .aspira-canvas-bg {
   background-color: var(--bg-canvas);

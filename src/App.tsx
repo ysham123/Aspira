@@ -33,11 +33,15 @@ import { modelConversationContext } from './plugins/models/conversationContext';
 import { soundEngine } from './audio/soundEngine';
 import { applyTurnProgress, createPendingTurn, interruptedTurnResult } from './plugins/models/turnProgress';
 import type { PendingConversationTurn } from './plugins/models/turnProgress';
+import {
+  persistConversationHistory, readConversationDraft, readTurnCheckpoints,
+  recoverConversationHistory, writeConversationDraft, writeTurnCheckpoint, RELOADED_TURN_NOTICE,
+} from './plugins/models/conversationRecovery';
+import type { TurnCheckpoint } from './plugins/models/conversationRecovery';
 import { SpatialModeDeck } from './components/SpatialModeDeck';
 import { ConversationHistoryPanel } from './components/ConversationHistoryPanel';
 import { PlugAndPlayVaultModal } from './components/PlugAndPlayVaultModal';
 import {
-  CONVERSATION_HISTORY_STORAGE_KEY,
   createConversationId,
   MAX_SAVED_CONVERSATIONS,
   readConversationHistory,
@@ -46,7 +50,7 @@ import {
 } from './plugins/models/conversationHistory';
 
 export const App: React.FC = () => {
-  const [initialConversationHistory] = useState(readConversationHistory);
+  const [initialConversationHistory] = useState(() => recoverConversationHistory(readConversationHistory(), readTurnCheckpoints()));
   const [savedConversations, setSavedConversations] = useState(initialConversationHistory.conversations);
   const [activeConversationId, setActiveConversationId] = useState(initialConversationHistory.activeId);
   const initialConversationTurns = initialConversationHistory.conversations
@@ -121,7 +125,7 @@ export const App: React.FC = () => {
   const executionInProgressRef = useRef(false);
   const [activeTaskLabel, setActiveTaskLabel] = useState('');
   const [canCancelRequest, setCanCancelRequest] = useState(false);
-  const [commandInput, setCommandInput] = useState('');
+  const [commandInput, setCommandInput] = useState(() => readConversationDraft(initialConversationHistory.activeId));
   const [awayBriefingBanner, setAwayBriefingBanner] = useState<string | null>(null);
   const [unlockPhrase, setUnlockPhrase] = useState('');
   const [unlockError, setUnlockError] = useState('');
@@ -135,6 +139,8 @@ export const App: React.FC = () => {
   const [mobileHistoryOpen, setMobileHistoryOpen] = useState(false);
   const [historySearchTerm, setHistorySearchTerm] = useState('');
   const [historyPersistenceError, setHistoryPersistenceError] = useState(false);
+  const [recoveryPersistenceError, setRecoveryPersistenceError] = useState(false);
+  const [draftPersistenceError, setDraftPersistenceError] = useState(false);
 
   const duplexVoiceRef = useRef(duplexVoiceActive);
   duplexVoiceRef.current = duplexVoiceActive;
@@ -143,6 +149,7 @@ export const App: React.FC = () => {
   const savedConversationsRef = useRef(savedConversations);
   savedConversationsRef.current = savedConversations;
   const abortControllerRef = useRef<AbortController | null>(null);
+  const beforeNavigationRef = useRef<(() => void) | null>(null);
   const defaultModelSelectionAppliedRef = useRef(false);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const voiceStreamRef = useRef<MediaStream | null>(null);
@@ -150,6 +157,24 @@ export const App: React.FC = () => {
   const commandInputRef = useRef<HTMLTextAreaElement | null>(null);
   const mobileHistoryDialogRef = useRef<HTMLDivElement | null>(null);
   const mobileHistoryTriggerRef = useRef<HTMLButtonElement | null>(null);
+
+  const updateCommandInput = useCallback((value: string) => {
+    setCommandInput(value);
+    setDraftPersistenceError(!writeConversationDraft(activeConversationId, value));
+  }, [activeConversationId]);
+
+  useEffect(() => {
+    const preserveBeforeLeaving = () => {
+      beforeNavigationRef.current?.();
+      abortControllerRef.current?.abort();
+    };
+    window.addEventListener('beforeunload', preserveBeforeLeaving);
+    window.addEventListener('pagehide', preserveBeforeLeaving);
+    return () => {
+      window.removeEventListener('beforeunload', preserveBeforeLeaving);
+      window.removeEventListener('pagehide', preserveBeforeLeaving);
+    };
+  }, []);
 
   useEffect(() => {
     const input = commandInputRef.current;
@@ -181,16 +206,9 @@ export const App: React.FC = () => {
   }, [conversationTurns, activeConversationId]);
 
   useEffect(() => {
-    try {
-      localStorage.setItem(CONVERSATION_HISTORY_STORAGE_KEY, JSON.stringify({
-        version: 1,
-        activeId: activeConversationId,
-        conversations: savedConversations,
-      }));
-      setHistoryPersistenceError(false);
-    } catch {
-      setHistoryPersistenceError(true);
-    }
+    const saved = persistConversationHistory({ activeId: activeConversationId, conversations: savedConversations });
+    setHistoryPersistenceError(!saved);
+    if (saved && !executionInProgressRef.current) setRecoveryPersistenceError(false);
   }, [activeConversationId, savedConversations]);
 
   useEffect(() => {
@@ -410,6 +428,25 @@ export const App: React.FC = () => {
       executionInProgressRef.current = true;
       const activeList = models.filter((model) => awakeModelIds.includes(model.id));
       let progressTurn = createPendingTurn(cleanPrompt, modality, activeList);
+      const conversationId = activeConversationId || createConversationId();
+      if (!activeConversationId) {
+        const draft = readConversationDraft(null);
+        const saved = writeConversationDraft(conversationId, draft) && writeConversationDraft(null, '');
+        setDraftPersistenceError(!saved);
+        setActiveConversationId(conversationId);
+      }
+      let checkpoint: TurnCheckpoint = {
+        conversationId,
+        title: savedConversationsRef.current.find((conversation) => conversation.id === conversationId)?.title ||
+          (conversationTurnsRef.current[0]?.userText || cleanPrompt).replace(/\s+/g, ' ').slice(0, 54),
+        updatedAt: new Date().toISOString(), capability: { id: cap.id, name: cap.name },
+        completedTurns: conversationTurnsRef.current, pending: progressTurn,
+      };
+      const saveCheckpoint = (finalTurn?: ConversationTurn) => {
+        checkpoint = { ...checkpoint, updatedAt: new Date().toISOString(), pending: progressTurn, ...(finalTurn ? { finalTurn } : {}) };
+        setRecoveryPersistenceError(!writeTurnCheckpoint(checkpoint));
+      };
+      saveCheckpoint();
       setPendingTurn(progressTurn);
       setSpatialMode('nexus');
 
@@ -420,6 +457,19 @@ export const App: React.FC = () => {
       setCanCancelRequest(true);
       setActiveTaskLabel(`Working on: ${taskLabel}`);
       setIsExecuting(true);
+      let navigationInterrupted = false;
+      beforeNavigationRef.current = () => {
+        if (navigationInterrupted) return;
+        navigationInterrupted = true;
+        const result = interruptedTurnResult(progressTurn, cap, false, RELOADED_TURN_NOTICE);
+        const interrupted: ConversationTurn = {
+          id: progressTurn.id, timestamp: progressTurn.timestamp, userText: cleanPrompt,
+          inputModality: modality, result,
+        };
+        saveCheckpoint(interrupted);
+        setLatestResult(result);
+        setConversationTurns((previous) => previous.some((turn) => turn.id === interrupted.id) ? previous : [...previous, interrupted]);
+      };
       try {
         // Build multi-turn conversation history for LLM context
         const historyContext = modelConversationContext(conversationTurnsRef.current);
@@ -436,6 +486,7 @@ export const App: React.FC = () => {
           onProgress: (event) => {
             if (controller.signal.aborted) return;
             progressTurn = applyTurnProgress(progressTurn, event);
+            saveCheckpoint();
             setPendingTurn(progressTurn);
             if (event.kind === 'action' && event.action.memoryItem) {
               const memory = event.action.memoryItem;
@@ -443,6 +494,7 @@ export const App: React.FC = () => {
             }
           },
         });
+        if (navigationInterrupted) return;
         if (controller.signal.aborted) throw new DOMException('The request was stopped.', 'AbortError');
 
         const newTurn: ConversationTurn = {
@@ -453,6 +505,8 @@ export const App: React.FC = () => {
           result,
         };
 
+        saveCheckpoint(newTurn);
+
         setLatestResult(result);
         setConversationTurns((prev) => [...prev, newTurn]);
 
@@ -460,14 +514,18 @@ export const App: React.FC = () => {
           soundEngine.speak(result.spokenReply);
         }
       } catch (error) {
+        if (navigationInterrupted) return;
         const result = interruptedTurnResult(progressTurn, cap, controller.signal.aborted,
           error instanceof Error ? error.message : 'Aspira could not complete this request.');
         setLatestResult(result);
-        setConversationTurns((previous) => [...previous, {
+        const newTurn: ConversationTurn = {
           id: progressTurn.id, timestamp: progressTurn.timestamp, userText: cleanPrompt,
           inputModality: modality, result,
-        }]);
+        };
+        saveCheckpoint(newTurn);
+        setConversationTurns((previous) => [...previous, newTurn]);
       } finally {
+        beforeNavigationRef.current = null;
         if (abortControllerRef.current === controller) abortControllerRef.current = null;
         executionInProgressRef.current = false;
         setPendingTurn(null);
@@ -476,7 +534,7 @@ export const App: React.FC = () => {
         setIsExecuting(false);
       }
     },
-    [models, awakeModelIds, apiKeys, appendLocalNotice]
+    [models, awakeModelIds, apiKeys, activeConversationId]
   );
 
   // Run a user-triggered local playbook.
@@ -723,7 +781,7 @@ export const App: React.FC = () => {
     setActiveConversationId(null);
     setConversationTurns([]);
     setLatestResult(null);
-    setCommandInput('');
+    setCommandInput(readConversationDraft(null));
     setHistorySearchTerm('');
     setSpatialMode('nexus');
     setMobileHistoryOpen(false);
@@ -737,7 +795,7 @@ export const App: React.FC = () => {
     setActiveConversationId(conversation.id);
     setConversationTurns(conversation.turns);
     setLatestResult(conversation.turns[conversation.turns.length - 1]?.result ?? null);
-    setCommandInput('');
+    setCommandInput(readConversationDraft(conversation.id));
     setSpatialMode('nexus');
     setHistorySearchTerm('');
     setMobileHistoryOpen(false);
@@ -749,11 +807,13 @@ export const App: React.FC = () => {
     if (!conversation) return;
     const confirmed = window.confirm(`Delete “${conversation.title}” from this browser?`);
     if (!confirmed) return;
+    setDraftPersistenceError(!writeConversationDraft(id, ''));
     setSavedConversations((previous) => previous.filter((item) => item.id !== id));
     if (activeConversationId === id) {
       setActiveConversationId(null);
       setConversationTurns([]);
       setLatestResult(null);
+      setCommandInput(readConversationDraft(null));
     }
   };
 
@@ -1118,12 +1178,22 @@ export const App: React.FC = () => {
       </main>
 
       <footer className="relative z-20 mx-auto flex w-full max-w-[1440px] flex-col">
+        {(historyPersistenceError || recoveryPersistenceError || draftPersistenceError) && (
+          <p className="aspira-persistence-notice" role="alert">
+            {historyPersistenceError
+              ? 'This conversation could not be saved in this browser. Free some browser storage before reloading.'
+              : recoveryPersistenceError
+              ? 'Live progress could not be saved in this tab. Keep it open until the response finishes.'
+              : 'This draft could not be saved for reload.'}
+          </p>
+        )}
         <form
           onSubmit={(e) => {
             e.preventDefault();
             if (!commandInput.trim() || executionInProgressRef.current || duplexVoiceActive) return;
-            handleRunDirective(commandInput, 'text', true);
-            setCommandInput('');
+            const prompt = commandInput;
+            updateCommandInput('');
+            handleRunDirective(prompt, 'text', true);
           }}
           className="aspira-composer flex w-full max-w-[955px] flex-col gap-2 px-3 py-2.5"
         >
@@ -1228,7 +1298,7 @@ export const App: React.FC = () => {
               ref={commandInputRef}
               rows={1}
               value={commandInput}
-              onChange={(e) => setCommandInput(e.target.value)}
+              onChange={(e) => updateCommandInput(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault();
