@@ -2,6 +2,8 @@ import express from 'express';
 import os from 'node:os';
 import fs from 'node:fs';
 import path from 'node:path';
+import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
@@ -1831,8 +1833,9 @@ app.post('/api/tts', async (req, res) => {
   const {
     text,
     endpoint = process.env.LOCAL_TTS_URL || 'http://127.0.0.1:8000/v1/audio/speech',
-    model = 'mlx-community/Qwen3-TTS-12Hz-0.6B-CustomVoice-8bit',
+    model = 'mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-6bit',
     voice = 'Ryan',
+    instruct = 'Speak naturally and conversationally, with a warm, relaxed cadence, subtle pitch variation, clear articulation, and restrained emphasis. Sound like a thoughtful person speaking to one person, not an announcer.',
   } = req.body || {};
   if (typeof text !== 'string' || !text.trim()) {
     return res.status(400).json({ error: 'Speech text is required.' });
@@ -1840,6 +1843,13 @@ app.post('/api/tts', async (req, res) => {
   if (!isLoopbackHttpUrl(endpoint)) {
     return res.status(400).json({ error: 'Voice endpoint must use localhost.' });
   }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 5 * 60 * 1000);
+  const abortWhenClientLeaves = () => {
+    if (!res.writableEnded) controller.abort();
+  };
+  res.on('close', abortWhenClientLeaves);
 
   try {
     const r = await fetch(endpoint, {
@@ -1849,22 +1859,34 @@ app.post('/api/tts', async (req, res) => {
         model,
         input: text.trim(),
         voice,
+        instruct: typeof instruct === 'string' ? instruct.slice(0, 1000) : '',
+        stream: true,
+        streaming_interval: 0.32,
         response_format: 'wav',
       }),
       // First use may fetch and load a multi-gigabyte local model. Give the
       // on-device service time to complete its cold start before failing.
-      signal: AbortSignal.timeout(5 * 60 * 1000),
+      signal: controller.signal,
     });
     if (r.ok) {
-      const arrayBuffer = await r.arrayBuffer();
       res.setHeader('Content-Type', r.headers.get('content-type') || 'audio/wav');
-      return res.send(Buffer.from(arrayBuffer));
+      res.setHeader('Cache-Control', 'no-store');
+      if (!r.body) return res.status(502).json({ error: 'The local voice service returned no audio.' });
+      await pipeline(Readable.fromWeb(r.body), res);
+      return;
     }
     return res.status(502).json({ error: 'The local voice service rejected the request.' });
   } catch (error) {
+    if (res.headersSent) {
+      if (!res.destroyed) res.destroy(error);
+      return;
+    }
     return res.status(503).json({
       error: 'Local voice service is unavailable. Start it with npm run voice:local.',
     });
+  } finally {
+    clearTimeout(timeout);
+    res.off('close', abortWhenClientLeaves);
   }
 });
 

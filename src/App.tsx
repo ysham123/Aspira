@@ -752,6 +752,11 @@ export const App: React.FC = () => {
     { id: 'nexus', label: 'Studio', icon: MessageSquare },
     { id: 'forge', label: 'Workbench', icon: FolderGit2 },
   ];
+  const currentView = primaryViews.find((view) => view.id === spatialMode) ?? primaryViews[0];
+  const CurrentViewIcon = currentView.icon;
+  const conversationLabel = conversationTurns.length
+    ? titleForConversation(conversationTurns)
+    : 'A new conversation';
 
   return (
     <div className="aspira-shell relative flex h-screen w-screen overflow-hidden p-3 aspira-canvas-bg">
@@ -891,7 +896,7 @@ export const App: React.FC = () => {
           <div className="aspira-brand-mark"><Sparkles className="h-4 w-4" /></div>
           <div>
             <div className="font-display text-sm font-semibold tracking-tight">Aspira</div>
-            <div className="mt-0.5 text-[10px] text-slate-500">Personal AI workspace</div>
+            <div className="mt-0.5 text-[10px] text-slate-500">Your personal AI workspace</div>
           </div>
         </div>
 
@@ -947,12 +952,24 @@ export const App: React.FC = () => {
 
       <div className="aspira-app-content flex min-w-0 flex-1 flex-col overflow-hidden">
         <header className="aspira-topbar relative z-20 flex items-center justify-between gap-3 px-4 py-2">
-          <div className="flex min-w-0 items-center gap-3">
-            <div className="hidden sm:block">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">Personal workspace</p>
-              <p className="mt-0.5 text-xs font-medium text-slate-700">This Mac</p>
+          <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+            <div className="aspira-topbar-brand flex shrink-0 items-center gap-2 lg:hidden" role="img" aria-label="Aspira">
+              <span className="aspira-brand-mark h-8 w-8 rounded-[11px]" aria-hidden="true"><Sparkles className="h-3.5 w-3.5" /></span>
+              <span className="hidden font-display text-sm font-semibold tracking-tight min-[560px]:inline">Aspira</span>
             </div>
-            <nav className="aspira-mobile-nav flex items-center gap-1 rounded-xl border border-white/[0.06] bg-white/[0.03] p-1 lg:hidden" aria-label="Workspace navigation">
+            <div className="hidden min-w-0 items-center gap-3 lg:flex">
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-[#6258c9]/10 bg-[#f0effb] text-[#6258c9]">
+                <CurrentViewIcon className="h-4 w-4" />
+              </span>
+              <div className="min-w-0">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">Personal workspace</p>
+                <p className="mt-0.5 truncate text-sm font-semibold tracking-[-0.02em] text-slate-800">
+                  {currentView.label}
+                  <span className="ml-2 font-normal text-slate-500">· {spatialMode === 'nexus' ? conversationLabel : 'Local project workspace'}</span>
+                </p>
+              </div>
+            </div>
+            <nav className="aspira-mobile-nav flex items-center gap-1 rounded-xl border border-black/[0.06] bg-white/70 p-1 lg:hidden" aria-label="Workspace navigation">
               {primaryViews.map((view) => {
                 const Icon = view.icon;
                 const active = spatialMode === view.id;
@@ -965,7 +982,7 @@ export const App: React.FC = () => {
                     aria-label={view.label}
                     title={view.label}
                     className={`flex min-h-11 items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition ${
-                      active ? 'border-white/[0.12] bg-white/[0.12] text-white' : 'border-transparent text-slate-400 hover:text-white'
+                      active ? 'border-[#dedaf6] bg-[#f0effb] text-[#5148b1] shadow-sm' : 'border-transparent text-slate-500 hover:bg-[#f4f3ef] hover:text-slate-800'
                     }`}
                   >
                     <Icon className="h-3.5 w-3.5" />
@@ -980,7 +997,7 @@ export const App: React.FC = () => {
                 aria-label="Recent conversations"
                 aria-haspopup="dialog"
                 title="Recent conversations"
-                className="aspira-history-trigger flex min-h-11 items-center gap-1.5 rounded-lg border border-transparent px-2.5 py-1.5 text-xs font-medium text-slate-400 transition hover:text-white"
+                className="aspira-history-trigger flex min-h-11 items-center gap-1.5 rounded-lg border border-transparent px-2.5 py-1.5 text-xs font-medium text-slate-500 transition hover:bg-[#f4f3ef] hover:text-slate-800"
               >
                 <History className="h-3.5 w-3.5" />
                 <span className="aspira-mobile-nav-label">Chats</span>
@@ -989,17 +1006,23 @@ export const App: React.FC = () => {
           </div>
 
           <div className="flex shrink-0 items-center gap-2">
+            <div className="hidden items-center gap-2 rounded-full border border-black/[0.07] bg-white/65 px-3 py-2 text-[11px] font-medium text-slate-600 xl:flex">
+              <span className={`h-1.5 w-1.5 rounded-full ${awakeModelIds.length ? 'bg-emerald-500' : 'bg-slate-300'}`} aria-hidden="true" />
+              {awakeModelIds.length === 0
+                ? 'No agents selected'
+                : `${awakeModelIds.length} agent${awakeModelIds.length === 1 ? '' : 's'} selected`}
+            </div>
             <button
               type="button"
               onClick={() => setVaultModalOpen(true)}
               aria-haspopup="dialog"
               aria-label="Connections"
               title="Connections"
-              className="aspira-card-interactive flex min-h-11 items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-medium text-slate-700 lg:hidden"
+              className="aspira-card-interactive flex min-h-11 items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-medium text-slate-700"
             >
               <Sliders className="h-3.5 w-3.5" />
-              <span className="aspira-connect-label hidden min-[430px]:inline">Connections</span>
-              <span className="aspira-connect-label min-[430px]:hidden">Connect</span>
+              <span className="aspira-connect-label hidden min-[560px]:inline">Connections</span>
+              <span className="aspira-connect-label min-[560px]:hidden">Connect</span>
             </button>
             {passkeyLockEnabled && passkeyProfiles[0]?.phrase.trim() && (
               <button

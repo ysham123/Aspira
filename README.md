@@ -46,13 +46,13 @@ Saved memories and user-created playbooks live in `server/data/` and are ignored
 
 ## Optional local voice
 
-The local voice service uses MLX-Audio on Apple Silicon. It can download model weights on first use.
+The local voice service uses MLX-Audio on Apple Silicon. Aspira defaults to the open `mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-6bit` model and streams speech as it is generated. Its weights take about 2.7 GB and download on the first sample request. The Voice settings let you change the speaker and add a natural-language speaking direction. To use a smaller model, change the model ID to `mlx-community/Qwen3-TTS-12Hz-0.6B-CustomVoice-8bit`.
 
 ```sh
 npm run voice:local
 ```
 
-Then open **Settings → Voice** and play a sample. Voice output is opt-in; there is no browser robot-voice fallback. Voice input records only after the microphone button is pressed, then sends the recording to the local MLX-Audio transcription endpoint.
+Then open **Settings → Voice** and play a sample. Voice output is opt-in; there is no browser speech fallback. Voice input records only after the microphone button is pressed, then sends the recording to the local MLX-Audio transcription endpoint.
 
 ## Optional passphrase lock
 

@@ -102,6 +102,7 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
   );
   const [localTtsModel, setLocalTtsModel] = useState(soundEngine.getLocalTtsModel());
   const [localTtsVoice, setLocalTtsVoice] = useState(soundEngine.getLocalTtsVoice());
+  const [localTtsInstruct, setLocalTtsInstruct] = useState(soundEngine.getLocalTtsInstruct());
   const [ttsSavedBanner, setTtsSavedBanner] = useState(false);
   const [ttsStatus, setTtsStatus] = useState('');
   const dialogRef = useRef<HTMLDivElement | null>(null);
@@ -258,6 +259,7 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
     soundEngine.setLocalTtsEndpoint(localTtsUrl.trim());
     soundEngine.setLocalTtsModel(localTtsModel.trim());
     soundEngine.setLocalTtsVoice(localTtsVoice.trim());
+    soundEngine.setLocalTtsInstruct(localTtsInstruct.trim());
     setTtsStatus('Generating a short sample with the local voice model…');
     const ready = await soundEngine.speak('Aspira is ready to work with you.');
     setTtsSavedBanner(ready);
@@ -793,7 +795,7 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
               <div>
                 <h3 className="text-sm font-semibold text-white">Private voice, on your Mac</h3>
                 <p className="mt-1 max-w-2xl text-xs leading-5 text-slate-400">
-                  Aspira sends speech to a local MLX-Audio server. The Qwen3-TTS voice model is open source and runs on Apple Silicon; weights download on the first sample request.
+                  Aspira streams speech from an open Qwen3-TTS model running locally through MLX-Audio. The default 1.7B model uses about 2.7 GB of weights and downloads when you first play a sample. Choose the smaller 0.6B model ID if you prefer a lighter option.
                 </p>
               </div>
               <div className="rounded-2xl border border-white/[0.08] bg-white/[0.025] p-5 space-y-4">
@@ -823,6 +825,18 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
                       onChange={(event) => setLocalTtsVoice(event.target.value)}
                       className="w-full rounded-xl border border-white/10 bg-black/30 px-3.5 py-2.5 text-sm text-white outline-none focus:border-white/25"
                     />
+                  </label>
+                  <label className="space-y-1.5 text-xs text-slate-400 md:col-span-2">
+                    <span>Speaking style</span>
+                    <textarea
+                      value={localTtsInstruct}
+                      onChange={(event) => setLocalTtsInstruct(event.target.value)}
+                      maxLength={1000}
+                      rows={3}
+                      placeholder="Describe a natural speaking style for this voice…"
+                      className="w-full resize-y rounded-xl border border-white/10 bg-black/30 px-3.5 py-2.5 text-sm leading-6 text-white outline-none focus:border-white/25"
+                    />
+                    <span className="block text-[11px] leading-5 text-slate-500">This direction is sent with each local speech request. Try changing pace, warmth, or emphasis to suit your voice.</span>
                   </label>
                 </div>
                 <div className="flex flex-col gap-3 border-t border-white/[0.07] pt-4 sm:flex-row sm:items-center sm:justify-between">

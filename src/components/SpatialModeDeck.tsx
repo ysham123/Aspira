@@ -110,10 +110,6 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
   const selectedModelNames = models
     .filter((model) => awakeModelIds.includes(model.id))
     .map((model) => model.codeName);
-  const emptyConversationIntro = selectedModelNames.length > 0
-    ? `${selectedModelNames.join(' + ')} ${selectedModelNames.length === 1 ? 'is' : 'are'} ready. Ask a question or choose a starter below. Local actions also work without a model.`
-    : 'Choose a model in the composer to chat. Local actions work without one.';
-
   // Workbench state
   const [fsNodes, setFsNodes] = useState<FsNode[]>([]);
   const [selectedFile, setSelectedFile] = useState<FsNode | null>(null);
@@ -285,9 +281,9 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
         <div className="aspira-conversation-column flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-hidden">
           <div className="flex shrink-0 items-end justify-between gap-4 px-1">
             <div>
-              <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-slate-500">Conversation</p>
+              <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-slate-500">Your workspace</p>
               <h1 className="mt-1 text-2xl font-semibold tracking-tight text-white">Studio</h1>
-              <p className="mt-1 text-xs text-slate-400">Conversation, connected models, and local actions in one place.</p>
+              <p className="mt-1 text-xs text-slate-400">Ask, explore, and take action from one conversation.</p>
             </div>
             <div className="flex items-center gap-2 text-right">
               {voiceStatus !== 'Voice input is off' && <span className={`h-2 w-2 rounded-full ${isAgentSpeaking ? 'bg-indigo-300 animate-pulse' : duplexVoiceActive ? 'bg-emerald-300 animate-pulse' : 'bg-slate-500'}`} />}
@@ -318,44 +314,64 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
             className="aspira-conversation-surface flex flex-1 flex-col gap-5 overflow-y-auto p-6 custom-scrollbar"
           >
             {conversationTurns.length === 0 && (
-              <div className="aspira-empty-state mx-auto flex w-full max-w-2xl flex-col justify-start py-4">
-                <p className="aspira-empty-eyebrow text-[11px] font-semibold uppercase tracking-[0.14em] text-indigo-300">Your workspace is ready</p>
-                <h2 className="aspira-empty-title mt-3 max-w-xl text-3xl font-semibold leading-tight tracking-tight text-white sm:text-4xl">What are you working on?</h2>
-                <p className="aspira-empty-intro mt-3 max-w-lg text-sm leading-6 text-slate-400">{emptyConversationIntro}</p>
+              <section className="aspira-empty-state mx-auto flex w-full max-w-2xl flex-col justify-start py-4" aria-labelledby="aspira-empty-title">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="aspira-empty-eyebrow text-[11px] font-semibold uppercase tracking-[0.14em] text-indigo-300">A good place to begin</p>
+                  <span className="inline-flex min-h-7 items-center gap-1.5 rounded-full border border-slate-200/80 bg-white/70 px-2.5 text-[10px] font-medium text-slate-500">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
+                    {selectedModelNames.length > 0
+                      ? `${selectedModelNames.join(' + ')} ready`
+                      : 'Local actions ready'}
+                  </span>
+                </div>
+                <h2 id="aspira-empty-title" className="aspira-empty-title mt-3 max-w-xl text-3xl font-semibold leading-tight tracking-tight text-white sm:text-4xl">What would you like to get done?</h2>
+                <p className="aspira-empty-intro mt-3 max-w-lg text-sm leading-6 text-slate-400">
+                  Ask a question, think through an idea, or ask Aspira to help with something on this Mac.
+                  {selectedModelNames.length > 0
+                    ? ` Your selected models are ${selectedModelNames.join(' and ')}.`
+                    : ' Connect a model for conversation, or start with a local action.'}
+                </p>
                 {selectedModelNames.length === 0 && (
                   <button type="button" className="aspira-empty-connect" onClick={onOpenConnections}>
                     <Plus className="h-4 w-4" aria-hidden="true" />
-                    Connect a provider
+                    Connect a model
                   </button>
                 )}
-                <div className="aspira-empty-prompts mt-5 grid gap-2 sm:grid-cols-2">
+                <div className="aspira-empty-prompts mt-6 grid gap-2 sm:grid-cols-2" aria-label="Suggested things to try">
                   {[
-                    { title: 'Get oriented', detail: 'Review this project and suggest a next step.', prompt: 'Summarize this workspace and tell me what I should work on next.' },
-                    { title: 'Check my Mac', detail: 'Review CPU, memory, and battery status.', prompt: 'Check my Mac CPU, memory, and battery status.' },
-                    { title: 'Review changes', detail: 'Inspect the current Git working tree.', prompt: 'Run git status' },
-                    { title: 'Explore the web', detail: 'Find current stories from Hacker News.', prompt: 'Show me the Hacker News top stories.' },
+                    { icon: Brain, title: 'Get oriented', detail: 'Understand this project and find a useful next step.', prompt: 'Summarize this workspace and tell me what I should work on next.' },
+                    { icon: Cpu, title: 'Check this Mac', detail: 'See current CPU, memory, and battery status.', prompt: 'Check my Mac CPU, memory, and battery status.' },
+                    { icon: FolderGit2, title: 'Review my changes', detail: 'See what changed in the current Git worktree.', prompt: 'Run git status' },
+                    { icon: Globe, title: 'Explore what’s new', detail: 'Catch up on the latest Hacker News stories.', prompt: 'Show me the Hacker News top stories.' },
                   ].map((item) => (
-                    <button key={item.title} onClick={() => onRunPrompt(item.prompt)} className="aspira-empty-prompt group px-3 py-2.5 text-left transition">
-                      <span className="block text-[13px] font-semibold text-slate-200">{item.title}</span>
-                      <span className="mt-1 block text-[10px] leading-4 text-slate-500">{item.detail}</span>
+                    <button key={item.title} type="button" onClick={() => onRunPrompt(item.prompt)} className="aspira-empty-prompt group flex items-start gap-2.5 px-3 py-2.5 text-left transition">
+                      <item.icon className="mt-0.5 h-4 w-4 shrink-0 text-indigo-500/80" aria-hidden="true" />
+                      <span className="min-w-0">
+                        <span className="block text-[13px] font-semibold text-slate-200">{item.title}</span>
+                        <span className="mt-1 block text-[10px] leading-4 text-slate-500">{item.detail}</span>
+                      </span>
                     </button>
                   ))}
                 </div>
-              </div>
+              </section>
             )}
             {conversationTurns.map((turn, idx) => {
               const isLatest = idx === conversationTurns.length - 1;
               const showDetails = expandedTurnId === turn.id;
+              const answeredByCount = turn.result.modelStreams.filter((stream) => stream.source !== 'UNAVAILABLE').length;
+              const hasLocalActions = (turn.result.executedActions?.length || 0) > 0;
 
               return (
                 <div
                   key={turn.id}
-                  className="aspira-turn flex flex-col gap-3 pb-5 border-b border-white/[0.06] last:border-b-0 last:pb-1"
+                  className="aspira-turn mx-auto flex w-full max-w-3xl flex-col gap-3 border-b border-white/[0.06] pb-5 last:border-b-0 last:pb-1"
+                  role="article"
+                  aria-label={`Conversation turn ${idx + 1}`}
                 >
                   {/* 1. User Conversational Turn Bubble */}
                   <div className="flex items-start justify-end gap-3">
                     <div className="aspira-user-message max-w-[82%] px-4 py-2.5">
-                      <div className="flex items-center justify-end gap-2 mb-1 text-[10px] text-indigo-300/80 font-mono">
+                      <div className="mb-1 flex flex-wrap items-center justify-end gap-x-2 gap-y-1 text-[10px] text-indigo-300/80 font-mono">
                         <span>
                           {turn.inputModality === 'voice'
                             ? 'Voice'
@@ -435,9 +451,16 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
                     <div className="aspira-response-byline">
                       <span className="aspira-assistant-mark" aria-hidden="true"><Sparkles className="h-3.5 w-3.5" /></span>
                       <span>Aspira</span>
+                      <span className="text-[11px] font-normal text-slate-500">
+                        {answeredByCount > 0
+                          ? `· answered with ${answeredByCount} ${answeredByCount === 1 ? 'model' : 'models'}`
+                          : hasLocalActions
+                          ? '· local action'
+                          : '· response'}
+                      </span>
                     </div>
                     <div className="flex items-center justify-between gap-2 flex-wrap">
-                      <div className="flex items-center gap-2 flex-wrap">
+                      <div className="flex items-center gap-2 flex-wrap" role="group" aria-label="Models and connections used for this response">
                         {turn.result.modelStreams.map((stream) => {
                           const m = models.find((mod) => mod.id === stream.modelId);
                           return (
@@ -507,15 +530,16 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
                             onClick={() => {
                               setExpandedTurnId(expandedTurnId === turn.id ? null : turn.id);
                             }}
+                            aria-expanded={showDetails}
                             className="px-2.5 py-1 rounded-lg bg-white/[0.04] hover:bg-white/[0.1] border border-white/[0.08] text-[11px] text-slate-300 flex items-center gap-1 transition-all"
                           >
                             {showDetails ? (
                               <>
-                                Hide Perspectives <ChevronUp className="w-3 h-3" />
+                                Hide perspectives <ChevronUp className="w-3 h-3" />
                               </>
                             ) : (
                               <>
-                                {turn.result.modelStreams.length} Perspectives{' '}
+                                View {turn.result.modelStreams.length} perspectives{' '}
                                 <ChevronDown className="w-3 h-3" />
                               </>
                             )}
@@ -589,12 +613,21 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
             })}
 
             {isExecuting && (
-              <div className="aspira-progress-state" role="status" aria-live="polite" aria-atomic="true">
+              <div className="aspira-progress-state mx-auto w-full max-w-3xl" role="status" aria-live="polite" aria-atomic="true">
                 <span className="aspira-progress-indicator" aria-hidden="true" />
-                <span className="min-w-0 break-words">
-                  {activeTaskLabel || (awakeModelIds.length
-                    ? `Thinking with ${awakeModelIds.map((id) => models.find((model) => model.id === id)?.codeName || id).join(' and ')}…`
-                    : 'Running your request…')}
+                <span className="flex min-w-0 flex-col gap-0.5">
+                  <span className="break-words font-medium text-slate-700">
+                    {activeTaskLabel || (awakeModelIds.length
+                      ? `Thinking with ${awakeModelIds.map((id) => models.find((model) => model.id === id)?.codeName || id).join(' and ')}…`
+                      : 'Working on your request…')}
+                  </span>
+                  <span className="text-[10px] text-slate-500">
+                    {awakeModelIds.length > 1
+                      ? `${awakeModelIds.length} selected models · their answer will appear here`
+                      : awakeModelIds.length === 1
+                      ? 'Your model is working · the answer will appear here'
+                      : 'Running locally · the result will appear here'}
+                  </span>
                 </span>
               </div>
             )}
