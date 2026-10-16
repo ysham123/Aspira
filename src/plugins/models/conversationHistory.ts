@@ -1,4 +1,5 @@
 import type { ConversationTurn, SynergyExecutionResult } from './manifest';
+import { normalizeWorkspaceFileRead } from './fileReadContext';
 
 export const CONVERSATION_HISTORY_STORAGE_KEY = 'aspira_conversations_v1';
 export const MAX_SAVED_CONVERSATIONS = 24;
@@ -48,7 +49,11 @@ export function normalizeConversationTurn(value: unknown): ConversationTurn | nu
       executiveHeadline: result.executiveHeadline || 'Response', spokenReply: result.spokenReply || '',
       consensusScore: Number.isFinite(result.consensusScore) ? result.consensusScore : null,
       participatingModels: Array.isArray(result.participatingModels) ? result.participatingModels : [],
-      executedActions: actions.map((action) => ({ ...action, durationMs: Number.isFinite(action.durationMs) ? action.durationMs : 0 })),
+      executedActions: actions.map((action) => {
+        const { fileRead: rawFileRead, ...base } = action;
+        const fileRead = normalizeWorkspaceFileRead(rawFileRead);
+        return { ...base, ...(fileRead ? { fileRead } : {}), durationMs: Number.isFinite(action.durationMs) ? action.durationMs : 0 };
+      }),
       modelStreams: streams,
       followUpSuggestions: Array.isArray(result.followUpSuggestions) ? result.followUpSuggestions : [],
       attributionPills: Array.isArray(result.attributionPills) ? result.attributionPills : [],

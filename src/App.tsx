@@ -30,6 +30,7 @@ import {
 } from './plugins/models/manifest';
 import { runPantheonSynergy } from './plugins/models/synergyEngine';
 import { modelConversationContext } from './plugins/models/conversationContext';
+import { latestWorkspaceFileRead } from './plugins/models/fileReadContext';
 import { soundEngine } from './audio/soundEngine';
 import { applyTurnProgress, createPendingTurn, interruptedTurnResult } from './plugins/models/turnProgress';
 import type { PendingConversationTurn } from './plugins/models/turnProgress';
@@ -481,6 +482,7 @@ export const App: React.FC = () => {
           awakeModels: activeList,
           apiKeys,
           conversationHistory: historyContext,
+          fileReadContext: latestWorkspaceFileRead(conversationTurnsRef.current)?.fileRead,
           signal: controller.signal,
           onMemoriesUpdated: (updated) => setMemories(updated),
           onProgress: (event) => {

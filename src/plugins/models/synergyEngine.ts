@@ -9,6 +9,7 @@ import {
   ModelPluginManifest,
   SynergyExecutionResult,
   SynergyMode,
+  WorkspaceFileRead,
 } from './manifest';
 
 interface DispatchModelResponse {
@@ -45,6 +46,7 @@ async function fetchModelStream(
   executeActions: boolean,
   signal?: AbortSignal,
   onProgress?: (event: TurnProgressEvent) => void,
+  fileReadContext?: WorkspaceFileRead,
 ): Promise<{
   source: 'PROVIDER_CLI' | 'LIVE_API' | 'LOCAL_OLLAMA' | 'UNAVAILABLE';
   text: string;
@@ -74,6 +76,7 @@ async function fetchModelStream(
         endpointConfig: model.endpointConfig,
         conversationHistory,
         executeActions,
+        fileReadContext,
       }),
       signal,
     });
@@ -125,6 +128,7 @@ export async function runPantheonSynergy(params: {
   signal?: AbortSignal;
   onMemoriesUpdated?: (memories: LivingMemoryItem[]) => void;
   onProgress?: (event: TurnProgressEvent) => void;
+  fileReadContext?: WorkspaceFileRead;
 }): Promise<SynergyExecutionResult> {
   const {
     prompt,
@@ -136,6 +140,7 @@ export async function runPantheonSynergy(params: {
     signal,
     onMemoriesUpdated,
     onProgress,
+    fileReadContext,
   } = params;
 
   const capability =
@@ -155,7 +160,7 @@ export async function runPantheonSynergy(params: {
       const response = await fetch('/api/dispatch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'application/x-ndjson' },
-        body: JSON.stringify({ modelId: 'local', prompt, executeActions: true }),
+        body: JSON.stringify({ modelId: 'local', prompt, executeActions: true, fileReadContext }),
         signal,
       });
       data = await readDispatchResponse<typeof data>(response, (event) => {
@@ -219,6 +224,7 @@ export async function runPantheonSynergy(params: {
       idx === 0, // Lead agent executes macOS/web/file/memory actions
       signal,
       onProgress,
+      fileReadContext,
     );
 
     if (idx === 0 && result.memories && onMemoriesUpdated) {
@@ -261,10 +267,10 @@ export async function runPantheonSynergy(params: {
     ? `${responseStreams.length} model response${responseStreams.length === 1 ? '' : 's'}`
     : executedActions.length
     ? executedActions.some((action) => action.status === 'success')
-      ? 'Local action completed · model unavailable'
-      : 'Action needs attention · model unavailable'
+      ? 'Local action completed · no final model reply'
+      : 'Action needs attention · no final model reply'
     : awakeModels.length
-    ? 'No selected model responded'
+    ? 'No selected model returned a final reply'
     : 'Connect and select a model';
   const synthesizedOutput = responseStreams.length
     ? responseStreams

@@ -7,6 +7,9 @@ import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { searchPublicWeb } from './webSearch.js';
 import { createDispatchResponse } from './dispatchResponse.js';
+import { createFileReadPage } from './fileReadPage.js';
+import { contextualReadArguments, readContinuationForPrompt } from './workspaceReadContext.js';
+import { toolAuthorizationError } from './toolAuthorization.js';
 
 const execFileAsync = promisify(execFile);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -925,13 +928,14 @@ async function executeAgentTool(tool, args = {}, signal) {
           throw new Error('Aspira reads text and source files only.');
         }
         if (fs.statSync(fullPath).size > 1_000_000) throw new Error('This file is too large to read through Aspira.');
-        const content = redactLikelySecrets(fs.readFileSync(fullPath, 'utf8')).slice(0, 5000);
+        const page = createFileReadPage(fs.readFileSync(fullPath, 'utf8'), path.relative(rootDir, fullPath), args, redactLikelySecrets);
         return {
           id: `act-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
           tool: 'fs_read',
           title: `Read File: ${relPath}`,
           status: 'success',
-          output: content,
+          output: page.output,
+          fileRead: page.fileRead,
           durationMs: Date.now() - start,
         };
       }
@@ -1055,7 +1059,7 @@ const MODEL_ACTION_TOOLS = `Available Aspira tools:
 - workspace.git_status {}: read the current branch and working-tree status.
 - workspace.list_files {path?: string}: list non-hidden workspace files under a relative folder.
 - workspace.search_text {query: string}: search readable source and documentation files.
-- workspace.read_file {path: string}: read a workspace text file; credential files are blocked.
+- workspace.read_file {path: string, startLine?: number, startColumn?: number, endLine?: number, maxLines?: number, expectedRevision?: string}: read a numbered page of a workspace text file. Defaults to line 1, up to 80 lines and 6,000 content characters; maxLines is capped at 200. The result gives the exact next cursor and file revision. Use those values for another page; never imply unread parts were read. Credential files remain blocked.
 - workspace.create_file {path: string, content: string}: create a new file only; existing files cannot be overwritten.
 - system.status {}: read basic Mac CPU, memory, battery, and detected provider CLI status.
 - app.open {app: string}: open one of Safari, Notes, Calendar, Calculator, Terminal, Finder, Mail, Messages, Reminders, Music, Preview, Activity Monitor, System Settings, Cursor, ChatGPT, Claude, Gemini, Ollama, Spotify, or Xcode.
@@ -1085,36 +1089,6 @@ function parseModelToolCall(text) {
   }
 }
 
-function toolAuthorizationError(tool, prompt) {
-  const text = String(prompt || '').toLowerCase();
-  const namesWorkspaceFile = /(?:^|[\s`'"(])(?:[\w.-]+\/)*[\w.-]+\.(?:md|mdx|txt|json|ts|tsx|js|jsx|css|html|py|yml|yaml|toml|xml|sh|sql|swift|go|rs)\b/i.test(text);
-  const hasWorkspaceIntent = namesWorkspaceFile || /\b(workspace|repository|repo|codebase|project|folder|file|files|source|git|branch|diff|code)\b/.test(text);
-  if (tool.startsWith('workspace.') && !hasWorkspaceIntent) {
-    return 'Aspira can inspect workspace files only when the user asks about the project, code, files, or repository.';
-  }
-  if (tool === 'workspace.git_status' && !/\b(git|repository|repo|branch|working tree|changes|diff|status)\b/.test(text)) {
-    return 'The user did not ask to inspect Git or repository changes.';
-  }
-  if (tool === 'workspace.create_file' && !/\b(create|write|save|generate|make)\b/.test(text)) {
-    return 'Creating a file requires an explicit request to create or write one.';
-  }
-  if (tool === 'system.status' && !/\b(system|mac|macos|cpu|memory|ram|battery|power|hardware)\b/.test(text)) {
-    return 'The user did not ask for local system information.';
-  }
-  if (tool === 'app.open' && !/\b(open|launch|start)\b/.test(text)) {
-    return 'Opening an app requires an explicit request to open or launch it.';
-  }
-  if (tool === 'browser.open_url' && !/\b(open|visit|go to|browse to)\b/.test(text)) {
-    return 'Opening a URL requires an explicit request to open or visit it.';
-  }
-  if (tool === 'web.search' && !/\b(search|look up|latest|current|news|research|browse)\b/.test(text)) {
-    return 'Public web search requires an explicit search, research, or current-information request.';
-  }
-  if (tool === 'memory.save' && !/\b(remember|save to memory|don't forget|do not forget)\b/.test(text)) {
-    return 'Saving a memory requires an explicit request to remember or save it.';
-  }
-  return null;
-}
 
 function makeToolFailure(tool, message) {
   return {
@@ -1127,9 +1101,15 @@ function makeToolFailure(tool, message) {
   };
 }
 
-async function executeModelToolCall(toolCall, userPrompt, leadAgent, signal) {
-  const { tool, arguments: args } = toolCall;
-  const denied = toolAuthorizationError(tool, userPrompt);
+async function executeModelToolCall(toolCall, userPrompt, leadAgent, signal, readContinuation) {
+  const { tool } = toolCall;
+  let args = toolCall.arguments;
+  if (tool === 'workspace.read_file' && readContinuation) {
+    const contextual = contextualReadArguments(args, readContinuation);
+    if (contextual.error) return makeToolFailure(tool, contextual.error);
+    args = contextual.arguments;
+  }
+  const denied = toolAuthorizationError(tool, userPrompt, readContinuation);
   if (denied) return makeToolFailure(tool, denied);
 
   switch (tool) {
@@ -1142,7 +1122,7 @@ async function executeModelToolCall(toolCall, userPrompt, leadAgent, signal) {
     case 'workspace.read_file': {
       const filePath = String(args.path || '').trim();
       if (!filePath) return makeToolFailure(tool, 'A relative workspace file path is required.');
-      return executeAgentTool('fs_read', { path: filePath }, signal);
+      return executeAgentTool('fs_read', { path: filePath, startLine: args.startLine, startColumn: args.startColumn, endLine: args.endLine, maxLines: args.maxLines, expectedRevision: args.expectedRevision }, signal);
     }
     case 'workspace.create_file': {
       const filePath = String(args.path || '').trim();
@@ -1325,7 +1305,7 @@ async function requestProviderCompletion({
 // ============================================================================
 // 4. NATURAL LANGUAGE INTENT -> REAL ACTION PARSER
 // ============================================================================
-async function detectAndRunNaturalActions(prompt, leadAgent = 'argon', { signal, onStart, onAction } = {}) {
+async function detectAndRunNaturalActions(prompt, leadAgent = 'argon', { signal, onStart, onAction, readContinuation } = {}) {
   const actions = [];
   const runAction = async (tool, args) => {
     signal?.throwIfAborted();
@@ -1410,8 +1390,13 @@ async function detectAndRunNaturalActions(prompt, leadAgent = 'argon', { signal,
   const readMatch = prompt.match(
     /\b(?:read|show me|cat|inspect)\s+(?:the\s+file\s+)?['"`]?([a-zA-Z0-9_./-]+\.(?:md|json|ts|tsx|js|css|html|py|txt))['"`]?/i
   );
-  if (readMatch && !writeMatch) {
-    actions.push(await runAction('fs_read', { path: readMatch[1] }));
+  if ((readMatch || readContinuation) && !writeMatch) {
+    const range = prompt.match(/\blines?\s+(\d+)(?:\s*(?:-|–|through|to)\s*(\d+))?/i);
+    const column = prompt.match(/\bcolumn\s+(\d+)/i);
+    const args = { path: readMatch?.[1], ...(range ? { startLine: Number(range[1]), ...(range[2] ? { endLine: Number(range[2]), maxLines: Math.min(200, Number(range[2]) - Number(range[1]) + 1) } : {}) } : {}), ...(column ? { startColumn: Number(column[1]) } : {}) };
+    const contextual = contextualReadArguments(args, readContinuation);
+    if (contextual.error) actions.push(makeToolFailure('workspace.read_file', contextual.error));
+    else actions.push(await runAction('fs_read', contextual.arguments));
   }
 
   // 6. Run Terminal / Git / System Command
@@ -1820,12 +1805,15 @@ app.post('/api/dispatch', async (req, res) => {
     endpointConfig,
     conversationHistory = [],
     executeActions = false,
+    fileReadContext,
   } = req.body || {};
   const startTime = Date.now();
   const dispatch = createDispatchResponse(req, res);
   if (typeof prompt !== 'string' || !prompt.trim() || prompt.length > 32_000) {
     return dispatch.complete(400, { source: 'UNAVAILABLE', modelId, error: 'Enter a message of up to 32,000 characters.', text: null });
   }
+
+  let readContinuation = readContinuationForPrompt(prompt, fileReadContext);
 
   // Keep deterministic local actions available when the user did not select a model.
   let executedActions = [];
@@ -1834,6 +1822,7 @@ app.post('/api/dispatch', async (req, res) => {
     try {
       executedActions = await detectAndRunNaturalActions(prompt, modelId, {
         signal: requestAbort.signal,
+        readContinuation,
         onStart: (activity) => dispatch.emit({ type: 'status', phase: 'acting', ...activity }),
         onAction: (action) => {
           executedActions.push(action);
@@ -1866,7 +1855,7 @@ app.post('/api/dispatch', async (req, res) => {
 
   const fullSystemPrompt = `${
     systemPrompt || 'You are a conversational personal AI assistant inside Aspira.'
-  }\nRespond naturally and concisely. Be clear about completed actions and uncertainty. Describe actions in plain language; do not expose internal tool IDs unless the user asks. Summarize the relevant result instead of repeating raw output. Only claim an action was completed when its result is included here. A stopped reply may still have completed actions: use recorded receipts as evidence, and treat an absent receipt as an unconfirmed outcome rather than proof nothing happened.${memoryBlock}${executeActions ? `\n\n${MODEL_ACTION_TOOLS}` : ''}`;
+  }\nRespond naturally and concisely. Be clear about completed actions and uncertainty. Describe actions in plain language; do not expose internal tool IDs unless the user asks. Summarize the relevant result instead of repeating raw output. Only claim an action was completed when its result is included here. A stopped reply may still have completed actions: use recorded receipts as evidence, and treat an absent receipt as an unconfirmed outcome rather than proof nothing happened.${memoryBlock}${readContinuation ? `\n\n[FILE READ CONTINUATION CONTEXT]\n${JSON.stringify(readContinuation)}\nThis follow-up refers only to this file. Request workspace.read_file for it when needed; Aspira applies the recorded continuation cursor. A next-page request at the end of the file has no unread page. If the file version changed, ask for a fresh read instead of guessing.` : ''}${executeActions ? `\n\n${MODEL_ACTION_TOOLS}` : ''}`;
 
   if (modelId === 'local') {
     if (!executedActions.length) {
@@ -1902,7 +1891,7 @@ app.post('/api/dispatch', async (req, res) => {
     while (!requestAbort.signal.aborted) {
       const toolResultContext = toolResults.length
         ? `\n\n[ASPIRA TOOL RESULTS]\n${toolResults.map((action, index) =>
-            `${index + 1}. ${action.tool} — ${action.status}: ${action.title}\n${String(action.output || '').slice(0, 3500)}`
+            `${index + 1}. ${action.tool} — ${action.status}: ${action.title}\n${String(action.output || '').slice(0, 10000)}`
           ).join('\n\n')}`
         : '';
       const currentSystemPrompt = toolCallCount >= maxToolCalls
@@ -1935,21 +1924,31 @@ app.post('/api/dispatch', async (req, res) => {
         });
       }
 
-      const toolCall = executeActions && toolCallCount < maxToolCalls
+      const toolCall = executeActions
         ? parseModelToolCall(completion.text)
         : null;
       if (!toolCall) break;
+      if (toolCallCount >= maxToolCalls) {
+        return dispatch.complete(422, {
+          source: 'UNAVAILABLE', modelId, text: null,
+          error: `Aspira reached this turn's limit of ${maxToolCalls} actions before receiving a final answer. Completed receipts are kept here. Ask to continue if more work is needed.`,
+          executedActions, memories: loadMemories(), latencyMs: Date.now() - startTime,
+        });
+      }
 
       toolCallCount += 1;
       const actionId = `action-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       const title = dispatchActionTitle(toolCall.tool, toolCall.arguments);
       dispatch.emit({ type: 'status', phase: 'acting', actionId, title });
-      const action = await executeModelToolCall(toolCall, prompt, modelId, requestAbort.signal);
+      const action = await executeModelToolCall(toolCall, prompt, modelId, requestAbort.signal, readContinuation);
       if (requestAbort.signal.aborted) return;
       action.tool = toolCall.tool;
       action.id = actionId;
       action.title = title;
       executedActions.push(action);
+      if (readContinuation && readContinuation.mode !== 'range' && action.status === 'success' && action.fileRead) {
+        readContinuation = { ...action.fileRead, mode: 'next' };
+      }
       dispatch.emit({ type: 'action', action });
       toolResults.push(action);
     }

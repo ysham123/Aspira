@@ -170,7 +170,21 @@ export interface AgentActionExecution {
   output: string;
   durationMs: number;
   memoryItem?: LivingMemoryItem;
+  fileRead?: WorkspaceFileRead;
   stepLabel?: string;
+}
+
+export interface WorkspaceFileRead {
+  path: string;
+  revision: string;
+  startLine: number;
+  startColumn: number;
+  endLine: number;
+  endColumn: number;
+  totalLines: number;
+  hasMore: boolean;
+  nextLine: number | null;
+  nextColumn: number | null;
 }
 
 export interface LivingMemoryItem {

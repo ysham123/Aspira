@@ -329,6 +329,29 @@ pre.aspira-markdown-code > code {
 }
 
 .aspira-conversation-model-state,
+.aspira-file-read-range {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: .5rem;
+  margin: .65rem 0 .15rem;
+  font-size: .65rem;
+  color: #81778c;
+}
+.aspira-file-read-range button {
+  margin-left: auto;
+  padding: .35rem .6rem;
+  border-radius: .5rem;
+  background: #f0edf6;
+  color: #6d5c8a;
+  font-size: .65rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.aspira-file-read-range button:hover { background: #e6e0ef; }
+.aspira-file-read-range button:disabled { opacity: .45; cursor: default; }
+.aspira-file-read-range button:focus-visible { outline: 2px solid #a899c2; outline-offset: 2px; }
+
 .aspira-voice-presence {
   display: flex;
   min-width: 0;

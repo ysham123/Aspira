@@ -1,0 +1,30 @@
+export function toolAuthorizationError(tool, prompt, readContinuation) {
+  const text = String(prompt || '').toLowerCase();
+  const namesWorkspaceFile = /(?:^|[\s`'"(])(?:[\w.-]+\/)*[\w.-]+\.(?:md|mdx|txt|json|ts|tsx|js|jsx|css|html|py|yml|yaml|toml|xml|sh|sql|swift|go|rs)\b/i.test(text);
+  const hasWorkspaceIntent = namesWorkspaceFile || /\b(workspace|repository|repo|codebase|project|folder|file|files|source|git|branch|diff|code)\b/.test(text) || (tool === 'workspace.read_file' && Boolean(readContinuation));
+  if (tool.startsWith('workspace.') && !hasWorkspaceIntent) {
+    return 'Aspira can inspect workspace files only when the user asks about the project, code, files, or repository.';
+  }
+  if (tool === 'workspace.git_status' && !/\b(git|repository|repo|branch|working tree|changes|diff|status)\b/.test(text)) {
+    return 'The user did not ask to inspect Git or repository changes.';
+  }
+  if (tool === 'workspace.create_file' && !/\b(create|write|save|generate|make)\b/.test(text)) {
+    return 'Creating a file requires an explicit request to create or write one.';
+  }
+  if (tool === 'system.status' && !/\b(system|mac|macos|cpu|memory|ram|battery|power|hardware)\b/.test(text)) {
+    return 'The user did not ask for local system information.';
+  }
+  if (tool === 'app.open' && !/\b(open|launch|start)\b/.test(text)) {
+    return 'Opening an app requires an explicit request to open or launch it.';
+  }
+  if (tool === 'browser.open_url' && !/\b(open|visit|go to|browse to)\b/.test(text)) {
+    return 'Opening a URL requires an explicit request to open or visit it.';
+  }
+  if (tool === 'web.search' && !/\b(search|look up|latest|current|news|research|browse)\b/.test(text)) {
+    return 'Public web search requires an explicit search, research, or current-information request.';
+  }
+  if (tool === 'memory.save' && !/\b(remember|save to memory|don't forget|do not forget)\b/.test(text)) {
+    return 'Saving a memory requires an explicit request to remember or save it.';
+  }
+  return null;
+}

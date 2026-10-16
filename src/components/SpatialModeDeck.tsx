@@ -44,6 +44,7 @@ import { soundEngine } from '../audio/soundEngine';
 import { MarkdownMessage } from './MarkdownMessage';
 import { PendingConversationTurn as PendingTurnView } from './PendingConversationTurn';
 import type { PendingConversationTurn } from '../plugins/models/turnProgress';
+import { latestWorkspaceFileRead } from '../plugins/models/fileReadContext';
 
 interface SpatialModeDeckProps {
   spatialMode: SpatialMode;
@@ -114,6 +115,7 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
   const selectedModelNames = models
     .filter((model) => awakeModelIds.includes(model.id))
     .map((model) => model.codeName);
+  const latestFileRead = latestWorkspaceFileRead(conversationTurns);
   // Workbench state
   const [fsNodes, setFsNodes] = useState<FsNode[]>([]);
   const [selectedFile, setSelectedFile] = useState<FsNode | null>(null);
@@ -451,6 +453,18 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
                                 {statusLabel} · {act.durationMs}ms
                               </span>
                             </div>
+                            {act.fileRead && (
+                              <div className="aspira-file-read-range">
+                                <span>{act.fileRead.totalLines === 0 ? 'Empty file' : `Lines ${act.fileRead.startLine}–${act.fileRead.endLine} of ${act.fileRead.totalLines}${act.fileRead.startColumn > 1 || act.fileRead.nextLine === act.fileRead.endLine ? ' · line fragment' : ''}`}</span>
+                                {act.fileRead.hasMore && latestFileRead?.actionId === act.id && (
+                                  <button type="button" disabled={isExecuting}
+                                    aria-label={`Read ${act.fileRead.path} from line ${act.fileRead.nextLine}, column ${act.fileRead.nextColumn}`}
+                                    onClick={() => onRunPrompt(`Read the next part of ${act.fileRead.path}.`)}>
+                                    Read next part
+                                  </button>
+                                )}
+                              </div>
+                            )}
                             {act.output && (
                               <details className="aspira-action-details" open={act.status !== 'success'}>
                                 <summary className="aspira-action-details-summary">
@@ -512,7 +526,7 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
                                   : stream.source === 'LIVE_API'
                                   ? 'API'
                                   : stream.source === 'UNAVAILABLE'
-                                  ? 'Unavailable'
+                                  ? 'No final reply'
                                   : `Local · ${stream.latencyMs}ms`}
                               </span>
                             </span>

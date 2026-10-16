@@ -6,7 +6,7 @@ export function modelConversationContext(turns: ConversationTurn[]): Conversatio
     const actions = Array.isArray(turn.result.executedActions) ? turn.result.executedActions : [];
     const receipts = actions.slice(0, 3).map((action) => {
       const output = String(action.output || '');
-      return `- ${action.title} [${action.status}]: ${output.slice(0, 2000)}${output.length > 2000 ? '\n[Output excerpt shortened for conversation context; the full received output remains in its action receipt.]' : ''}`;
+      return `- ${action.title} [${action.status}]:${action.fileRead ? `\n[File page metadata] ${JSON.stringify(action.fileRead)}\n` : ' '}${output.slice(0, 2000)}${output.length > 2000 ? '\n[Output excerpt shortened for conversation context; the full received output remains in its action receipt.]' : ''}`;
     });
     return [
       { role: 'user' as const, text: turn.userText },
