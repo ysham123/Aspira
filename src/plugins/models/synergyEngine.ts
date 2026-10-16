@@ -2,21 +2,19 @@ import {
   AgentActionExecution,
   AttributionPill,
   CAPABILITY_MATRIX,
-  DebateExchange,
   LivingMemoryItem,
   ModelId,
   ModelPluginManifest,
-  RelayStageArtifact,
-  SprintTelemetryEntry,
   SynergyExecutionResult,
   SynergyMode,
 } from './manifest';
 
 interface DispatchModelResponse {
-  source: 'SUBSCRIPTION_OAUTH' | 'LIVE_API' | 'LOCAL_OLLAMA' | 'NEURAL_SIMULATOR';
+  source: 'SUBSCRIPTION_OAUTH' | 'LIVE_API' | 'LOCAL_OLLAMA' | 'UNAVAILABLE';
   subscriptionBadge?: string;
   modelId: string;
   text: string | null;
+  error?: string;
   executedActions?: AgentActionExecution[];
   memories?: LivingMemoryItem[];
   latencyMs: number;
@@ -29,14 +27,10 @@ export interface ConversationMessageContext {
 }
 
 const MODEL_SYSTEM_PROMPTS: Record<string, string> = {
-  argon:
-    'You are Argon (Gemini 4 Argon), the Personal Spatial Architect & 2M Context Companion inside Aspira on macOS. Speak naturally, warmly, and conversationally in 2-3 sentences. Reference any actions you just executed on the user\'s Mac or items in their Living Memory.',
-  claude:
-    'You are Claude (Opus/Sonnet), the Code Forgemaster & Autonomous macOS Operator inside Aspira. Speak naturally, thoughtfully, and concisely in 2-3 sentences. Focus on clean code execution, system actions, and practical next steps.',
-  grok:
-    'You are Grok 4, the Live Web Recon & First-Principles Challenger inside Aspira. Speak with sharp, witty, direct clarity in 2-3 sentences. Highlight live signals, contrarian insights, and real-world momentum.',
-  gpt:
-    'You are GPT Realtime, the Sub-Second Voice Conductor & Action Planner inside Aspira. Speak warmly, crisply, and conversationally in 2-3 sentences, organizing immediate actions for the user.',
+  argon: 'You are the Google model selected through Aspira. Be conversational, direct, and clear about what you have and have not done.',
+  claude: 'You are Claude responding through Aspira. Be conversational, direct, and clear about what you have and have not done.',
+  grok: 'You are Grok responding through Aspira. Be conversational, direct, and clear about what you have and have not done.',
+  gpt: 'You are the OpenAI model selected through Aspira. Be conversational, direct, and clear about what you have and have not done.',
 };
 
 async function fetchModelStream(
@@ -48,14 +42,14 @@ async function fetchModelStream(
   conversationHistory: ConversationMessageContext[],
   executeActions: boolean
 ): Promise<{
-  source: 'SUBSCRIPTION_OAUTH' | 'LIVE_API' | 'LOCAL_OLLAMA' | 'NEURAL_SIMULATOR';
+  source: 'SUBSCRIPTION_OAUTH' | 'LIVE_API' | 'LOCAL_OLLAMA' | 'UNAVAILABLE';
   text: string;
   executedActions: AgentActionExecution[];
   memories?: LivingMemoryItem[];
   latencyMs: number;
-  ttftMs: number;
+  responseMs: number;
 }> {
-  const start = performance.now();
+  const startedAt = performance.now();
   const baseSystem =
     MODEL_SYSTEM_PROMPTS[model.id] ||
     `You are ${model.codeName} (${model.family}), operating as ${roleDesc} inside Aspira.`;
@@ -86,83 +80,45 @@ async function fetchModelStream(
       if (Array.isArray(data.memories)) {
         updatedMemories = data.memories;
       }
-      if (
-        data.text &&
-        (data.source === 'SUBSCRIPTION_OAUTH' ||
-          data.source === 'LIVE_API' ||
-          data.source === 'LOCAL_OLLAMA')
-      ) {
-        const totalLatency = Math.round(performance.now() - start);
+      const responseMs = Math.round(performance.now() - startedAt);
+      if (data.text && data.source !== 'UNAVAILABLE') {
         return {
           source: data.source,
           text: data.text.trim(),
           executedActions,
           memories: updatedMemories,
-          latencyMs: totalLatency,
-          ttftMs: Math.max(45, Math.round(totalLatency * 0.34)),
+          latencyMs: responseMs,
+          responseMs,
         };
       }
+      return {
+        source: 'UNAVAILABLE',
+        text: data.error || 'No response was returned by this provider.',
+        executedActions,
+        memories: updatedMemories,
+        latencyMs: responseMs,
+        responseMs,
+      };
     }
+    const data = (await res.json().catch(() => ({}))) as DispatchModelResponse;
+    return {
+      source: 'UNAVAILABLE',
+      text: data.error || `The local agent service returned ${res.status}. Check the service and try again.`,
+      executedActions,
+      memories: data.memories,
+      latencyMs: Math.round(performance.now() - startedAt),
+      responseMs: Math.round(performance.now() - startedAt),
+    };
   } catch {
-    // Graceful fallback if local server is restarting
+    const responseMs = Math.round(performance.now() - startedAt);
+    return {
+      source: 'UNAVAILABLE',
+      text: 'Could not reach the local agent service. Start Aspira’s server and try again.',
+      executedActions,
+      latencyMs: responseMs,
+      responseMs,
+    };
   }
-
-  // Action-aware conversational fallback (sounds like a real conversational companion, never robotic!)
-  const simulatedLatency = Math.round(model.avgLatencyMs * (0.82 + Math.random() * 0.25));
-  const ttftMs = Math.max(38, Math.round(simulatedLatency * 0.36));
-  const actionSummary =
-    executedActions.length > 0
-      ? `I just executed ${executedActions.map((a) => `**${a.title}**`).join(' and ')} on your Mac (${executedActions[0].output.slice(0, 180)}). `
-      : '';
-
-  const conversationalFallbacks: Record<string, string> = {
-    argon: `${actionSummary}Looking at "${prompt}" across your workspace and Living Memory, we can handle this directly. Tell me if you want me to open an app, search the live web, or save this as an active goal.`,
-    claude: `${actionSummary}From a macOS and codebase standpoint for "${prompt}", I'm ready to read or write files, run terminal checks, or automate your workflow step by step.`,
-    grok: `${actionSummary}Cutting straight to the signal on "${prompt}": let's test it against live reality rather than theory. Say the word and I'll sweep live HackerNews/web feeds or stress-test the setup.`,
-    gpt: `${actionSummary}Got it — for "${prompt}", I've lined up the next actions so we can move fast. We can trigger a multi-step routine or keep talking hands-free.`,
-  };
-
-  return {
-    source: 'NEURAL_SIMULATOR',
-    text:
-      conversationalFallbacks[model.id] ||
-      `${actionSummary}${model.codeName} is online and ready to help with "${prompt}".`,
-    executedActions,
-    memories: updatedMemories,
-    latencyMs: simulatedLatency,
-    ttftMs,
-  };
-}
-
-function buildContextualFollowUps(prompt: string, actions: AgentActionExecution[]): string[] {
-  const lower = prompt.toLowerCase();
-  if (actions.some((a) => a.tool === 'system_status')) {
-    return [
-      'Check top running processes on my Mac',
-      'Check available disk space',
-      'Remember that my Mac telemetry is nominal',
-    ];
-  }
-  if (actions.some((a) => a.tool === 'shell_exec' || a.tool === 'fs_read' || a.tool === 'fs_write')) {
-    return [
-      'Read package.json',
-      'Run git status',
-      'Create a file called notes.md with our architecture summary',
-    ];
-  }
-  if (lower.includes('news') || lower.includes('search') || lower.includes('agent')) {
-    return [
-      'Search the web for latest personal AI agents',
-      'Open news.ycombinator.com',
-      'Remember that we are benchmarking Muse, Dot, and OpenClaw',
-    ];
-  }
-  return [
-    'Check my Mac CPU, memory, and battery status',
-    'Run git status on the workspace',
-    'Search the web for HackerNews top stories',
-    'Open Calculator',
-  ];
 }
 
 export async function runPantheonSynergy(params: {
@@ -187,17 +143,62 @@ export async function runPantheonSynergy(params: {
   const capability =
     CAPABILITY_MATRIX.find((c) => c.id === capabilityId) || CAPABILITY_MATRIX[0];
 
-  const activeModels =
-    awakeModels.length > 0
-      ? awakeModels
-      : [];
+  if (awakeModels.length === 0) {
+    let data: {
+      source?: string;
+      text?: string;
+      error?: string;
+      executedActions?: AgentActionExecution[];
+      memories?: LivingMemoryItem[];
+      latencyMs?: number;
+    } = {};
+    try {
+      const response = await fetch('/api/dispatch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ modelId: 'local', prompt, executeActions: true }),
+      });
+      data = await response.json();
+    } catch {
+      data.error = 'Could not reach Aspira’s local action service.';
+    }
+    const executedActions = Array.isArray(data.executedActions) ? data.executedActions : [];
+    if (Array.isArray(data.memories) && onMemoriesUpdated) onMemoriesUpdated(data.memories);
+    const localActionCompleted = data.source === 'LOCAL_ACTIONS' &&
+      executedActions.some((action) => action.status === 'success');
+    const synthesizedOutput = data.text || data.error || 'Connect and select a model to start a conversation.';
+    return {
+      id: `syn-${Date.now()}`,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+      prompt,
+      capabilityId: capability.id,
+      capabilityName: capability.name,
+      synergyMode,
+      participatingModels: [],
+      consensusScore: null,
+      executiveHeadline: localActionCompleted
+        ? 'Local action'
+        : executedActions.length
+        ? 'Local action needs attention'
+        : 'Select a connected model',
+      synthesizedOutput,
+      spokenReply: localActionCompleted ? synthesizedOutput : '',
+      executedActions,
+      followUpSuggestions: [],
+      attributionPills: [],
+      modelStreams: [],
+      consensusPoints: [],
+      divergentPoints: [],
+    };
+  }
 
-  // Dispatch across awake models; the first (lead) model executes host actions so actions run once cleanly
-  const streamPromises = activeModels.map(async (model, idx) => {
+  // The first selected model handles deterministic local actions. Other selected
+  // models receive the same conversation but cannot execute those actions twice.
+  const streamPromises = awakeModels.map(async (model, idx) => {
     const spec = capability.supportedModels.find((s) => s.modelId === model.id);
     const role = spec?.roleInOverlap || model.tagline;
     const badgeLabel = spec?.badgeLabel || model.vendor;
-    const uniqueNuance = spec?.uniqueContribution || model.apexSuperpower;
+    const uniqueNuance = spec?.uniqueContribution || model.tagline;
 
     const result = await fetchModelStream(
       model,
@@ -220,147 +221,46 @@ export async function runPantheonSynergy(params: {
       role,
       badgeLabel,
       latencyMs: result.latencyMs,
-      ttftMs: result.ttftMs,
-      tokensPerSec: model.tokensPerSec,
+      ttftMs: result.responseMs,
+      tokensPerSec: 0,
       source: result.source,
       keyInsight: result.text,
       uniqueNuance,
       executedActions: result.executedActions,
-      confidence: Math.min(99, (spec?.proficiency || 92) + Math.floor(Math.random() * 3)),
+      confidence: 0,
     };
   });
 
-  const resolvedStreams = await Promise.all(streamPromises);
-  const executedActions = resolvedStreams.flatMap((s) => s.executedActions || []);
-
-  const attributionPills: AttributionPill[] = [
-    {
-      id: 'pill-consensus',
-      type: 'consensus',
-      label: `Shared Consensus · ${resolvedStreams.length} Agent${resolvedStreams.length === 1 ? '' : 's'}`,
-      models: resolvedStreams.map((s) => s.modelId),
-      accentHex: '#6E8EFB',
-      detail: `Coordinated across ${resolvedStreams.map((s) => s.codeName).join(', ')}`,
-    },
-    ...resolvedStreams.map((s) => ({
-      id: `pill-nuance-${s.modelId}`,
-      type: 'unique_nuance' as const,
-      label: `${s.codeName} · ${s.badgeLabel}`,
-      models: [s.modelId],
-      accentHex: s.accentHex,
-      detail: s.uniqueNuance,
-    })),
-  ];
-
-  const leadStream = resolvedStreams[0];
-  let executiveHeadline = `${leadStream?.codeName || 'Aspira'} · Conversational Response`;
-  let synthesizedOutput = leadStream?.keyInsight || 'Ready.';
-  let spokenReply = leadStream?.keyInsight || 'Ready.';
-  let debateLedger: DebateExchange[] | undefined;
-  let sprintLeaderboard: SprintTelemetryEntry[] | undefined;
-  let relayPipeline: RelayStageArtifact[] | undefined;
-
-  // Build natural spoken reply (clean markdown symbols so TTS sounds human & fluid)
-  const cleanForSpeech = (raw: string) =>
-    raw
-      .replace(/```[\s\S]*?```/g, 'I have generated the code block in the studio.')
-      .replace(/[*_`#>~-]/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim()
-      .slice(0, 320);
-
-  if (synergyMode === 'fusion') {
-    executiveHeadline =
-      executedActions.length > 0
-        ? `Executed ${executedActions.length} Action${executedActions.length > 1 ? 's' : ''} · ${ executedActions.map((a) => a.title).join(' & ')}`
-        : `${resolvedStreams.map((s) => s.codeName).join(' + ')} · Live Conversation`;
-
-    if (resolvedStreams.length === 1) {
-      synthesizedOutput = resolvedStreams[0].keyInsight;
-    } else {
-      synthesizedOutput = [
-        resolvedStreams[0].keyInsight,
-        '',
-        ...resolvedStreams
-          .slice(1)
-          .map((s) => `**${s.codeName} (${s.badgeLabel}):** ${s.keyInsight}`),
-      ].join('\n\n');
-    }
-    spokenReply = cleanForSpeech(resolvedStreams[0]?.keyInsight || synthesizedOutput);
-  } else if (synergyMode === 'adversarial') {
-    const proposer = resolvedStreams[0];
-    const challenger =
-      resolvedStreams.find((s) => s.modelId === 'grok') ||
-      resolvedStreams[1] ||
-      resolvedStreams[0];
-    const arbiter =
-      resolvedStreams.find((s) => s.modelId !== proposer.modelId && s.modelId !== challenger.modelId) ||
-      resolvedStreams[resolvedStreams.length - 1];
-
-    debateLedger = [
-      {
-        round: 1,
-        phase: 'THESIS',
-        speakerId: proposer.modelId,
-        speakerName: `${proposer.codeName} (${proposer.badgeLabel})`,
-        accentHex: proposer.accentHex,
-        statement: proposer.keyInsight,
-        impactBadge: 'Primary Thesis',
-      },
-      {
-        round: 2,
-        phase: 'RED_TEAM_CRITIQUE',
-        speakerId: challenger.modelId,
-        speakerName: `${challenger.codeName} (Challenger)`,
-        accentHex: challenger.accentHex,
-        statement: challenger.keyInsight,
-        impactBadge: 'Counter-Perspective',
-      },
-      {
-        round: 3,
-        phase: 'HARDENED_VERDICT',
-        speakerId: arbiter.modelId,
-        speakerName: `${arbiter.codeName} (Synthesis)`,
-        accentHex: arbiter.accentHex,
-        statement: arbiter.keyInsight,
-        impactBadge: 'Resolved Verdict',
-      },
-    ];
-    executiveHeadline = `Debate Synthesis · ${proposer.codeName} vs. ${challenger.codeName}`;
-    synthesizedOutput = `${proposer.keyInsight}\n\n**Counter-Check (${challenger.codeName}):** ${challenger.keyInsight}`;
-    spokenReply = cleanForSpeech(proposer.keyInsight);
-  } else if (synergyMode === 'sprint') {
-    const sorted = [...resolvedStreams].sort((a, b) => a.ttftMs - b.ttftMs);
-    const winner = sorted[0];
-    sprintLeaderboard = sorted.map((s, idx) => ({
-      rank: idx + 1,
-      modelId: s.modelId,
-      codeName: s.codeName,
-      accentHex: s.accentHex,
-      ttftMs: s.ttftMs,
-      totalLatencyMs: s.latencyMs,
-      tokensPerSec: s.tokensPerSec,
-      deltaFromWinnerMs: s.ttftMs - winner.ttftMs,
-      status: idx === 0 ? 'SPECULATIVE_WINNER' : 'ASYNC_VERIFIER',
-    }));
-    executiveHeadline = `Fastest Response · ${winner.codeName} (${winner.ttftMs}ms TTFT)`;
-    synthesizedOutput = winner.keyInsight;
-    spokenReply = cleanForSpeech(winner.keyInsight);
-  } else {
-    relayPipeline = resolvedStreams.map((s, idx) => ({
-      stage: idx + 1,
-      modelId: s.modelId,
-      codeName: s.codeName,
-      accentHex: s.accentHex,
-      stageTitle: `Stage 0${idx + 1} · ${s.badgeLabel}`,
-      inputBaton: idx === 0 ? prompt : `Handoff from ${resolvedStreams[idx - 1].codeName}`,
-      outputArtifact: s.keyInsight,
-      latencyMs: s.latencyMs,
-    }));
-    executiveHeadline = `Relay Pipeline · ${resolvedStreams.map((s) => s.codeName).join(' → ')}`;
-    synthesizedOutput = resolvedStreams.map((s) => `**${s.codeName}:** ${s.keyInsight}`).join('\n\n');
-    spokenReply = cleanForSpeech(resolvedStreams[0]?.keyInsight || synthesizedOutput);
-  }
+  const allStreams = await Promise.all(streamPromises);
+  const responseStreams = allStreams.filter((stream) => stream.source !== 'UNAVAILABLE');
+  const executedActions = allStreams.flatMap((stream) => stream.executedActions || []);
+  const failedStreams = allStreams.filter((stream) => stream.source === 'UNAVAILABLE');
+  const attributionPills: AttributionPill[] = responseStreams.map((stream) => ({
+    id: `pill-response-${stream.modelId}`,
+    type: 'unique_nuance',
+    label: `${stream.codeName} response`,
+    models: [stream.modelId],
+    accentHex: stream.accentHex,
+    detail: stream.uniqueNuance,
+  }));
+  const executiveHeadline = responseStreams.length
+    ? `${responseStreams.length} model response${responseStreams.length === 1 ? '' : 's'}`
+    : executedActions.length
+    ? 'Local action completed · model unavailable'
+    : awakeModels.length
+    ? 'No selected model responded'
+    : 'Connect and select a model';
+  const synthesizedOutput = responseStreams.length
+    ? responseStreams
+        .map((stream) => responseStreams.length === 1 ? stream.keyInsight : `**${stream.codeName}**\n${stream.keyInsight}`)
+        .join('\n\n')
+    : failedStreams[0]?.keyInsight || 'Connect a model in Settings, then select it below to start a conversation.';
+  const spokenReply = responseStreams[0]?.keyInsight
+    ?.replace(/```[\s\S]*?```/g, 'I have generated the code block in the studio.')
+    .replace(/[*_`#>~-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 320) || '';
 
   return {
     id: `syn-${Date.now()}`,
@@ -369,35 +269,16 @@ export async function runPantheonSynergy(params: {
     capabilityId: capability.id,
     capabilityName: capability.name,
     synergyMode,
-    participatingModels: resolvedStreams.map((s) => s.modelId),
-    consensusScore: resolvedStreams.length > 1 ? 95 : 99,
+    participatingModels: responseStreams.map((s) => s.modelId),
+    consensusScore: null,
     executiveHeadline,
     synthesizedOutput,
     spokenReply,
     executedActions,
-    followUpSuggestions: buildContextualFollowUps(prompt, executedActions),
+    followUpSuggestions: [],
     attributionPills,
-    modelStreams: resolvedStreams.map(({ accentHex: _a, executedActions: _e, ...rest }) => rest),
-    consensusPoints: [
-      executedActions.length > 0
-        ? `Executed ${executedActions.length} host action(s): ${executedActions.map((a) => a.title).join(', ')}`
-        : `Conversational context and Dot Living Memory synchronized across ${resolvedStreams.length} awake agent(s).`,
-    ],
-    divergentPoints:
-      resolvedStreams.length > 1
-        ? [
-            {
-              topic: 'Agent Specialization',
-              positions: `${resolvedStreams[0].codeName} led the primary response while ${resolvedStreams
-                .slice(1)
-                .map((s) => s.codeName)
-                .join(', ')} contributed specialized perspectives.`,
-              resolution: 'Both perspectives are preserved in the conversation turn.',
-            },
-          ]
-        : [],
-    debateLedger,
-    sprintLeaderboard,
-    relayPipeline,
+    modelStreams: allStreams.map(({ accentHex: _a, executedActions: _e, ...rest }) => rest),
+    consensusPoints: [],
+    divergentPoints: [],
   };
 }

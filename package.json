@@ -1,13 +1,14 @@
 {
-  "name": "archon-hud",
+  "name": "aspira",
   "version": "1.0.0",
   "license": "MIT",
-  "description": "Open-Source Plug-and-Play Multi-Model Spatial HUD (Argon, Claude, Grok, GPT) with Acoustic Clap + Wake Word + Voiceprint Passkey & Transformative 3D Geometry",
+  "description": "Open-source conversational personal agent workspace with local tools and optional on-device voice",
   "type": "module",
   "scripts": {
     "dev": "node scripts/dev.js",
-    "client": "vite --port 5173 --host",
+    "client": "vite --host 127.0.0.1 --port 5173 --strictPort",
     "server": "node server/index.js",
+    "voice:local": "uv tool run --python 3.12 --prerelease=allow --from mlx-audio mlx_audio.server --host 127.0.0.1 --port 8000",
     "desktop": "node scripts/launch-desktop.js",
     "build": "vite build",
     "preview": "vite preview"

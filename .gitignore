@@ -4,3 +4,7 @@ dist/
 .env.*
 .DS_Store
 *.log
+
+# User-created data stays on this Mac, not in the public source repository.
+server/data/memory.json
+server/data/routines.json

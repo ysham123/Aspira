@@ -1,8 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ArrowUp,
-  Eye,
-  Flame,
   FolderGit2,
   KeyRound,
   Lock,
@@ -11,54 +9,70 @@ import {
   Sliders,
   Sparkles,
   Volume2,
-  VolumeX,
 } from 'lucide-react';
 import {
-  AutonomousRoutine,
   BUILTIN_MODEL_PLUGINS,
   CAPABILITY_MATRIX,
-  CapabilityDefinition,
   ConversationTurn,
   DEFAULT_PASSKEY_PROFILES,
   LivingMemoryItem,
+  LocalPlaybook,
   ModelPluginManifest,
   PasskeyProfile,
   SpatialMode,
   SynergyExecutionResult,
-  SynergyMode,
+  SubscriptionStatus,
 } from './plugins/models/manifest';
 import { ConversationMessageContext, runPantheonSynergy } from './plugins/models/synergyEngine';
 import { soundEngine } from './audio/soundEngine';
-import { AcousticSentinelEngine, AcousticTelemetry } from './audio/acousticSentinel';
-import { ThreeHologramStage } from './components/ThreeHologramStage';
 import { SpatialModeDeck } from './components/SpatialModeDeck';
-import { WebcamSensorOverlay } from './components/WebcamSensorOverlay';
-import { AcousticBootOverlay } from './components/AcousticBootOverlay';
 import { PlugAndPlayVaultModal } from './components/PlugAndPlayVaultModal';
 
-interface MacTelemetry {
-  hostname: string;
-  platform: string;
-  cpuModel: string;
-  cpuCores: number;
-  cpuUsagePercent: number;
-  memoryUsedGB: number;
-  memoryTotalGB: number;
-  memoryPercent: number;
-  uptimeHours: number;
-}
-
 export const App: React.FC = () => {
-  // 1. BOOT & SECURITY STATE ('sentinel' | 'amber_challenge' | 'intruder' | 'ignited')
-  const [bootState, setBootState] = useState<
-    'sentinel' | 'amber_challenge' | 'intruder' | 'ignited'
-  >('sentinel');
+  // Aspira opens directly into the workspace. Session locking is an optional setting.
+  const [bootState, setBootState] = useState<'ignited' | 'locked'>('ignited');
 
   // 2. PLUG-AND-PLAY MODELS & AWAKE STATE
-  const [models, setModels] = useState<ModelPluginManifest[]>(BUILTIN_MODEL_PLUGINS);
-  const [awakeModelIds, setAwakeModelIds] = useState<string[]>(['argon', 'claude']);
-  const [passkeyProfiles, setPasskeyProfiles] =
-    useState<PasskeyProfile[]>(DEFAULT_PASSKEY_PROFILES);
+  const [models, setModels] = useState<ModelPluginManifest[]>(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('aspira_custom_model_endpoints_v1') || '[]');
+      const builtInIds = new Set(BUILTIN_MODEL_PLUGINS.map((model) => model.id));
+      const customModels = Array.isArray(saved)
+        ? saved.filter((model) =>
+            model && typeof model.id === 'string' && !builtInIds.has(model.id) &&
+            typeof model.endpointConfig?.baseUrl === 'string' &&
+            typeof model.endpointConfig?.apiModelId === 'string'
+          )
+        : [];
+      return [...BUILTIN_MODEL_PLUGINS, ...customModels];
+    } catch {
+      return BUILTIN_MODEL_PLUGINS;
+    }
+  });
+  const [awakeModelIds, setAwakeModelIds] = useState<string[]>([]);
+  const [passkeyProfiles, setPasskeyProfiles] = useState<PasskeyProfile[]>(() => {
+    try {
+      const stored = localStorage.getItem('aspira_passkey_profiles');
+      const savedProfiles = stored ? JSON.parse(stored) : [];
+      const priorPhrase = Array.isArray(savedProfiles)
+        ? savedProfiles.find((profile) => profile.id === 'workspace')?.phrase ||
+          savedProfiles.find((profile) => profile.id === 'lazarus')?.phrase || ''
+        : '';
+      const savedPhrase = String(priorPhrase).trim().toLocaleLowerCase() === 'protocol lazarus'
+        ? ''
+        : String(priorPhrase);
+      return [{ ...DEFAULT_PASSKEY_PROFILES[0], phrase: savedPhrase }];
+    } catch {
+      return DEFAULT_PASSKEY_PROFILES;
+    }
+  });
+  const [passkeyLockEnabled, setPasskeyLockEnabled] = useState(() => {
+    try {
+      return localStorage.getItem('aspira_passkey_lock_enabled') === 'true';
+    } catch {
+      return false;
+    }
+  });
   const [apiKeys, setApiKeys] = useState<Record<string, string>>(() => {
     try {
       const saved = localStorage.getItem('archon_api_keys_v1');
@@ -68,69 +82,35 @@ export const App: React.FC = () => {
     }
   });
 
-  // 3. TRANSFORMATIVE STUDIO VIEW, CONVERSATION TIMELINE, DOT MEMORY & ROUTINES
+  // 3. Studio view, current conversation, saved context, and playbooks
   const [spatialMode, setSpatialMode] = useState<SpatialMode>('nexus');
-  const [synergyMode, setSynergyMode] = useState<SynergyMode>('fusion');
-  const [selectedCapability, setSelectedCapability] = useState<CapabilityDefinition>(
-    CAPABILITY_MATRIX[0]
-  );
+  const selectedCapability = CAPABILITY_MATRIX[0];
   const [latestResult, setLatestResult] = useState<SynergyExecutionResult | null>(null);
   const [conversationTurns, setConversationTurns] = useState<ConversationTurn[]>([]);
   const [memories, setMemories] = useState<LivingMemoryItem[]>([]);
-  const [routines, setRoutines] = useState<AutonomousRoutine[]>([]);
+  const [memoriesLoaded, setMemoriesLoaded] = useState(false);
+  const [routines, setRoutines] = useState<LocalPlaybook[]>([]);
+  const [subscriptionStatuses, setSubscriptionStatuses] = useState<Record<string, SubscriptionStatus>>({});
   const [isExecuting, setIsExecuting] = useState(false);
   const [commandInput, setCommandInput] = useState('');
   const [awayBriefingBanner, setAwayBriefingBanner] = useState<string | null>(null);
+  const [unlockPhrase, setUnlockPhrase] = useState('');
+  const [unlockError, setUnlockError] = useState('');
 
-  // 4. SENSORS: ACOUSTIC SENTINEL, DUPLEX VOICE, WEBCAM GESTURES, MAC TELEMETRY
-  const sentinelRef = useRef<AcousticSentinelEngine | null>(null);
-  const [acousticTelemetry, setAcousticTelemetry] = useState<AcousticTelemetry>({
-    micActive: false,
-    rmsLevel: 4,
-    highFreqTransient: 8,
-    clapCount: 0,
-    dominantPitchHz: 144,
-    spectralCentroidHz: 1180,
-    voiceBiometricMatch: 96.8,
-    spectrumBins: Array(24).fill(10),
-  });
+  // Voice input is opt-in and only starts after the user presses the microphone control.
   const [liveTranscript, setLiveTranscript] = useState('');
-  const [duplexVoiceActive, setDuplexVoiceActive] = useState(true);
+  const [duplexVoiceActive, setDuplexVoiceActive] = useState(false);
   const [isAgentSpeaking, setIsAgentSpeaking] = useState(false);
-  const [webcamEnabled, setWebcamEnabled] = useState(false);
-  const [handCursor, setHandCursor] = useState<{
-    x: number;
-    y: number;
-    active: boolean;
-    pinching: boolean;
-  }>({ x: 0.5, y: 0.5, active: false, pinching: false });
-  const [soundMuted, setSoundMuted] = useState(false);
+  const [voiceStatus, setVoiceStatus] = useState('Voice input is off');
   const [vaultModalOpen, setVaultModalOpen] = useState(false);
-  const [macTelemetry, setMacTelemetry] = useState<MacTelemetry>({
-    hostname: 'MacBook-Pro',
-    platform: 'Darwin arm64',
-    cpuModel: 'Apple Silicon Neural Engine',
-    cpuCores: 10,
-    cpuUsagePercent: 18,
-    memoryUsedGB: 14.2,
-    memoryTotalGB: 16,
-    memoryPercent: 88,
-    uptimeHours: 42.5,
-  });
 
-  const bootStateRef = useRef(bootState);
-  bootStateRef.current = bootState;
-  const passkeysRef = useRef(passkeyProfiles);
-  passkeysRef.current = passkeyProfiles;
   const duplexVoiceRef = useRef(duplexVoiceActive);
   duplexVoiceRef.current = duplexVoiceActive;
-  const isExecutingRef = useRef(isExecuting);
-  isExecutingRef.current = isExecuting;
-  const lastSpokenDispatchRef = useRef<{ text: string; time: number }>({ text: '', time: 0 });
   const conversationTurnsRef = useRef(conversationTurns);
   conversationTurnsRef.current = conversationTurns;
-  const telemetryRef = useRef(acousticTelemetry);
-  telemetryRef.current = acousticTelemetry;
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const voiceStreamRef = useRef<MediaStream | null>(null);
+  const voiceChunksRef = useRef<Blob[]>([]);
 
   useEffect(() => {
     soundEngine.onSpeakingStateChange = (speaking) => {
@@ -141,19 +121,36 @@ export const App: React.FC = () => {
     };
   }, []);
 
-  // Load Dot Living Memories & Autonomous Routines from Backend
+  useEffect(() => {
+    try {
+      localStorage.setItem('aspira_passkey_profiles', JSON.stringify(passkeyProfiles));
+      localStorage.setItem('aspira_passkey_lock_enabled', String(passkeyLockEnabled));
+    } catch {
+      // Keep the current session usable when browser storage is unavailable.
+    }
+  }, [passkeyProfiles, passkeyLockEnabled]);
+
+  // Load saved context, playbooks, and provider CLI availability.
   useEffect(() => {
     fetch('/api/memory')
       .then((r) => r.json())
       .then((data) => {
         if (Array.isArray(data?.memories)) setMemories(data.memories);
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setMemoriesLoaded(true));
 
     fetch('/api/routines')
       .then((r) => r.json())
       .then((data) => {
         if (Array.isArray(data?.routines)) setRoutines(data.routines);
+      })
+      .catch(() => {});
+
+    fetch('/api/subscriptions')
+      .then((r) => r.json())
+      .then((data) => {
+        if (data?.subscriptions) setSubscriptionStatuses(data.subscriptions);
       })
       .catch(() => {});
   }, []);
@@ -213,78 +210,32 @@ export const App: React.FC = () => {
     [awakeModelIds]
   );
 
-  // Trigger Passkey Resonance Challenge after Clap-Clap + "Wake up, I'm back"
-  const handleTriggerWakeChallenge = useCallback(() => {
-    soundEngine.playAmberLockdown();
-    setBootState('amber_challenge');
-    soundEngine.speak(
-      'Welcome back. Acoustic signature recognized. Please state your passkey.'
+  const handleUnlockPasskey = useCallback((spokenPhrase: string) => {
+    const phrase = spokenPhrase.trim().toLocaleLowerCase();
+    const matchedProfile = passkeyProfiles.find(
+      (profile) => profile.phrase.trim().toLocaleLowerCase() === phrase
     );
-  }, []);
-
-  // Verify Spoken or Selected Passkey Phrase
-  const handleVerifyPasskey = useCallback(
-    (spokenPhrase: string) => {
-      const normalized = spokenPhrase.toLowerCase().trim();
-      const matchedProfile = passkeysRef.current.find(
-        (p) =>
-          normalized.includes(p.phrase.toLowerCase()) ||
-          p.phrase.toLowerCase().includes(normalized)
-      );
-
-      if (!matchedProfile) {
-        soundEngine.playIntruderAlert();
-        setBootState('intruder');
-        soundEngine.speak(
-          'Passkey or voiceprint unverified. Studio remains locked.'
-        );
-        return;
-      }
-
-      if (matchedProfile.isLockdown) {
-        soundEngine.playCoreSleep();
-        setAwakeModelIds([]);
-        setBootState('sentinel');
-        soundEngine.speak(matchedProfile.greetingSpeech);
-        return;
-      }
-
-      soundEngine.playPasskeyVerified();
-      setAwakeModelIds(matchedProfile.wakeModels);
-      setSpatialMode(matchedProfile.targetMode);
-      setBootState('ignited');
-      setAwayBriefingBanner(
-        `${matchedProfile.name} verified (${acousticTelemetry.voiceBiometricMatch}% vocal match) · Hands-Free Duplex Voice & Host Actions Active`
-      );
-      soundEngine.speak(matchedProfile.greetingSpeech);
-    },
-    [acousticTelemetry.voiceBiometricMatch]
-  );
-
-  // Classify vocal emotion from F0 pitch & RMS (Dot by New Computer style)
-  const inferVocalEmotion = (pitchHz: number, rms: number): string => {
-    if (rms > 35 || pitchHz > 185) return 'Energetic';
-    if (pitchHz < 125) return 'Reflective';
-    return 'Focused';
-  };
+    if (!matchedProfile || !matchedProfile.phrase.trim()) return false;
+    setBootState('ignited');
+    setAwayBriefingBanner('Workspace unlocked');
+    return true;
+  }, [passkeyProfiles]);
 
   // Execute a Conversational Turn & Real Host Actions across Awake Models
   const handleRunDirective = useCallback(
     async (
       promptText: string,
-      capOverride?: CapabilityDefinition,
       modality: 'voice' | 'text' | 'routine' = 'text',
       speakReplyAloud = true
     ) => {
-      const cap = capOverride || selectedCapability;
       const cleanPrompt = promptText.trim();
+      const cap = selectedCapability;
       if (!cleanPrompt) return;
 
       setIsExecuting(true);
-      soundEngine.playSynergyBeam();
 
       const awakeModelsList = models.filter((m) => awakeModelIds.includes(m.id));
-      const activeList = awakeModelsList.length > 0 ? awakeModelsList : [models[0]];
+      const activeList = awakeModelsList;
 
       // Build multi-turn conversation history for LLM context
       const historyContext: ConversationMessageContext[] = [];
@@ -300,7 +251,7 @@ export const App: React.FC = () => {
       const result = await runPantheonSynergy({
         prompt: cleanPrompt,
         capabilityId: cap.id,
-        synergyMode,
+        synergyMode: 'fusion',
         awakeModels: activeList,
         apiKeys,
         conversationHistory: historyContext,
@@ -312,14 +263,6 @@ export const App: React.FC = () => {
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         userText: cleanPrompt,
         inputModality: modality,
-        vocalEmotion:
-          modality === 'voice'
-            ? inferVocalEmotion(
-                telemetryRef.current.dominantPitchHz,
-                telemetryRef.current.rmsLevel
-              )
-            : undefined,
-        pitchHz: modality === 'voice' ? telemetryRef.current.dominantPitchHz : undefined,
         result,
       };
 
@@ -327,30 +270,60 @@ export const App: React.FC = () => {
       setConversationTurns((prev) => [...prev, newTurn]);
       setIsExecuting(false);
 
-      if (speakReplyAloud && (modality === 'voice' || duplexVoiceRef.current)) {
+      if (result.spokenReply && speakReplyAloud && (modality === 'voice' || duplexVoiceRef.current)) {
         soundEngine.speak(result.spokenReply);
       }
     },
-    [selectedCapability, models, awakeModelIds, synergyMode, apiKeys]
+    [models, awakeModelIds, apiKeys]
   );
 
-  // Run an Autonomous Multi-Step Routine (Grok Bot / OpenClaw style)
+  const appendLocalNotice = useCallback((prompt: string, headline: string, message: string) => {
+    const result: SynergyExecutionResult = {
+      id: `syn-local-${Date.now()}`,
+      timestamp: new Date().toLocaleTimeString(),
+      prompt,
+      capabilityId: selectedCapability.id,
+      capabilityName: selectedCapability.name,
+      synergyMode: 'fusion',
+      participatingModels: [],
+      consensusScore: null,
+      executiveHeadline: headline,
+      synthesizedOutput: message,
+      spokenReply: '',
+      executedActions: [],
+      followUpSuggestions: [],
+      attributionPills: [],
+      modelStreams: [],
+      consensusPoints: [],
+      divergentPoints: [],
+    };
+    setLatestResult(result);
+    setConversationTurns((prev) => [...prev, {
+      id: result.id,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      userText: prompt,
+      inputModality: 'routine',
+      result,
+    }]);
+  }, [selectedCapability]);
+
+  // Run a user-triggered local playbook.
   const handleRunRoutine = useCallback(
     async (routineId: string) => {
       setIsExecuting(true);
-      soundEngine.playSynergyBeam();
       try {
         const res = await fetch(`/api/routines/${routineId}/run`, { method: 'POST' });
-        if (res.ok) {
-          const data = await res.json();
+        const data = await res.json();
+        if (!res.ok) throw new Error(data?.error || `The playbook returned ${res.status}.`);
+        {
           if (Array.isArray(data?.memories)) setMemories(data.memories);
           setRoutines((prev) =>
             prev.map((r) => (r.id === routineId ? data.routine : r))
           );
 
-          const routine: AutonomousRoutine = data.routine;
+          const routine: LocalPlaybook = data.routine;
           const results = data.results || [];
-          const summaryText = `Completed **${routine.title}** across ${results.length} autonomous steps:\n\n${results
+          const summaryText = `Ran **${routine.title}** across ${results.length} local steps:\n\n${results
             .map((r: any, idx: number) => `${idx + 1}. **${r.stepLabel || r.title}**: ${r.output.slice(0, 260)}`)
             .join('\n\n')}`;
 
@@ -360,57 +333,42 @@ export const App: React.FC = () => {
             prompt: `Run Routine: ${routine.title}`,
             capabilityId: selectedCapability.id,
             capabilityName: selectedCapability.name,
-            synergyMode,
-            participatingModels: [routine.leadAgent],
-            consensusScore: 99,
-            executiveHeadline: `Routine Executed · ${routine.title}`,
+            synergyMode: 'fusion',
+            participatingModels: [],
+            consensusScore: null,
+            executiveHeadline: `Local routine · ${routine.title}`,
             synthesizedOutput: summaryText,
-            spokenReply: `Completed routine ${routine.title}. All ${results.length} system and web steps succeeded.`,
+            spokenReply: `The routine finished with ${results.length} steps. Review the outcomes in the conversation.`,
             executedActions: results,
-            followUpSuggestions: [
-              'Remember the key findings from this routine',
-              'Check my Mac CPU, memory, and battery status',
-              'Run git status on the workspace',
-            ],
+            followUpSuggestions: [],
             attributionPills: [],
-            modelStreams: [
-              {
-                modelId: routine.leadAgent,
-                codeName: routine.leadAgent.toUpperCase(),
-                role: 'Autonomous Routine Conductor',
-                badgeLabel: 'OpenClaw / Grokbot Routine',
-                latencyMs: results.reduce((acc: number, r: any) => acc + (r.durationMs || 20), 0),
-                ttftMs: 42,
-                tokensPerSec: 185,
-                source: 'LIVE_API',
-                keyInsight: summaryText,
-                uniqueNuance: routine.description,
-                confidence: 99,
-              },
-            ],
-            consensusPoints: [`Routine ${routine.title} completed.`],
+            modelStreams: [],
+            consensusPoints: [],
             divergentPoints: [],
           };
 
           const newTurn: ConversationTurn = {
             id: `turn-routine-${Date.now()}`,
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            userText: `Execute Autonomous Routine: ${routine.title}`,
+            userText: `Run local playbook: ${routine.title}`,
             inputModality: 'routine',
             result: syntheticResult,
           };
 
           setLatestResult(syntheticResult);
           setConversationTurns((prev) => [...prev, newTurn]);
-          soundEngine.speak(syntheticResult.spokenReply);
         }
-      } catch {
-        // ignore
+      } catch (error) {
+        appendLocalNotice(
+          'Run local playbook',
+          'Playbook failed',
+          error instanceof Error ? error.message : 'Aspira could not run that playbook.'
+        );
       } finally {
         setIsExecuting(false);
       }
     },
-    [selectedCapability, synergyMode]
+    [appendLocalNotice]
   );
 
   // Execute a Direct Single Tool Action (e.g. clicking "Open Calculator" or "Send macOS Notification")
@@ -423,46 +381,31 @@ export const App: React.FC = () => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ tool, args }),
         });
-        if (res.ok) {
-          const data = await res.json();
+        const data = await res.json();
+        if (!res.ok) throw new Error(data?.error || `The local action returned ${res.status}.`);
+        {
           if (Array.isArray(data?.memories)) setMemories(data.memories);
           const act = data.result;
-          const reply = `Done — executed ${act.title}. ${act.output}`;
+          const succeeded = act?.status === 'success';
           const syntheticResult: SynergyExecutionResult = {
             id: `syn-act-${Date.now()}`,
             timestamp: new Date().toLocaleTimeString(),
             prompt: label,
             capabilityId: selectedCapability.id,
             capabilityName: selectedCapability.name,
-            synergyMode,
-            participatingModels: ['claude', 'argon'],
-            consensusScore: 99,
-            executiveHeadline: act.title,
-            synthesizedOutput: `Executed **${act.title}** on your Mac in ${act.durationMs}ms.`,
-            spokenReply: `Done. ${act.title}.`,
+            synergyMode: 'fusion',
+            participatingModels: [],
+            consensusScore: null,
+            executiveHeadline: succeeded ? `Local action · ${act.title}` : `Action failed · ${act.title}`,
+            synthesizedOutput: succeeded
+              ? `Done. ${act.title}.\n\n${act.output}`
+              : `Could not complete ${act?.title || label}.\n\n${act?.output || 'No result was returned.'}`,
+            spokenReply: succeeded ? `Done. ${act.title}.` : '',
             executedActions: [act],
-            followUpSuggestions: [
-              'Check my Mac CPU, memory, and battery status',
-              'Run git status on the workspace',
-              'Search the web for HackerNews top stories',
-            ],
+            followUpSuggestions: [],
             attributionPills: [],
-            modelStreams: [
-              {
-                modelId: 'claude',
-                codeName: 'Claude',
-                role: 'macOS Host Operator',
-                badgeLabel: 'OpenClaw Bridge',
-                latencyMs: act.durationMs || 18,
-                ttftMs: 18,
-                tokensPerSec: 160,
-                source: 'LIVE_API',
-                keyInsight: reply,
-                uniqueNuance: 'Native macOS Action Execution',
-                confidence: 99,
-              },
-            ],
-            consensusPoints: [reply],
+            modelStreams: [],
+            consensusPoints: [],
             divergentPoints: [],
           };
 
@@ -477,287 +420,175 @@ export const App: React.FC = () => {
               result: syntheticResult,
             },
           ]);
-          soundEngine.speak(syntheticResult.spokenReply);
         }
-      } catch {
-        // ignore
+      } catch (error) {
+        appendLocalNotice(
+          label,
+          'Local action failed',
+          error instanceof Error ? error.message : 'Aspira could not reach its local action service.'
+        );
       } finally {
         setIsExecuting(false);
       }
     },
-    [selectedCapability, synergyMode]
+    [appendLocalNotice]
   );
 
-  // Seed initial conversational welcome + real macOS telemetry check on load
-  useEffect(() => {
-    handleRunDirective(
-      'Check my Mac CPU, memory, and battery status and greet me in the studio',
-      undefined,
-      'text',
-      false // Don't speak aloud until unlocked
-    );
-  }, []);
-
-  // Poll Real macOS System Telemetry
-  useEffect(() => {
-    const fetchTelemetry = () => {
-      fetch('/api/telemetry')
-        .then((r) => r.json())
-        .then((data) => {
-          if (data?.hostname) setMacTelemetry(data);
-        })
-        .catch(() => {});
-    };
-    fetchTelemetry();
-    const timer = setInterval(fetchTelemetry, 3500);
-    return () => clearInterval(timer);
-  }, []);
-
-  // Initialize Acoustic Sentinel Engine
-  const startAcousticMic = useCallback(async () => {
-    if (!sentinelRef.current) {
-      const engine = new AcousticSentinelEngine();
-      engine.onSingleClap = () => {
-        soundEngine.playClapImpulse(1);
-      };
-      engine.onDoubleClap = () => {
-        soundEngine.playClapImpulse(2);
-        if (bootStateRef.current === 'sentinel') {
-          handleTriggerWakeChallenge();
-        }
-      };
-      engine.onTelemetry = (t) => {
-        setAcousticTelemetry(t);
-      };
-      sentinelRef.current = engine;
+  const toggleVoiceInput = useCallback(async () => {
+    const currentRecorder = recorderRef.current;
+    if (currentRecorder?.state === 'recording') {
+      currentRecorder.stop();
+      setDuplexVoiceActive(false);
+      setVoiceStatus('Transcribing on this Mac…');
+      return;
     }
-    await sentinelRef.current.start();
-  }, [handleTriggerWakeChallenge]);
 
-  useEffect(() => {
-    startAcousticMic();
-    return () => {
-      sentinelRef.current?.stop();
-    };
-  }, [startAcousticMic]);
-
-  // Continuous Browser SpeechRecognition for Lock Screen + Hands-Free Duplex Voice Conversation!
-  useEffect(() => {
-    const SpeechRec =
-      (window as unknown as { SpeechRecognition?: any; webkitSpeechRecognition?: any })
-        .SpeechRecognition ||
-      (window as unknown as { webkitSpeechRecognition?: any }).webkitSpeechRecognition;
-
-    if (!SpeechRec) return;
-
-    let recognition: any = null;
-    let shouldRestart = true;
+    if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
+      setVoiceStatus('Voice recording is not available in this browser.');
+      return;
+    }
 
     try {
-      recognition = new SpeechRec();
-      recognition.continuous = true;
-      recognition.interimResults = true;
-      recognition.lang = 'en-US';
-
-      recognition.onresult = (event: any) => {
-        // Ignore self-echo while agent is actively speaking TTS
-        if (soundEngine.isSpeaking()) return;
-
-        let phrase = '';
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          phrase += event.results[i][0].transcript;
-        }
-        const rawTranscript = phrase.trim();
-        const clean = rawTranscript.toLowerCase();
-        setLiveTranscript(rawTranscript);
-
-        if (!clean) return;
-
-        // 1. Standby Lock Screen: listen for "Wake up, I'm back"
-        if (
-          bootStateRef.current === 'sentinel' &&
-          (clean.includes('wake up') || clean.includes("i'm back") || clean.includes('im back'))
-        ) {
-          handleTriggerWakeChallenge();
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      voiceStreamRef.current = stream;
+      voiceChunksRef.current = [];
+      const mimeType = ['audio/webm;codecs=opus', 'audio/mp4', 'audio/webm'].find((type) =>
+        MediaRecorder.isTypeSupported(type)
+      );
+      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      recorderRef.current = recorder;
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) voiceChunksRef.current.push(event.data);
+      };
+      recorder.onstop = async () => {
+        const audioBlob = new Blob(voiceChunksRef.current, {
+          type: recorder.mimeType || 'audio/webm',
+        });
+        stream.getTracks().forEach((track) => track.stop());
+        voiceStreamRef.current = null;
+        recorderRef.current = null;
+        if (!audioBlob.size) {
+          setVoiceStatus('No audio captured. Try again.');
           return;
         }
 
-        // 2. Passkey Challenge Screen: listen for any configured passkey phrase
-        if (bootStateRef.current === 'amber_challenge') {
-          const matched = passkeysRef.current.find((p) =>
-            clean.includes(p.phrase.toLowerCase())
-          );
-          if (matched) {
-            handleVerifyPasskey(matched.phrase);
-          }
-          return;
-        }
-
-        // 3. Unlocked Studio: Hands-Free Duplex Conversational & Action Engine!
-        const lastResult = event.results[event.results.length - 1];
-        if (bootStateRef.current === 'ignited' && lastResult?.isFinal) {
-          const now = Date.now();
-          if (
-            clean === lastSpokenDispatchRef.current.text &&
-            now - lastSpokenDispatchRef.current.time < 3000
-          ) {
+        try {
+          const response = await fetch('/api/voice/transcribe', {
+            method: 'POST',
+            headers: { 'Content-Type': audioBlob.type || 'audio/webm' },
+            body: audioBlob,
+          });
+          const data = await response.json();
+          if (!response.ok || !data?.text) {
+            setVoiceStatus(data?.error || 'Local speech recognition is unavailable. Start the voice service in Settings.');
             return;
           }
-          lastSpokenDispatchRef.current = { text: clean, time: now };
-
-          // System Mode / Protocol Voice Shortcuts
-          if (clean.includes('ghost protocol') || clean === 'go to sleep') {
-            handleVerifyPasskey('ghost protocol');
-            return;
-          }
-          if (clean.includes('house party protocol')) {
-            setAwakeModelIds(models.map((m) => m.id));
-            soundEngine.playPasskeyVerified();
-            soundEngine.speak('House Party Protocol active. All four agents are awake.');
-            return;
-          }
-          if (clean === 'switch to workbench' || clean === 'open workbench') {
-            setSpatialMode('forge');
-            soundEngine.playModeMorph();
-            return;
-          }
-          if (clean === 'switch to live vision' || clean === 'open live vision') {
-            setSpatialMode('overwatch');
-            soundEngine.playModeMorph();
-            return;
-          }
-          if (clean === 'switch to global pulse' || clean === 'open global pulse') {
-            setSpatialMode('warroom');
-            soundEngine.playModeMorph();
-            return;
-          }
-
-          // Otherwise, if Hands-Free Duplex Voice is active and sentence has >= 2 words, converse & execute actions!
-          if (
-            duplexVoiceRef.current &&
-            !isExecutingRef.current &&
-            rawTranscript.split(/\s+/).length >= 2
-          ) {
-            handleRunDirective(rawTranscript, undefined, 'voice', true);
-          }
+          setLiveTranscript(data.text);
+          setVoiceStatus('Voice input processed locally');
+          await handleRunDirective(data.text, 'voice', true);
+        } catch {
+          setVoiceStatus('Could not reach the local speech service. Start it from Settings.');
         }
       };
-
-      recognition.onend = () => {
-        if (shouldRestart) {
-          setTimeout(() => {
-            try {
-              recognition.start();
-            } catch {
-              // ignore
-            }
-          }, 400);
-        }
-      };
-
-      recognition.start();
+      recorder.start();
+      setDuplexVoiceActive(true);
+      setVoiceStatus('Listening on this Mac · click again to send');
     } catch {
-      // SpeechRecognition optional
+      setDuplexVoiceActive(false);
+      setVoiceStatus('Microphone access was not granted. Voice input stays off.');
     }
+  }, [handleRunDirective]);
 
-    return () => {
-      shouldRestart = false;
-      try {
-        recognition?.stop();
-      } catch {
-        // ignore
-      }
-    };
-  }, [handleTriggerWakeChallenge, handleVerifyPasskey, handleRunDirective, models]);
+  useEffect(() => () => {
+    recorderRef.current?.stop();
+    voiceStreamRef.current?.getTracks().forEach((track) => track.stop());
+  }, []);
 
   // Toggle Awake / Sleep State of any Individual Model
   const toggleModelAwake = (model: ModelPluginManifest) => {
     setAwakeModelIds((prev) => {
       const exists = prev.includes(model.id);
       if (exists) {
-        soundEngine.playCoreSleep();
         return prev.filter((id) => id !== model.id);
       } else {
-        soundEngine.playCoreWake(model.harmonicFreqHz);
         return [...prev, model.id];
       }
     });
   };
 
   const switchSpatialMode = (mode: SpatialMode) => {
-    soundEngine.playModeMorph();
     setSpatialMode(mode);
   };
 
-  const handleAirGestureTrigger = (gesture: 'wake_all' | 'cycle_mode' | 'fusion_pulse') => {
-    if (gesture === 'wake_all') {
-      soundEngine.playPasskeyVerified();
-      setAwakeModelIds(models.map((m) => m.id));
-    } else if (gesture === 'cycle_mode') {
-      const order: SpatialMode[] = ['nexus', 'forge', 'overwatch', 'warroom'];
-      const next = order[(order.indexOf(spatialMode) + 1) % order.length];
-      switchSpatialMode(next);
-    } else if (gesture === 'fusion_pulse') {
-      handleRunDirective('Check my Mac CPU, memory, and battery status', undefined, 'text', true);
-    }
-  };
-
   return (
-    <div className="relative w-screen h-screen overflow-hidden aspira-canvas-bg flex flex-col justify-between p-4 select-none">
-      {/* 3D BIOLUMINESCENT FLUID AURORA ORB & CONSTELLATION STAGE */}
-      <ThreeHologramStage
-        spatialMode={spatialMode}
-        synergyMode={synergyMode}
-        models={models}
-        awakeModelIds={awakeModelIds}
-        bootState={bootState}
-        audioRms={acousticTelemetry.rmsLevel}
-        isExecuting={isExecuting || isAgentSpeaking}
-        handCursor={handCursor}
-      />
-
-      {/* AMBIENT VOICE & CLAP LOCK SCREEN */}
-      {bootState !== 'ignited' && (
-        <AcousticBootOverlay
-          bootState={bootState}
-          telemetry={acousticTelemetry}
-          transcript={liveTranscript}
-          passkeyProfiles={passkeyProfiles}
-          onTriggerWakeChallenge={handleTriggerWakeChallenge}
-          onVerifyPasskey={handleVerifyPasskey}
-          onTriggerIntruderDemo={() => {
-            soundEngine.playIntruderAlert();
-            setBootState('intruder');
-            soundEngine.speak(
-              'Passkey or voiceprint unverified. Studio remains locked.'
-            );
-          }}
-          onResetToSentinel={() => setBootState('sentinel')}
-          onStartMic={startAcousticMic}
-          onCalibrateVoice={() => {
-            sentinelRef.current?.enrollCurrentVoice(
-              acousticTelemetry.dominantPitchHz,
-              acousticTelemetry.spectralCentroidHz
-            );
-          }}
-        />
+    <div className="relative w-screen h-screen overflow-hidden aspira-canvas-bg flex flex-col p-5">
+      {bootState === 'locked' && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-[#090b10]/90 p-6 backdrop-blur-xl">
+          <form
+            className="w-full max-w-sm rounded-3xl border border-white/10 bg-[#11141b] p-7 shadow-2xl"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (!handleUnlockPasskey(unlockPhrase)) setUnlockError('That passphrase did not match.');
+              else {
+                setUnlockPhrase('');
+                setUnlockError('');
+              }
+            }}
+          >
+            <div className="mb-6 flex h-11 w-11 items-center justify-center rounded-2xl bg-white/[0.06] text-slate-200">
+              <Lock className="h-5 w-5" />
+            </div>
+            <p className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">Aspira workspace</p>
+            <h1 className="mt-2 text-2xl font-medium tracking-tight text-white">Welcome back</h1>
+            <p className="mt-2 text-sm leading-6 text-slate-400">Enter your optional session passphrase to continue.</p>
+            <input
+              autoFocus
+              type="password"
+              value={unlockPhrase}
+              onChange={(event) => setUnlockPhrase(event.target.value)}
+              placeholder="Session passphrase"
+              className="mt-6 w-full rounded-xl border border-white/10 bg-black/25 px-4 py-3 text-sm text-white outline-none transition placeholder:text-slate-600 focus:border-white/25"
+            />
+            {unlockError && <p className="mt-2 text-xs text-rose-300">{unlockError}</p>}
+            <button type="submit" className="mt-4 w-full rounded-xl bg-white px-4 py-3 text-sm font-medium text-slate-950 transition hover:bg-slate-200">
+              Unlock workspace
+            </button>
+            <p className="mt-4 text-[11px] leading-5 text-slate-500">This is a convenience lock for this browser session, not device-level security.</p>
+          </form>
+        </div>
       )}
 
-      {/* RAYCAST / LINEAR STUDIO SETTINGS VAULT */}
+      {/* Provider and workspace settings */}
       <PlugAndPlayVaultModal
         open={vaultModalOpen}
         onClose={() => setVaultModalOpen(false)}
         models={models}
+        onSubscriptionsUpdated={setSubscriptionStatuses}
         onAddCustomModel={(newPlugin) => {
-          setModels((prev) => [...prev, newPlugin]);
-          setAwakeModelIds((prev) => [...prev, newPlugin.id]);
-          soundEngine.playPasskeyVerified();
+          const id = models.some((model) => model.id === newPlugin.id)
+            ? `${newPlugin.id}_${Date.now().toString(36)}`
+            : newPlugin.id;
+          const plugin = { ...newPlugin, id };
+          setModels((prev) => {
+            const next = [...prev.filter((model) => model.id !== id), plugin];
+            const custom = next.filter((model) => !BUILTIN_MODEL_PLUGINS.some((builtin) => builtin.id === model.id));
+            try {
+              localStorage.setItem('aspira_custom_model_endpoints_v1', JSON.stringify(custom));
+            } catch {
+              // The current session remains usable if browser storage is unavailable.
+            }
+            return next;
+          });
+          setAwakeModelIds((prev) => [...prev, id]);
         }}
         passkeyProfiles={passkeyProfiles}
+        passkeyLockEnabled={passkeyLockEnabled}
+        onTogglePasskeyLock={setPasskeyLockEnabled}
         onUpdatePasskeyPhrase={(id, phrase) => {
           setPasskeyProfiles((prev) =>
             prev.map((p) => (p.id === id ? { ...p, phrase } : p))
           );
+          if (!phrase.trim()) setPasskeyLockEnabled(false);
         }}
         apiKeys={apiKeys}
         onSaveApiKeys={(keys) => {
@@ -768,22 +599,6 @@ export const App: React.FC = () => {
             // ignore
           }
           setVaultModalOpen(false);
-        }}
-        voiceprint={
-          sentinelRef.current?.getEnrolledVoiceprint() || {
-            pitchHz: 145,
-            centroidHz: 1180,
-            enrolledAt: 'Default Studio Profile',
-          }
-        }
-        currentPitchHz={acousticTelemetry.dominantPitchHz}
-        currentCentroidHz={acousticTelemetry.spectralCentroidHz}
-        onEnrollVoiceprint={() => {
-          sentinelRef.current?.enrollCurrentVoice(
-            acousticTelemetry.dominantPitchHz,
-            acousticTelemetry.spectralCentroidHz
-          );
-          soundEngine.playPasskeyVerified();
         }}
       />
 
@@ -800,24 +615,17 @@ export const App: React.FC = () => {
           <span className="font-display text-sm font-semibold tracking-tight text-white">
             Aspira
           </span>
-          <span className="hidden md:inline-flex items-center gap-2 font-mono-tech text-[11px] text-slate-400 px-2.5 py-0.5 rounded-full bg-white/[0.03] border border-white/[0.06]">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-            <span className="text-emerald-300 font-medium">Subscriptions Active (Zero API Keys)</span>
-            <span>·</span>
-            <span>{macTelemetry.cpuUsagePercent}% CPU</span>
-            <span>·</span>
-            <span>{memories.length} Memories</span>
+          <span className="hidden md:inline-flex rounded-full border border-white/[0.06] bg-white/[0.03] px-2.5 py-1 text-[11px] text-slate-400">
+            {memoriesLoaded ? `${memories.length} saved memories` : 'Loading saved context…'}
           </span>
         </div>
 
-        {/* Center: 4 Segmented Studio Views */}
+        {/* Primary workspace views */}
         <nav className="flex items-center gap-1 bg-white/[0.03] p-1 rounded-xl border border-white/[0.06]">
           {(
             [
               { id: 'nexus', label: 'Studio', icon: Orbit },
               { id: 'forge', label: 'Workbench', icon: FolderGit2 },
-              { id: 'overwatch', label: 'Live Vision', icon: Eye },
-              { id: 'warroom', label: 'Global Pulse', icon: Flame },
             ] as { id: SpatialMode; label: string; icon: any }[]
           ).map((tab) => {
             const Icon = tab.icon;
@@ -839,48 +647,34 @@ export const App: React.FC = () => {
           })}
         </nav>
 
-        {/* Right: Studio Settings, Audio Toggle, Standby Lock */}
+        {/* Right: Workspace settings and optional session lock */}
         <div className="flex items-center gap-2">
           <button
             onClick={() => {
-              soundEngine.playGlassTick();
               setVaultModalOpen(true);
             }}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl aspira-card-interactive text-xs font-medium text-slate-200 cursor-pointer"
           >
             <Sliders className="w-3.5 h-3.5 text-[#6E8EFB]" />
-            <span>Subscriptions & Models</span>
+            <span>Settings</span>
           </button>
 
-          <button
-            onClick={() => {
-              const next = !soundMuted;
-              setSoundMuted(next);
-              soundEngine.muted = next;
-              if (next) soundEngine.stopSpeaking();
-            }}
-            title="Toggle Ambient Harmonic Audio & Voice"
-            className="p-2 rounded-xl aspira-card-interactive text-slate-300 hover:text-white cursor-pointer"
-          >
-            {soundMuted ? (
-              <VolumeX className="w-3.5 h-3.5 text-rose-400" />
-            ) : (
-              <Volume2 className="w-3.5 h-3.5 text-slate-300" />
-            )}
-          </button>
-
-          <button
-            onClick={() => {
-              soundEngine.stopSpeaking();
-              soundEngine.playCoreSleep();
-              setBootState('sentinel');
-            }}
-            title="Return to Ambient Acoustic Standby"
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl aspira-card-interactive text-xs text-slate-300 hover:text-white cursor-pointer"
-          >
-            <Lock className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Standby</span>
-          </button>
+          {passkeyLockEnabled && passkeyProfiles[0]?.phrase.trim() && (
+            <button
+              onClick={() => {
+                soundEngine.stopSpeaking();
+                if (recorderRef.current?.state === 'recording') recorderRef.current.stop();
+                setBootState('locked');
+                setUnlockPhrase('');
+                setUnlockError('');
+              }}
+              title="Lock this browser session"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl aspira-card-interactive text-xs text-slate-300 hover:text-white cursor-pointer"
+            >
+              <Lock className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Lock</span>
+            </button>
+          )}
         </div>
       </header>
 
@@ -901,18 +695,11 @@ export const App: React.FC = () => {
       {/* =====================================================================
           LAYER 2: TRANSFORMATIVE STUDIO STAGE (Conversational + Action OS)
          ===================================================================== */}
-      <main className="relative z-10 flex-1 my-3 overflow-hidden">
+      <main className="relative z-10 mx-auto my-4 w-full max-w-[1440px] flex-1 overflow-hidden">
         <SpatialModeDeck
           spatialMode={spatialMode}
-          synergyMode={synergyMode}
-          onSelectSynergyMode={(m) => {
-            soundEngine.playSynergyBeam();
-            setSynergyMode(m);
-          }}
           models={models}
           awakeModelIds={awakeModelIds}
-          selectedCapability={selectedCapability}
-          onSelectCapability={setSelectedCapability}
           synergyResult={latestResult}
           conversationTurns={conversationTurns}
           memories={memories}
@@ -923,25 +710,36 @@ export const App: React.FC = () => {
           onRunRoutine={handleRunRoutine}
           onExecuteDirectAction={handleExecuteDirectAction}
           isExecuting={isExecuting}
-          onRunPrompt={(prompt, capOverride) =>
-            handleRunDirective(prompt, capOverride, 'text', true)
-          }
+          onRunPrompt={(prompt) => handleRunDirective(prompt, 'text', true)}
           duplexVoiceActive={duplexVoiceActive}
-          onToggleDuplexVoice={() => setDuplexVoiceActive((v) => !v)}
+          onToggleDuplexVoice={toggleVoiceInput}
           isAgentSpeaking={isAgentSpeaking}
           liveTranscript={liveTranscript}
-          macTelemetry={macTelemetry}
+          voiceStatus={voiceStatus}
         />
       </main>
 
       {/* =====================================================================
           LAYER 3: 2-TIER FLOATING AGENT CONSTELLATION DOCK + UNIFIED COMPOSER
          ===================================================================== */}
-      <footer className="relative z-20 max-w-5xl w-full mx-auto flex flex-col gap-2">
+      <footer className="relative z-20 mx-auto flex w-full max-w-[1120px] flex-col gap-3">
         {/* TIER A: Tactile Agent Constellation Pill Dock */}
         <div className="flex items-center justify-center flex-wrap gap-2">
           {models.map((model) => {
             const isAwake = awakeModelIds.includes(model.id);
+            const providerStatus = apiKeys[model.id]
+              ? 'API key'
+              : subscriptionStatuses[model.id]?.authStatus === 'signed_in'
+              ? 'Signed in'
+              : subscriptionStatuses[model.id]?.authStatus === 'signed_out'
+              ? 'Sign in'
+              : subscriptionStatuses[model.id]?.cliPath
+              ? 'CLI detected'
+              : model.endpointConfig?.providerType === 'openai_compatible'
+              ? 'Endpoint'
+              : subscriptionStatuses[model.id]
+              ? 'Connect'
+              : 'Checking';
             return (
               <button
                 key={model.id}
@@ -953,7 +751,8 @@ export const App: React.FC = () => {
                     ? 'rgba(22, 25, 34, 0.85)'
                     : 'rgba(15, 17, 23, 0.55)',
                 }}
-                className="flex items-center gap-2.5 px-3.5 py-2 rounded-xl border backdrop-blur-xl transition-all cursor-pointer group"
+                className="flex items-center gap-2.5 rounded-xl border px-3.5 py-2 transition-all cursor-pointer group"
+                title={`${model.tagline} · ${isAwake ? 'Selected for this conversation' : 'Not selected'}`}
               >
                 <span
                   style={{
@@ -971,10 +770,11 @@ export const App: React.FC = () => {
                     >
                       {model.codeName}
                     </span>
-                    <span className="font-mono-tech text-[10px] text-slate-400">
-                      {isAwake ? `${model.tokensPerSec} tok/s` : 'Sleep'}
+                    <span className="text-[10px] text-slate-500">
+                      {isAwake ? 'Selected' : 'Select'}
                     </span>
                   </div>
+                  <div className="text-[9px] text-slate-500">{providerStatus}</div>
                 </div>
               </button>
             );
@@ -983,21 +783,13 @@ export const App: React.FC = () => {
           <button
             type="button"
             onClick={() => {
-              soundEngine.playPasskeyVerified();
               setAwakeModelIds(models.map((m) => m.id));
             }}
             className="px-3 py-2 rounded-xl aspira-card-interactive text-xs font-medium text-slate-300 hover:text-white cursor-pointer"
           >
-            Wake All
+            Select all
           </button>
 
-          <WebcamSensorOverlay
-            enabled={webcamEnabled}
-            onToggle={() => setWebcamEnabled((v) => !v)}
-            bootState={bootState}
-            onHandMove={setHandCursor}
-            onAirGestureTrigger={handleAirGestureTrigger}
-          />
         </div>
 
         {/* TIER B: Conversational & Action-Executing Composer Bar */}
@@ -1005,16 +797,16 @@ export const App: React.FC = () => {
           onSubmit={(e) => {
             e.preventDefault();
             if (!commandInput.trim()) return;
-            handleRunDirective(commandInput, undefined, 'text', true);
+            handleRunDirective(commandInput, 'text', true);
             setCommandInput('');
           }}
           className="aspira-glass-elevated rounded-2xl px-4 py-2.5 flex items-center gap-3"
         >
           <button
             type="button"
-            onClick={() => setDuplexVoiceActive((v) => !v)}
+            onClick={toggleVoiceInput}
             className="flex items-center gap-2 text-xs text-slate-400 shrink-0 cursor-pointer"
-            title="Toggle Hands-Free Duplex Voice Conversation"
+            title="Record a voice message locally"
           >
             <Mic
               className={`w-4 h-4 ${
@@ -1022,9 +814,7 @@ export const App: React.FC = () => {
               }`}
             />
             <span className="hidden sm:inline font-mono-tech text-[11px] text-slate-300">
-              {awakeModelIds
-                .map((id) => id.charAt(0).toUpperCase() + id.slice(1))
-                .join(' + ') || 'Solo'}
+              {duplexVoiceActive ? 'Stop recording' : 'Voice'}
             </span>
           </button>
 
@@ -1034,8 +824,8 @@ export const App: React.FC = () => {
             onChange={(e) => setCommandInput(e.target.value)}
             placeholder={
               liveTranscript
-                ? `Listening: “${liveTranscript}” — or type an action (e.g. "Open Safari", "Remember my goal is...", "Run git status")...`
-                : `Talk naturally or type an action: "Open Calculator", "Check my Mac battery", "Remember that...", "Search HackerNews"...`
+                ? `Heard: “${liveTranscript}”`
+                : 'Ask a question, describe a task, or ask your agents to take an action…'
             }
             className="flex-1 bg-transparent text-xs sm:text-sm text-white placeholder:text-slate-400 focus:outline-none"
           />

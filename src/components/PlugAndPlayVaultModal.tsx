@@ -1,23 +1,19 @@
 import React, { useEffect, useState } from 'react';
 import {
-  AppWindow,
   Check,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
-  Cpu,
   ExternalLink,
-  Fingerprint,
   KeyRound,
   Layers,
+  Lock,
   Plus,
   RefreshCw,
-  Shield,
   Sparkles,
   Volume2,
   X,
 } from 'lucide-react';
-import { EnrolledVoiceprint } from '../audio/acousticSentinel';
 import { soundEngine } from '../audio/soundEngine';
 import {
   ModelPluginManifest,
@@ -29,51 +25,32 @@ interface PlugAndPlayVaultModalProps {
   open: boolean;
   onClose: () => void;
   models: ModelPluginManifest[];
+  onSubscriptionsUpdated: (subscriptions: Record<string, SubscriptionStatus>) => void;
   onAddCustomModel: (plugin: ModelPluginManifest) => void;
   passkeyProfiles: PasskeyProfile[];
+  passkeyLockEnabled: boolean;
+  onTogglePasskeyLock: (enabled: boolean) => void;
   onUpdatePasskeyPhrase: (id: string, newPhrase: string) => void;
   apiKeys: Record<string, string>;
   onSaveApiKeys: (keys: Record<string, string>) => void;
-  voiceprint: EnrolledVoiceprint;
-  currentPitchHz: number;
-  currentCentroidHz: number;
-  onEnrollVoiceprint: () => void;
 }
 
-type VaultTab = 'subscriptions' | 'models' | 'passkeys' | 'biometrics';
+type VaultTab = 'subscriptions' | 'models' | 'voice' | 'passkeys';
 
 const OSS_MODEL_PRESETS = [
   {
     codeName: 'Llama-3.2-Local',
-    family: 'Ollama Apple Silicon (llama3.2:latest)',
-    superpower: 'Zero-Cost Local Apple Silicon Conversational Inference',
+    family: 'Ollama · llama3.2:latest',
+    superpower: 'Text chat through a local Ollama model.',
     color: '#10B981',
     glowRgb: '16, 185, 129',
     baseUrl: 'http://localhost:11434/v1',
     apiModelId: 'llama3.2:latest',
   },
   {
-    codeName: 'Qwen2.5-VL',
-    family: 'Ollama Vision-Language (qwen2.5vl:7b)',
-    superpower: 'Local Apple Silicon Multimodal Screen & Camera Vision',
-    color: '#06B6D4',
-    glowRgb: '6, 182, 212',
-    baseUrl: 'http://localhost:11434/v1',
-    apiModelId: 'qwen2.5vl:7b',
-  },
-  {
-    codeName: 'CLIProxy-Sub',
-    family: 'CLIProxyAPI Local Subscription Router',
-    superpower: 'Routes Web/OAuth Subscriptions via localhost:8317',
-    color: '#A855F7',
-    glowRgb: '168, 85, 247',
-    baseUrl: 'http://localhost:8317/v1',
-    apiModelId: 'claude-3-7-sonnet',
-  },
-  {
-    codeName: 'DeepSeek-R1',
-    family: 'DeepSeek R1 Distill / Local',
-    superpower: 'Open-Weight Chain-of-Thought & Verifiable Math Proofs',
+    codeName: 'DeepSeek-R1-Local',
+    family: 'Ollama · deepseek-r1:latest',
+    superpower: 'Text chat through a local Ollama model.',
     color: '#F59E0B',
     glowRgb: '245, 158, 11',
     baseUrl: 'http://localhost:11434/v1',
@@ -85,15 +62,14 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
   open,
   onClose,
   models,
+  onSubscriptionsUpdated,
   onAddCustomModel,
   passkeyProfiles,
+  passkeyLockEnabled,
+  onTogglePasskeyLock,
   onUpdatePasskeyPhrase,
   apiKeys,
   onSaveApiKeys,
-  voiceprint,
-  currentPitchHz,
-  currentCentroidHz,
-  onEnrollVoiceprint,
 }) => {
   const [activeTab, setActiveTab] = useState<VaultTab>('subscriptions');
   const [subscriptions, setSubscriptions] = useState<Record<string, SubscriptionStatus>>({});
@@ -112,9 +88,12 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
   const [localKeys, setLocalKeys] = useState<Record<string, string>>(apiKeys);
   const [keysSavedBanner, setKeysSavedBanner] = useState(false);
   const [localTtsUrl, setLocalTtsUrl] = useState<string>(
-    soundEngine.getLocalTtsEndpoint() || 'http://127.0.0.1:8880/v1/audio/speech'
+    soundEngine.getLocalTtsEndpoint() || 'http://127.0.0.1:8000/v1/audio/speech'
   );
+  const [localTtsModel, setLocalTtsModel] = useState(soundEngine.getLocalTtsModel());
+  const [localTtsVoice, setLocalTtsVoice] = useState(soundEngine.getLocalTtsVoice());
   const [ttsSavedBanner, setTtsSavedBanner] = useState(false);
+  const [ttsStatus, setTtsStatus] = useState('');
 
   const refreshSubscriptions = () => {
     fetch('/api/subscriptions')
@@ -122,6 +101,7 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
       .then((data) => {
         if (data?.subscriptions) {
           setSubscriptions(data.subscriptions);
+          onSubscriptionsUpdated(data.subscriptions);
         }
       })
       .catch(() => {});
@@ -136,7 +116,6 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
   if (!open) return null;
 
   const handleSubscriptionLogin = async (modelId: string) => {
-    soundEngine.playGlassTick();
     setLoginStatusMsg(`Launching subscription sign-in for ${modelId.toUpperCase()}...`);
     try {
       const res = await fetch('/api/subscriptions/login', {
@@ -145,34 +124,19 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
         body: JSON.stringify({ modelId }),
       });
       const data = await res.json();
-      if (data?.subscriptions) setSubscriptions(data.subscriptions);
+      if (data?.subscriptions) {
+        setSubscriptions(data.subscriptions);
+        onSubscriptionsUpdated(data.subscriptions);
+      }
       setLoginStatusMsg(data?.message || 'Subscription login launched.');
     } catch {
       setLoginStatusMsg('Could not launch terminal sign-in.');
     }
   };
 
-  const handleDesktopHandoff = async (modelId: string) => {
-    soundEngine.playGlassTick();
-    try {
-      await fetch('/api/subscriptions/desktop-handoff', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          modelId,
-          prompt: 'Connected from Aspira Studio on macOS.',
-        }),
-      });
-      setLoginStatusMsg(`Opened ${modelId.toUpperCase()} native macOS desktop app.`);
-    } catch {
-      // ignore
-    }
-  };
-
   const handleAddPlugin = (e: React.FormEvent) => {
     e.preventDefault();
     if (!codeName.trim()) return;
-    soundEngine.playGlassTick();
 
     const id = codeName.toLowerCase().replace(/[^a-z0-9]/g, '_');
     const newPlugin: ModelPluginManifest = {
@@ -180,19 +144,11 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
       codeName: codeName.trim(),
       family: family.trim() || `${codeName.trim()} Custom`,
       vendor: 'Plug-and-Play Registry',
-      tagline: superpower.trim() || 'Custom Specialized Agent Core',
+      tagline: superpower.trim() || `OpenAI-compatible endpoint at ${baseUrl}`,
       color: 'emerald',
       accentHex,
       glowRgb: '16, 185, 129',
       awakeByDefault: true,
-      contextWindow: '128K tokens',
-      avgLatencyMs: 195,
-      tokensPerSec: 175,
-      harmonicFreqHz: 480,
-      apexSuperpower: superpower.trim() || 'Specialized Local/Cloud Inference',
-      apexProtocol: `OpenAI-Compatible (${baseUrl})`,
-      mcpTools: ['custom_mcp_bridge', 'code_synthesis'],
-      capabilities: ['deep_reasoning', 'code_architecture', 'web_recon'],
       endpointConfig: {
         providerType: 'openai_compatible',
         baseUrl: baseUrl.trim(),
@@ -207,7 +163,6 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
   };
 
   const applyPreset = (preset: (typeof OSS_MODEL_PRESETS)[number]) => {
-    soundEngine.playGlassTick();
     setCodeName(preset.codeName);
     setFamily(preset.family);
     setSuperpower(preset.superpower);
@@ -218,19 +173,23 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
 
   const handleSaveKeys = (e: React.FormEvent) => {
     e.preventDefault();
-    soundEngine.playPasskeyVerified();
     onSaveApiKeys(localKeys);
     setKeysSavedBanner(true);
     setTimeout(() => setKeysSavedBanner(false), 2600);
   };
 
-  const handleSaveTtsEndpoint = () => {
-    soundEngine.playPasskeyVerified();
+  const handleSaveTtsEndpoint = async () => {
     soundEngine.setLocalTtsEndpoint(localTtsUrl.trim());
-    setTtsSavedBanner(true);
-    soundEngine.speak('Local neural voice engine connected and ready.');
+    soundEngine.setLocalTtsModel(localTtsModel.trim());
+    soundEngine.setLocalTtsVoice(localTtsVoice.trim());
+    setTtsStatus('Generating a short sample with the local voice model…');
+    const ready = await soundEngine.speak('Aspira is ready to work with you.');
+    setTtsSavedBanner(ready);
+    setTtsStatus(ready ? 'Local voice is ready.' : 'Could not reach the local voice model. Start it with npm run voice:local.');
     setTimeout(() => setTtsSavedBanner(false), 2600);
   };
+
+  const sessionPhrase = passkeyProfiles[0]?.phrase || '';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-xl p-4">
@@ -243,17 +202,16 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
             </div>
             <div>
               <h2 className="text-base font-semibold text-white tracking-tight">
-                Aspira Subscriptions, Models & Studio Settings
+                Models & settings
               </h2>
               <p className="text-xs text-slate-400">
-                Use your existing Claude Pro/Max, ChatGPT Plus/Pro, Grok, and Gemini subscriptions — zero API keys required
+                Connect provider CLIs, local models, and optional voice
               </p>
             </div>
           </div>
 
           <button
             onClick={() => {
-              soundEngine.playGlassTick();
               onClose();
             }}
             className="p-2 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] text-slate-400 hover:text-white transition-colors"
@@ -265,10 +223,10 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
         {/* 4-TAB SEGMENTED NAVIGATION */}
         <div className="px-7 pt-4 pb-2 border-b border-white/[0.06] flex items-center gap-2 overflow-x-auto">
           {[
-            { id: 'subscriptions', label: 'LLM Subscriptions & Voice AI', icon: CheckCircle2 },
+            { id: 'subscriptions', label: 'Connections', icon: CheckCircle2 },
             { id: 'models', label: 'Agents & Hot-Plug', icon: Layers },
-            { id: 'passkeys', label: 'Spoken Passkeys', icon: Shield },
-            { id: 'biometrics', label: 'Vocal Biometrics', icon: Fingerprint },
+            { id: 'voice', label: 'Voice', icon: Volume2 },
+            { id: 'passkeys', label: 'Passkey lock', icon: Lock },
           ].map((tab) => {
             const Icon = tab.icon;
             const active = activeTab === tab.id;
@@ -276,7 +234,6 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
               <button
                 key={tab.id}
                 onClick={() => {
-                  soundEngine.playGlassTick();
                   setActiveTab(tab.id as VaultTab);
                 }}
                 className={`px-4 py-2 rounded-xl text-xs font-medium flex items-center gap-2 transition-all whitespace-nowrap ${
@@ -299,16 +256,13 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
             <div className="space-y-6">
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <div>
-                  <h3 className="text-sm font-semibold text-white">
-                    Connected Personal LLM Subscriptions (Zero API Keys Needed)
-                  </h3>
+                  <h3 className="text-sm font-semibold text-white">Provider connections</h3>
                   <p className="text-xs text-slate-400 mt-0.5">
-                    Aspira automatically bridges your logged-in OAuth sessions (`~/.claude`, `~/.codex`, `~/.grok`) and macOS desktop apps (`ChatGPT.app`, `Claude.app`, `Gemini.app`, `Ollama.app`).
+                    Aspira can send prompts through supported, signed-in command-line tools. Having a provider’s desktop app installed does not connect its model here.
                   </p>
                 </div>
                 <button
                   onClick={() => {
-                    soundEngine.playGlassTick();
                     refreshSubscriptions();
                   }}
                   className="px-3 py-1.5 rounded-xl bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] text-xs text-slate-200 flex items-center gap-1.5"
@@ -334,7 +288,21 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
                 {(['claude', 'gpt', 'grok', 'argon'] as const).map((id) => {
                   const sub = subscriptions[id];
                   const model = models.find((m) => m.id === id);
-                  const isAuthed = sub?.subscriptionAuthenticated ?? true;
+                  const cliAvailable = Boolean(sub?.cliPath);
+                  const connectionLabel = !sub
+                    ? 'CHECKING'
+                    : !cliAvailable
+                    ? 'NO CLI BRIDGE'
+                    : sub.authStatus === 'signed_in'
+                    ? 'SIGNED IN'
+                    : sub.authStatus === 'signed_out'
+                    ? 'SIGN-IN REQUIRED'
+                    : 'CLI AVAILABLE';
+                  const connectionColor = connectionLabel === 'SIGNED IN'
+                    ? 'bg-emerald-500/15 text-emerald-300 border-emerald-400/30'
+                    : connectionLabel === 'SIGN-IN REQUIRED'
+                    ? 'bg-amber-500/15 text-amber-300 border-amber-400/30'
+                    : 'bg-white/[0.04] text-slate-300 border-white/[0.1]';
 
                   return (
                     <div
@@ -353,18 +321,14 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
                             </span>
                           </div>
                           <span
-                            className={`text-[10px] font-mono px-2.5 py-0.5 rounded-full border ${
-                              isAuthed
-                                ? 'bg-emerald-500/15 text-emerald-300 border-emerald-400/30'
-                                : 'bg-amber-500/15 text-amber-300 border-amber-400/30'
-                            }`}
+                            className={`text-[10px] font-mono px-2.5 py-0.5 rounded-full border ${connectionColor}`}
                           >
-                            {isAuthed ? '✓ SUBSCRIPTION ACTIVE' : 'SIGN IN AVAILABLE'}
+                            {connectionLabel}
                           </span>
                         </div>
 
                         <div className="text-xs text-slate-300 font-mono bg-black/30 rounded-xl px-3 py-2 border border-white/[0.05]">
-                          {sub?.methodLabel || 'Detecting local OAuth session & macOS app...'}
+                          {sub?.methodLabel || 'Checking for a supported CLI…'}
                         </div>
                       </div>
 
@@ -375,56 +339,12 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
                           className="flex-1 py-2 px-3 rounded-xl bg-indigo-500/20 hover:bg-indigo-500/30 border border-indigo-400/30 text-indigo-200 text-xs font-medium flex items-center justify-center gap-1.5 transition-all"
                         >
                           <ExternalLink className="w-3.5 h-3.5" />
-                          {isAuthed ? 'Re-Auth OAuth' : 'Sign In Subscription'}
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => handleDesktopHandoff(id)}
-                          className="py-2 px-3 rounded-xl bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] text-slate-200 text-xs font-medium flex items-center justify-center gap-1.5 transition-all"
-                          title="Open native macOS Subscription App"
-                        >
-                          <AppWindow className="w-3.5 h-3.5 text-emerald-400" />
-                          Open App
+                          {sub?.cliPath ? 'Open CLI sign-in' : 'Connection help'}
                         </button>
                       </div>
                     </div>
                   );
                 })}
-              </div>
-
-              {/* Local Open-Source Neural Voice AI Bridge (Kokoro-82M / mlx-audio) */}
-              <div className="p-5 rounded-2xl bg-indigo-500/[0.06] border border-indigo-400/25 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Volume2 className="w-4 h-4 text-indigo-400" />
-                    <span className="text-sm font-semibold text-white">
-                      Local Neural Voice AI Bridge (Kokoro-82M / mlx-audio / Orpheus)
-                    </span>
-                  </div>
-                  <span className="text-[11px] font-mono text-indigo-300 px-2.5 py-0.5 rounded-full bg-indigo-500/15 border border-indigo-400/30">
-                    Apple Silicon Ready
-                  </span>
-                </div>
-                <p className="text-xs text-slate-300 leading-relaxed">
-                  Point Aspira to a locally hosted open-source neural TTS server (`docker run -p 8880:8880 ghcr.io/remsky/kokoro-fastapi-cpu:latest`) for zero-cloud-latency natural voice responses.
-                </p>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={localTtsUrl}
-                    onChange={(e) => setLocalTtsUrl(e.target.value)}
-                    placeholder="http://127.0.0.1:8880/v1/audio/speech"
-                    className="flex-1 bg-black/30 border border-white/10 rounded-xl px-3.5 py-2 text-xs font-mono text-white focus:outline-none focus:border-indigo-400"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleSaveTtsEndpoint}
-                    className="px-4 py-2 rounded-xl bg-indigo-500/25 hover:bg-indigo-500/35 border border-indigo-400/40 text-xs font-medium text-indigo-100 transition-all"
-                  >
-                    {ttsSavedBanner ? 'Connected!' : 'Connect & Test'}
-                  </button>
-                </div>
               </div>
 
               {/* Collapsible Optional Developer API Key Override */}
@@ -439,7 +359,7 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
                       Optional: Developer API Key Override (BYOK)
                     </div>
                     <div className="text-[11px] text-slate-500">
-                      Not needed when using your connected Claude, ChatGPT, Grok, or Gemini subscriptions above.
+                          Use an API-compatible provider when a CLI subscription connection is unavailable.
                     </div>
                   </div>
                   {showByokSection ? (
@@ -502,7 +422,7 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
             <div className="space-y-6">
               <div>
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-3">
-                  Active Studio Constellation ({models.length} Agents)
+                  Configured model connections ({models.length})
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {models.map((m) => (
@@ -519,12 +439,10 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
                           <span className="text-sm font-semibold text-white">{m.codeName}</span>
                           <span className="text-[11px] font-mono text-slate-400">{m.family}</span>
                         </div>
-                        <p className="text-xs text-slate-300 leading-relaxed">
-                          {m.apexSuperpower}
-                        </p>
+                        <p className="text-xs text-slate-300 leading-relaxed">{m.tagline}</p>
                       </div>
                       <span className="text-[10px] font-mono px-2.5 py-1 rounded-full bg-white/[0.05] text-slate-300 shrink-0">
-                        {m.contextWindow}
+                        {m.vendor}
                       </span>
                     </div>
                   ))}
@@ -535,10 +453,10 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
                     <h4 className="text-sm font-semibold text-white">
-                      Hot-Plug Local Ollama or Subscription Proxy Agent
+                      Add an OpenAI-compatible endpoint
                     </h4>
                     <p className="text-xs text-slate-400">
-                      Click a 1-click preset (`Llama-3.2-Local`, `Qwen2.5-VL`, `CLIProxy-Sub`) or add any custom model
+                      Presets fill example values. Start the server and install the model before adding it.
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-1.5">
@@ -588,7 +506,7 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
                     type="text"
                     value={superpower}
                     onChange={(e) => setSuperpower(e.target.value)}
-                    placeholder="Unique Superpower Description"
+                    placeholder="Connection note (optional)"
                     className="md:col-span-2 bg-black/30 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-indigo-400"
                   />
                   <div className="md:col-span-2 flex justify-end">
@@ -605,70 +523,106 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
             </div>
           )}
 
+          {activeTab === 'voice' && (
+            <div className="space-y-5">
+              <div>
+                <h3 className="text-sm font-semibold text-white">Private voice, on your Mac</h3>
+                <p className="mt-1 max-w-2xl text-xs leading-5 text-slate-400">
+                  Aspira sends speech to a local MLX-Audio server. The Qwen3-TTS voice model is open source and runs on Apple Silicon; weights download on the first sample request.
+                </p>
+              </div>
+              <div className="rounded-2xl border border-white/[0.08] bg-white/[0.025] p-5 space-y-4">
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  <label className="space-y-1.5 text-xs text-slate-400">
+                    <span>Local speech endpoint</span>
+                    <input
+                      type="url"
+                      value={localTtsUrl}
+                      onChange={(event) => setLocalTtsUrl(event.target.value)}
+                      placeholder="http://127.0.0.1:8000/v1/audio/speech"
+                      className="w-full rounded-xl border border-white/10 bg-black/30 px-3.5 py-2.5 font-mono text-xs text-white outline-none focus:border-white/25"
+                    />
+                  </label>
+                  <label className="space-y-1.5 text-xs text-slate-400">
+                    <span>Voice model</span>
+                    <input
+                      value={localTtsModel}
+                      onChange={(event) => setLocalTtsModel(event.target.value)}
+                      className="w-full rounded-xl border border-white/10 bg-black/30 px-3.5 py-2.5 font-mono text-xs text-white outline-none focus:border-white/25"
+                    />
+                  </label>
+                  <label className="space-y-1.5 text-xs text-slate-400">
+                    <span>Speaker preset</span>
+                    <input
+                      value={localTtsVoice}
+                      onChange={(event) => setLocalTtsVoice(event.target.value)}
+                      className="w-full rounded-xl border border-white/10 bg-black/30 px-3.5 py-2.5 text-sm text-white outline-none focus:border-white/25"
+                    />
+                  </label>
+                </div>
+                <div className="flex flex-col gap-3 border-t border-white/[0.07] pt-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-xs text-slate-300">Start the local service in Terminal:</p>
+                    <code className="mt-1 block text-xs text-indigo-200">npm run voice:local</code>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleSaveTtsEndpoint}
+                    className="rounded-xl bg-white px-4 py-2.5 text-xs font-medium text-slate-950 transition hover:bg-slate-200"
+                  >
+                    {ttsSavedBanner ? 'Sample played' : 'Save and play sample'}
+                  </button>
+                </div>
+                {ttsStatus && <p role="status" className="text-xs text-slate-400">{ttsStatus}</p>}
+                <p className="text-[11px] leading-5 text-slate-500">Voice playback stays off unless you start a voice conversation or choose Speak on a reply. Aspira does not fall back to the browser’s synthetic voice.</p>
+              </div>
+            </div>
+          )}
+
           {/* TAB 3: SPOKEN PASSKEYS */}
           {activeTab === 'passkeys' && (
-            <div className="space-y-3">
-              <p className="text-xs text-slate-400 mb-2">
-                Customize the spoken passkey phrases recognized after your double-clap wake sequence:
-              </p>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between gap-4 rounded-2xl border border-white/[0.08] bg-white/[0.025] p-4">
+                <div>
+                  <p className="text-sm font-medium text-white">Passphrase lock</p>
+                  <p className="mt-1 text-xs text-slate-400">Optional convenience gate for this browser session.</p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={passkeyLockEnabled}
+                  aria-label="Enable session passphrase lock"
+                  disabled={!sessionPhrase.trim()}
+                  onClick={() => onTogglePasskeyLock(!passkeyLockEnabled)}
+                  className={`relative h-6 w-11 rounded-full transition disabled:cursor-not-allowed disabled:opacity-40 ${passkeyLockEnabled ? 'bg-indigo-400' : 'bg-white/15'}`}
+                >
+                  <span className={`absolute top-1 h-4 w-4 rounded-full bg-white transition ${passkeyLockEnabled ? 'left-6' : 'left-1'}`} />
+                </button>
+              </div>
+              <p className="text-xs leading-5 text-slate-500">This passphrase only hides the workspace in the current browser. It is not an account password or device security.</p>
               {passkeyProfiles.map((profile) => (
                 <div
                   key={profile.id}
                   className="p-4 rounded-2xl bg-white/[0.03] border border-white/[0.07] flex flex-col md:flex-row md:items-center justify-between gap-4"
                 >
                   <div>
-                    <div className="flex items-center gap-2 mb-1">
-                      <span
-                        className="w-2 h-2 rounded-full"
-                        style={{ backgroundColor: profile.badgeColor }}
-                      />
-                      <span className="text-sm font-semibold text-white">{profile.name}</span>
-                    </div>
+                    <span className="text-sm font-semibold text-white">{profile.name}</span>
                     <p className="text-xs text-slate-400">{profile.description}</p>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    <span className="text-[11px] font-mono text-slate-400">Phrase:</span>
+                    <span className="text-[11px] font-mono text-slate-400">Passphrase</span>
                     <input
-                      type="text"
+                      type="password"
                       value={profile.phrase}
                       onChange={(e) => onUpdatePasskeyPhrase(profile.id, e.target.value)}
+                      placeholder="Set a phrase"
+                      aria-label="Session passphrase"
                       className="bg-black/40 border border-white/15 rounded-xl px-3 py-1.5 text-xs font-mono text-white focus:outline-none focus:border-indigo-400 w-48"
                     />
                   </div>
                 </div>
               ))}
-            </div>
-          )}
-
-          {/* TAB 4: VOCAL BIOMETRICS */}
-          {activeTab === 'biometrics' && (
-            <div className="space-y-4">
-              <div className="p-5 rounded-2xl bg-white/[0.03] border border-white/[0.08] flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-                <div>
-                  <h4 className="text-sm font-semibold text-white mb-1">
-                    Enrolled Vocal Harmonic Signature
-                  </h4>
-                  <p className="text-xs text-slate-400">
-                    Parabolic F0 fundamental pitch and spectral centroid formant matching.
-                  </p>
-                  <div className="flex items-center gap-4 mt-3 text-xs font-mono text-indigo-300">
-                    <span>Enrolled Pitch: {voiceprint.pitchHz} Hz</span>
-                    <span>·</span>
-                    <span>Enrolled Centroid: {voiceprint.centroidHz} Hz</span>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    soundEngine.playPasskeyVerified();
-                    onEnrollVoiceprint();
-                  }}
-                  className="px-4 py-2.5 rounded-xl bg-indigo-500/20 hover:bg-indigo-500/30 border border-indigo-400/30 text-indigo-200 text-xs font-medium transition-all flex items-center gap-2 shrink-0"
-                >
-                  <Cpu className="w-3.5 h-3.5" />
-                  Calibrate to Live Voice ({currentPitchHz} Hz)
-                </button>
-              </div>
+              {!sessionPhrase.trim() && <p className="text-xs text-amber-200/80">Set a passphrase above to enable the lock.</p>}
             </div>
           )}
         </div>

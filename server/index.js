@@ -2,11 +2,11 @@ import express from 'express';
 import os from 'node:os';
 import fs from 'node:fs';
 import path from 'node:path';
-import { exec, spawn } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '..');
 const dataDir = path.join(__dirname, 'data');
@@ -38,11 +38,7 @@ if (!fs.existsSync(dataDir)) {
 const memoryFile = path.join(dataDir, 'memory.json');
 const routinesFile = path.join(dataDir, 'routines.json');
 
-// ============================================================================
-// 0. PERSONAL LLM SUBSCRIPTION AUTO-DISCOVERY & EXECUTION BRIDGE
-//    (Zero API Keys Required — Uses Active Claude Pro/Max, ChatGPT Plus/Pro,
-//     Grok.com, Gemini.app, and Local Apple Silicon Ollama Subscriptions!)
-// ============================================================================
+// Provider CLI discovery and subscription-first inference bridge.
 function firstExistingPath(candidates) {
   for (const p of candidates) {
     try {
@@ -55,28 +51,24 @@ function firstExistingPath(candidates) {
 }
 
 export function detectSubscriptions() {
-  // 1. CLAUDE (Claude Pro / Max via `claude` CLI OAuth + Claude.app)
+  // Detect local sign-in state. A desktop app alone does not provide an inference bridge.
+  // 1. CLAUDE (Claude Pro / Max via `claude` CLI OAuth)
   const claudeCli = firstExistingPath([
     path.join(homeDir, '.local', 'bin', 'claude'),
     '/opt/homebrew/bin/claude',
     '/usr/local/bin/claude',
-  ]);
-  const claudeAuthFile = firstExistingPath([
-    path.join(homeDir, '.claude', '.claude.json'),
-    path.join(homeDir, '.claude', 'settings.json'),
   ]);
   const claudeDesktopApp = firstExistingPath([
     '/Applications/Claude.app',
     '/Applications/Claude Science.app',
   ]);
 
-  // 2. GPT / CHATGPT (ChatGPT Plus / Pro via `codex` CLI OAuth + ChatGPT.app)
+  // 2. GPT / CHATGPT (ChatGPT Plus / Pro via `codex` CLI OAuth)
   const codexCli = firstExistingPath([
     '/opt/homebrew/bin/codex',
     path.join(homeDir, '.local', 'bin', 'codex'),
     '/usr/local/bin/codex',
   ]);
-  const codexAuthFile = firstExistingPath([path.join(homeDir, '.codex', 'auth.json')]);
   const chatgptDesktopApp = firstExistingPath([
     '/Applications/ChatGPT.app',
     '/Applications/ChatGPT Classic.app',
@@ -88,94 +80,59 @@ export function detectSubscriptions() {
     '/opt/homebrew/bin/grok',
     '/usr/local/bin/grok',
   ]);
-  const grokAuthFile = firstExistingPath([path.join(homeDir, '.grok', 'auth.json')]);
 
-  // 4. ARGON / GEMINI (Google AI Pro / Gemini.app + Local Apple Silicon Ollama)
-  const geminiCli = firstExistingPath([
-    '/opt/homebrew/bin/gemini',
-    path.join(homeDir, '.local', 'bin', 'gemini'),
+  // 4. ARGON / GEMINI via the Antigravity CLI (Google's supported successor).
+  const antigravityCli = firstExistingPath([
     path.join(homeDir, '.local', 'bin', 'agy'),
+    '/opt/homebrew/bin/agy',
+    '/usr/local/bin/agy',
   ]);
-  const geminiDesktopApp = firstExistingPath(['/Applications/Gemini.app']);
-  const ollamaCli = firstExistingPath([
-    '/opt/homebrew/bin/ollama',
-    '/usr/local/bin/ollama',
-    '/Applications/Ollama.app/Contents/Resources/ollama',
-  ]);
-  const ollamaApp = firstExistingPath(['/Applications/Ollama.app']);
-
-  let ollamaModels = [];
-  try {
-    const libDir = path.join(
-      homeDir,
-      '.ollama',
-      'models',
-      'manifests',
-      'registry.ollama.ai',
-      'library'
-    );
-    if (fs.existsSync(libDir)) {
-      ollamaModels = fs.readdirSync(libDir).filter((f) => !f.startsWith('.'));
-    }
-  } catch {
-    // ignore
-  }
-
+  const antigravityApp = firstExistingPath(['/Applications/Antigravity.app']);
   return {
     argon: {
       modelId: 'argon',
-      providerName: 'Google Gemini + Apple Silicon Local',
-      subscriptionAuthenticated: Boolean(geminiDesktopApp || geminiCli || ollamaModels.length > 0),
-      cliPath: geminiCli || ollamaCli,
-      authFile: geminiDesktopApp || path.join(homeDir, '.ollama'),
-      desktopAppPath: geminiDesktopApp || ollamaApp,
-      ollamaModels,
-      methodLabel: geminiDesktopApp
-        ? `Gemini.app + Ollama (${ollamaModels.slice(0, 2).join(', ') || 'Apple Silicon'})`
-        : 'Apple Silicon Local Neural Engine',
-      loginCommand: 'open -a "Gemini" || open "https://gemini.google.com"',
+      providerName: 'Google Antigravity CLI',
+      cliPath: antigravityCli,
+      desktopAppPath: antigravityApp,
+      methodLabel: antigravityCli
+        ? 'Antigravity CLI found · sign-in checked on first request'
+        : antigravityApp
+        ? 'Antigravity app found · install its CLI to connect inference'
+        : 'Not connected',
+      loginCommand: antigravityCli ? `${antigravityCli}` : 'Install Antigravity CLI',
     },
     claude: {
       modelId: 'claude',
       providerName: 'Claude Pro / Max Subscription',
-      subscriptionAuthenticated: Boolean(claudeCli && claudeAuthFile) || Boolean(claudeDesktopApp),
       cliPath: claudeCli,
-      authFile: claudeAuthFile,
       desktopAppPath: claudeDesktopApp,
-      methodLabel:
-        claudeCli && claudeAuthFile
-          ? 'Claude Code OAuth (~/.claude) + Claude.app'
-          : claudeDesktopApp
-          ? 'Claude.app Desktop Session'
-          : 'Not Signed In',
-      loginCommand: claudeCli ? `${claudeCli} login` : 'open -a "Claude"',
+      methodLabel: claudeCli
+        ? 'Claude Code CLI found · sign-in status checked locally'
+        : claudeDesktopApp
+        ? 'Claude desktop app found · install Claude Code CLI to connect inference'
+        : 'Not connected',
+      loginCommand: claudeCli ? `${claudeCli} auth login` : 'open -a "Claude"',
     },
     grok: {
       modelId: 'grok',
       providerName: 'Grok / X Premium+ Subscription',
-      subscriptionAuthenticated: Boolean(grokCli && grokAuthFile),
       cliPath: grokCli,
-      authFile: grokAuthFile,
       desktopAppPath: null,
-      methodLabel:
-        grokCli && grokAuthFile
-          ? 'Grok CLI OAuth (~/.grok/auth.json)'
-          : 'Grok Web Session',
+      methodLabel: grokCli
+        ? 'Grok Build CLI found · sign-in checked on first request'
+        : 'No supported CLI detected',
       loginCommand: grokCli ? `${grokCli} login` : 'open "https://grok.com"',
     },
     gpt: {
       modelId: 'gpt',
       providerName: 'ChatGPT Plus / Pro Subscription',
-      subscriptionAuthenticated: Boolean(codexCli && codexAuthFile) || Boolean(chatgptDesktopApp),
       cliPath: codexCli,
-      authFile: codexAuthFile,
       desktopAppPath: chatgptDesktopApp,
-      methodLabel:
-        codexCli && codexAuthFile
-          ? 'ChatGPT OAuth (~/.codex/auth.json) + ChatGPT.app'
-          : chatgptDesktopApp
-          ? 'ChatGPT.app Desktop Session'
-          : 'Not Signed In',
+      methodLabel: codexCli
+        ? 'Codex CLI found · sign-in checked on first request'
+        : chatgptDesktopApp
+        ? 'ChatGPT desktop app found · install Codex CLI to connect inference'
+        : 'Not connected',
       loginCommand: codexCli ? `${codexCli} login` : 'open -a "ChatGPT"',
     },
   };
@@ -218,25 +175,106 @@ function runCliProcess(binary, args, timeoutMs = 16000) {
   });
 }
 
-// Execute inference using the user's logged-in LLM Subscription (Zero API Key!)
+function runCliStatus(binary, args, timeoutMs = 7000) {
+  return new Promise((resolve, reject) => {
+    let stdout = '';
+    const child = spawn(binary, args, {
+      cwd: rootDir,
+      env: CHILD_ENV,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    const timer = setTimeout(() => {
+      child.kill('SIGTERM');
+      reject(new Error('Provider status check timed out.'));
+    }, timeoutMs);
+    child.stdout.on('data', (chunk) => {
+      if (stdout.length < 20000) stdout += chunk.toString();
+    });
+    child.on('error', (error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      resolve({ stdout, code });
+    });
+  });
+}
+
+async function getSubscriptionStatuses() {
+  const subscriptions = detectSubscriptions();
+  const claude = subscriptions.claude;
+  if (claude?.cliPath) {
+    try {
+      const result = await runCliStatus(claude.cliPath, ['auth', 'status', '--json']);
+      const status = JSON.parse(result.stdout || '{}');
+      claude.authStatus = result.code === 0 && status.loggedIn === true
+        ? 'signed_in'
+        : status.loggedIn === false
+        ? 'signed_out'
+        : 'unknown';
+    } catch {
+      claude.authStatus = 'unknown';
+    }
+  }
+  return subscriptions;
+}
+
+function summarizeProviderFailure(providerName, error) {
+  const detail = error instanceof Error ? error.message.toLowerCase() : '';
+  if (detail.includes('timed out')) {
+    return `${providerName} took too long to respond. Check the connection and retry.`;
+  }
+  if (/not logged|login required|not authenticated|unauthorized|credential|sign.in/.test(detail)) {
+    return `${providerName} is not signed in. Finish its CLI sign-in from Settings, then retry.`;
+  }
+  return `${providerName} CLI could not complete the request. Check its sign-in and CLI status, then retry.`;
+}
+
+// Execute inference with a provider subscription, without reading its credential store.
 async function runSubscriptionInference(modelId, fullPrompt, subs) {
-  // 1. CLAUDE SUBSCRIPTION (via ~/.local/bin/claude -p)
-  if (modelId === 'claude' && subs.claude?.cliPath) {
+  let error = null;
+  const timeoutMs = 90000;
+  // Run the supported Antigravity CLI headless; never read its credential store.
+  if (modelId === 'argon' && subs.argon?.cliPath) {
     try {
       const out = await runCliProcess(
+        subs.argon.cliPath,
+        ['--sandbox', '--mode', 'plan', '-p', fullPrompt, '--output-format', 'text', '--print-timeout', '90s'],
+        timeoutMs
+      );
+      if (out) return { text: out, badge: 'ANTIGRAVITY_CLI' };
+    } catch (err) {
+      error = summarizeProviderFailure('Antigravity', err);
+    }
+  }
+
+  // 2. CLAUDE SUBSCRIPTION (via ~/.local/bin/claude -p)
+  if (modelId === 'claude' && subs.claude?.cliPath) {
+    try {
+      try {
+        const status = await runCliStatus(subs.claude.cliPath, ['auth', 'status', '--json']);
+        const auth = JSON.parse(status.stdout || '{}');
+        if (auth.loggedIn === false) {
+          return { error: 'Claude Code is signed out. Use Settings → Connections → Open CLI sign-in, then retry.' };
+        }
+      } catch {
+        // Continue to a real request; report its result if the status check is unavailable.
+      }
+      const out = await runCliProcess(
         subs.claude.cliPath,
-        ['-p', fullPrompt, '--output-format', 'text', '--max-turns', '1'],
-        16000
+        ['-p', fullPrompt, '--output-format', 'text', '--permission-mode', 'plan', '--max-turns', '1'],
+        timeoutMs
       );
       if (out) {
         return { text: out, badge: 'CLAUDE_SUBSCRIPTION' };
       }
-    } catch {
-      // fall through
+    } catch (err) {
+      error = summarizeProviderFailure('Claude Code', err);
     }
   }
 
-  // 2. GROK SUBSCRIPTION (via ~/.grok/bin/grok -p)
+  // 3. GROK SUBSCRIPTION (via ~/.grok/bin/grok -p)
   if (modelId === 'grok' && subs.grok?.cliPath) {
     try {
       const out = await runCliProcess(
@@ -246,22 +284,24 @@ async function runSubscriptionInference(modelId, fullPrompt, subs) {
           fullPrompt,
           '--output-format',
           'plain',
-          '--disallowed-tools',
-          'run_terminal_cmd,search_replace,todo_write,task,Agent',
+          '--permission-mode',
+          'plan',
+          '--no-subagents',
+          '--no-auto-update',
           '--max-turns',
           '1',
         ],
-        16000
+        timeoutMs
       );
       if (out) {
         return { text: out, badge: 'GROK_SUBSCRIPTION' };
       }
-    } catch {
-      // fall through
+    } catch (err) {
+      error = summarizeProviderFailure('Grok Build', err);
     }
   }
 
-  // 3. CHATGPT PLUS/PRO SUBSCRIPTION (via /opt/homebrew/bin/codex exec)
+  // 4. CHATGPT PLUS/PRO SUBSCRIPTION (via /opt/homebrew/bin/codex exec)
   if (modelId === 'gpt' && subs.gpt?.cliPath) {
     const tmpOut = path.join(os.tmpdir(), `aspira-codex-${Date.now()}.txt`);
     try {
@@ -279,7 +319,7 @@ async function runSubscriptionInference(modelId, fullPrompt, subs) {
           tmpOut,
           fullPrompt,
         ],
-        18000
+        timeoutMs
       );
       if (fs.existsSync(tmpOut)) {
         const text = fs.readFileSync(tmpOut, 'utf8').trim();
@@ -288,7 +328,8 @@ async function runSubscriptionInference(modelId, fullPrompt, subs) {
           return { text, badge: 'CHATGPT_SUBSCRIPTION' };
         }
       }
-    } catch {
+    } catch (err) {
+      error = summarizeProviderFailure('Codex', err);
       try {
         if (fs.existsSync(tmpOut)) fs.unlinkSync(tmpOut);
       } catch {
@@ -297,34 +338,11 @@ async function runSubscriptionInference(modelId, fullPrompt, subs) {
     }
   }
 
-  return null;
+  return error ? { error } : null;
 }
 
-// ============================================================================
-// 1. DOT-STYLE AGENTIC LIVING MEMORY STORE (server/data/memory.json)
-// ============================================================================
-const DEFAULT_MEMORIES = [
-  {
-    id: 'mem-1',
-    content: 'Building Aspira — an open-source, conversational, action-executing multi-agent studio on macOS.',
-    category: 'project',
-    status: 'IN_PROGRESS',
-    emotionalTone: 'Focused',
-    sourceAgent: 'argon',
-    createdAt: new Date().toISOString(),
-    tags: ['aspira', 'macos', 'agents'],
-  },
-  {
-    id: 'mem-2',
-    content: 'Uses direct LLM subscriptions (Claude Pro/Max, ChatGPT Plus/Pro, SuperGrok, Gemini.app + Ollama) instead of per-token API keys.',
-    category: 'preference',
-    status: 'ACTIVE',
-    emotionalTone: 'Decisive',
-    sourceAgent: 'claude',
-    createdAt: new Date().toISOString(),
-    tags: ['subscriptions', 'oauth', 'zero-api-key'],
-  },
-];
+// User-managed context stays in ignored server/data/memory.json.
+const DEFAULT_MEMORIES = [];
 
 function loadMemories() {
   try {
@@ -342,45 +360,41 @@ function saveMemories(memories) {
   fs.writeFileSync(memoryFile, JSON.stringify(memories, null, 2));
 }
 
-// ============================================================================
-// 2. GROKBOT / OPENCLAW AUTONOMOUS ROUTINES STORE (server/data/routines.json)
-// ============================================================================
+// User-created, on-demand local playbooks stay in ignored server/data/routines.json.
 const DEFAULT_ROUTINES = [
   {
-    id: 'routine-morning-brief',
-    title: 'Executive Morning & System Briefing',
-    description: 'Audits macOS hardware/battery, checks git workspace status, fetches live HackerNews top stories, and synthesizes a spoken briefing.',
-    schedule: 'Daily · 09:00',
-    leadAgent: 'argon',
+    id: 'routine-system-snapshot',
+    title: 'System and repository snapshot',
+    description: 'Reads macOS hardware and provider CLI availability, then reads Git status and recent commits.',
+    schedule: 'On demand',
+    leadAgent: 'local',
     steps: [
-      { tool: 'system_status', label: 'Audit macOS CPU, Memory & Battery' },
-      { tool: 'shell_exec', args: { command: 'git status -s && git log -n 3 --oneline' }, label: 'Inspect Git Repository State' },
-      { tool: 'web_search', args: { query: 'HackerNews top AI & engineering stories' }, label: 'Fetch Live Tech & AI Signals' },
+      { tool: 'system_status', label: 'Read system and provider CLI status' },
+      { tool: 'shell_exec', args: { command: 'git status -s && git log -n 3 --oneline' }, label: 'Read Git status and recent commits' },
     ],
     lastRunAt: null,
   },
   {
-    id: 'routine-deep-work',
-    title: 'Deep Focus Workspace Launch',
-    description: 'Triggers a native macOS Focus banner, verifies local component tree, and logs an active focus session into Dot Living Memory.',
-    schedule: 'On Demand / Voice Trigger',
-    leadAgent: 'claude',
+    id: 'routine-components',
+    title: 'Inspect workspace components',
+    description: 'Lists the component files in this Aspira workspace.',
+    schedule: 'On demand',
+    leadAgent: 'local',
     steps: [
-      { tool: 'macos_notify', args: { title: 'Aspira Deep Focus', message: 'Initializing workspace & silencing distractions.' }, label: 'Trigger macOS Focus Notification' },
-      { tool: 'shell_exec', args: { command: 'ls -la src/components' }, label: 'Verify Studio Component Tree' },
-      { tool: 'memory_store', args: { content: 'Initiated Deep Focus coding session in Aspira.', category: 'task', status: 'IN_PROGRESS' }, label: 'Log Session in Living Memory' },
+      { tool: 'shell_exec', args: { command: 'ls -la src/components' }, label: 'List component files' },
     ],
     lastRunAt: null,
   },
   {
-    id: 'routine-live-recon',
-    title: 'Grok Live X & Web Recon Sweep',
-    description: 'Sweeps live web & HackerNews feeds for autonomous AI agents (Muse, Grok Bot, OpenClaw, Dot) and summarizes actionable insights.',
-    schedule: 'Every 4 Hours',
-    leadAgent: 'grok',
+    id: 'routine-dev-tools',
+    title: 'Check local development tools',
+    description: 'Reads Node and npm versions and summarizes the current Git diff.',
+    schedule: 'On demand',
+    leadAgent: 'local',
     steps: [
-      { tool: 'web_search', args: { query: 'autonomous AI agents macOS computer use 2026' }, label: 'Sweep Live Web Intelligence' },
-      { tool: 'system_status', label: 'Check Local Neural Engine Readiness' },
+      { tool: 'shell_exec', args: { command: 'node -v' }, label: 'Read Node.js version' },
+      { tool: 'shell_exec', args: { command: 'npm -v' }, label: 'Read npm version' },
+      { tool: 'shell_exec', args: { command: 'git diff --stat' }, label: 'Summarize Git changes' },
     ],
     lastRunAt: null,
   },
@@ -403,33 +417,120 @@ function saveRoutines(routines) {
 }
 
 // ============================================================================
-// 3. OPENCLAW / MUSE / MACOS-USE REAL ACTION EXECUTION ENGINE
+// 3. LOCAL ACTION EXECUTION
 // ============================================================================
-const ALLOWED_SHELL_PREFIXES = [
-  'git ',
-  'ls',
-  'pwd',
-  'whoami',
-  'date',
-  'uptime',
-  'df ',
-  'du ',
-  'find ',
-  'cat ',
-  'head ',
-  'tail ',
-  'wc ',
-  'node -v',
-  'npm -v',
-  'python3 --version',
-  'sw_vers',
-  'pmset -g batt',
-  'ifconfig',
-  'ps ',
-  'echo ',
-  'mkdir ',
-  'touch ',
-];
+function isInsideDirectory(parent, candidate) {
+  const relative = path.relative(parent, candidate);
+  return relative === '' || (!relative.startsWith(`..${path.sep}`) && relative !== '..' && !path.isAbsolute(relative));
+}
+
+function resolveWorkspacePath(input) {
+  const relPath = String(input || '').trim();
+  if (!relPath || path.isAbsolute(relPath)) throw new Error('Use a relative path inside the Aspira workspace.');
+  const fullPath = path.resolve(rootDir, relPath);
+  const realRoot = fs.realpathSync(rootDir);
+  if (!isInsideDirectory(rootDir, fullPath)) throw new Error('Path traversal outside the workspace is not permitted.');
+
+  let existingAncestor = fullPath;
+  while (!fs.existsSync(existingAncestor)) {
+    const parent = path.dirname(existingAncestor);
+    if (parent === existingAncestor) throw new Error('Could not resolve a safe workspace path.');
+    existingAncestor = parent;
+  }
+  const realAncestor = fs.realpathSync(existingAncestor);
+  if (!isInsideDirectory(realRoot, realAncestor)) throw new Error('Symlink paths outside the workspace are not permitted.');
+  if (fs.existsSync(fullPath) && !isInsideDirectory(realRoot, fs.realpathSync(fullPath))) {
+    throw new Error('Symlink paths outside the workspace are not permitted.');
+  }
+  return { fullPath, relPath };
+}
+
+async function runWorkspaceCommand(command) {
+  const cmd = String(command || '').trim();
+  if (cmd === 'ps -Ao comm,%cpu,%mem -r | head -n 10') {
+    const { stdout, stderr } = await execFileAsync('ps', ['-Ao', 'comm,%cpu,%mem', '-r'], {
+      cwd: rootDir,
+      timeout: 6000,
+      maxBuffer: 1024 * 1024,
+      env: CHILD_ENV,
+    });
+    return (stdout || stderr).split('\n').slice(0, 10).join('\n').slice(0, 2500);
+  }
+  if (cmd === 'ifconfig | grep "inet " | head -n 5') {
+    const { stdout, stderr } = await execFileAsync('ifconfig', [], {
+      cwd: rootDir,
+      timeout: 6000,
+      maxBuffer: 1024 * 1024,
+      env: CHILD_ENV,
+    });
+    return (stdout || stderr).split('\n').filter((line) => line.includes('inet ')).slice(0, 5).join('\n').slice(0, 2500);
+  }
+  if (cmd === 'find src -maxdepth 3') {
+    const { fullPath } = resolveWorkspacePath('src');
+    const { stdout, stderr } = await execFileAsync('find', [fullPath, '-maxdepth', '3'], {
+      cwd: rootDir,
+      timeout: 6000,
+      maxBuffer: 1024 * 1024,
+      env: CHILD_ENV,
+    });
+    return (stdout || stderr).split('\n').map((entry) => path.relative(rootDir, entry)).slice(0, 150).join('\n').slice(0, 2500);
+  }
+  const exactCommands = new Map([
+    ['git status', ['git', ['status']]],
+    ['git status -s', ['git', ['status', '-s']]],
+    ['git log -n 3 --oneline', ['git', ['log', '-n', '3', '--oneline']]],
+    ['git diff --stat', ['git', ['diff', '--stat']]],
+    ['git diff --name-only', ['git', ['diff', '--name-only']]],
+    ['pwd', ['pwd', []]],
+    ['node -v', ['node', ['-v']]],
+    ['npm -v', ['npm', ['-v']]],
+    ['python3 --version', ['python3', ['--version']]],
+    ['sw_vers', ['sw_vers', []]],
+    ['pmset -g batt', ['pmset', ['-g', 'batt']]],
+    ['df -h .', ['df', ['-h', '.']]],
+    ['git status -s && git log -n 3 --oneline', ['git', ['status', '-s']]],
+    ['git status -s || ls -la', ['git', ['status', '-s']]],
+  ]);
+  let spec = exactCommands.get(cmd);
+
+  // A path argument is accepted only for a short, explicit read-only command.
+  if (!spec) {
+    const listing = cmd.match(/^ls(?: (-la))?(?: ([A-Za-z0-9_./-]+))?$/);
+    if (listing) {
+      const rel = listing[2] || '.';
+      const { fullPath } = resolveWorkspacePath(rel);
+      spec = ['ls', [...(listing[1] ? ['-la'] : []), fullPath]];
+    }
+  }
+
+  if (!spec) throw new Error('That local command is not in Aspira’s read-only command list.');
+  const [binary, args] = spec;
+  const { stdout, stderr } = await execFileAsync(binary, args, {
+    cwd: rootDir,
+    timeout: 6000,
+    maxBuffer: 1024 * 1024,
+    env: CHILD_ENV,
+  });
+  let output = stdout || stderr || 'Command completed with no output.';
+  if (cmd === 'git status -s && git log -n 3 --oneline') {
+    const { stdout: log } = await execFileAsync('git', ['log', '-n', '3', '--oneline'], {
+      cwd: rootDir,
+      timeout: 6000,
+      maxBuffer: 1024 * 1024,
+      env: CHILD_ENV,
+    });
+    output = `${output.trim()}\n${log.trim()}`.trim();
+  } else if (cmd === 'git status -s || ls -la' && !output.trim()) {
+    const { stdout: listing } = await execFileAsync('ls', ['-la'], {
+      cwd: rootDir,
+      timeout: 6000,
+      maxBuffer: 1024 * 1024,
+      env: CHILD_ENV,
+    });
+    output = listing;
+  }
+  return output.slice(0, 2500);
+}
 
 async function executeAgentTool(tool, args = {}) {
   const start = Date.now();
@@ -437,7 +538,7 @@ async function executeAgentTool(tool, args = {}) {
     switch (tool) {
       case 'macos_app': {
         const appName = String(args.app || 'Safari').replace(/[^a-zA-Z0-9 ._-]/g, '');
-        await execAsync(`open -a "${appName}"`, { env: CHILD_ENV });
+        await execFileAsync('open', ['-a', appName], { env: CHILD_ENV, timeout: 5000 });
         return {
           id: `act-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
           tool: 'macos_app',
@@ -470,15 +571,13 @@ async function executeAgentTool(tool, args = {}) {
         });
 
         if (args.modelId === 'grok' && !fs.existsSync('/Applications/Grok.app')) {
-          await execAsync(`open "https://grok.com"`, { env: CHILD_ENV });
+          await execFileAsync('open', ['https://grok.com'], { env: CHILD_ENV, timeout: 5000 });
         } else {
-          await execAsync(`open -a "${targetApp}"`, { env: CHILD_ENV });
+          await execFileAsync('open', ['-a', targetApp], { env: CHILD_ENV, timeout: 5000 });
           // Attempt polite System Events paste if Accessibility is granted
           try {
-            await execAsync(
-              `osascript -e 'tell application "${targetApp}" to activate' -e 'delay 0.4' -e 'tell application "System Events" to keystroke "v" using command down'`,
-              { env: CHILD_ENV }
-            );
+            const script = `tell application "${targetApp}" to activate\ndelay 0.4\ntell application "System Events" to keystroke "v" using command down`;
+            await execFileAsync('osascript', ['-e', script], { env: CHILD_ENV, timeout: 4000 });
           } catch {
             // Accessibility optional — prompt is already on clipboard!
           }
@@ -495,12 +594,11 @@ async function executeAgentTool(tool, args = {}) {
       }
 
       case 'macos_notify': {
-        const title = String(args.title || 'Aspira Agent').replace(/"/g, '\\"');
-        const message = String(args.message || 'Action completed.').replace(/"/g, '\\"');
-        await execAsync(
-          `osascript -e 'display notification "${message}" with title "${title}" sound name "Glass"'`,
-          { env: CHILD_ENV }
-        );
+        const title = String(args.title || 'Aspira Agent').slice(0, 100);
+        const message = String(args.message || 'Action completed.').slice(0, 500);
+        const escapeAppleScript = (value) => value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+        const script = `display notification "${escapeAppleScript(message)}" with title "${escapeAppleScript(title)}" sound name "Glass"`;
+        await execFileAsync('osascript', ['-e', script], { env: CHILD_ENV, timeout: 4000 });
         return {
           id: `act-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
           tool: 'macos_notify',
@@ -511,23 +609,13 @@ async function executeAgentTool(tool, args = {}) {
         };
       }
 
-      case 'macos_say': {
-        const phrase = String(args.text || 'Aspira online').replace(/"/g, '\\"');
-        exec(`say "${phrase}"`, { env: CHILD_ENV });
-        return {
-          id: `act-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-          tool: 'macos_say',
-          title: 'macOS Native Voice Output',
-          status: 'success',
-          output: `Spoke via macOS audio engine: "${phrase}"`,
-          durationMs: Date.now() - start,
-        };
-      }
-
       case 'open_url': {
         const rawUrl = String(args.url || 'https://news.ycombinator.com');
-        const safeUrl = rawUrl.startsWith('http') ? rawUrl : `https://${rawUrl}`;
-        await execAsync(`open "${safeUrl.replace(/"/g, '')}"`, { env: CHILD_ENV });
+        const safeUrl = new URL(rawUrl.startsWith('http') ? rawUrl : `https://${rawUrl}`);
+        if (!['http:', 'https:'].includes(safeUrl.protocol) || safeUrl.username || safeUrl.password) {
+          throw new Error('Only public HTTP or HTTPS URLs can be opened.');
+        }
+        await execFileAsync('open', [safeUrl.toString()], { env: CHILD_ENV, timeout: 5000 });
         return {
           id: `act-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
           tool: 'open_url',
@@ -543,24 +631,24 @@ async function executeAgentTool(tool, args = {}) {
         const totalMem = (os.totalmem() / 1024 ** 3).toFixed(1);
         const freeMem = (os.freemem() / 1024 ** 3).toFixed(1);
         const usedMem = (os.totalmem() - os.freemem()) / 1024 ** 3;
-        let battInfo = 'AC Power / Nominal';
+        let battInfo = 'Unavailable';
         try {
-          const { stdout } = await execAsync('pmset -g batt', { env: CHILD_ENV });
+          const { stdout } = await execFileAsync('pmset', ['-g', 'batt'], { env: CHILD_ENV, timeout: 4000 });
           battInfo = stdout.split('\n').slice(0, 2).join(' | ').trim();
         } catch {
           // ignore
         }
         const subs = detectSubscriptions();
-        const activeSubList = Object.values(subs)
-          .filter((s) => s.subscriptionAuthenticated)
+        const cliSetupList = Object.values(subs)
+          .filter((s) => s.cliPath)
           .map((s) => `${s.modelId.toUpperCase()}: ${s.methodLabel}`)
           .join(' • ');
 
-        const summary = `Host: ${os.hostname()} (${os.platform()} ${os.arch()})\nCPU: ${cpus[0]?.model} (${cpus.length} cores, Load: ${os.loadavg().map((n) => n.toFixed(2)).join(', ')})\nMemory: ${usedMem.toFixed(1)} GB used / ${totalMem} GB total (${freeMem} GB free)\nPower: ${battInfo}\nActive Subscriptions: ${activeSubList}`;
+        const summary = `Host: ${os.hostname()} (${os.platform()} ${os.arch()})\nCPU: ${cpus[0]?.model || 'Unavailable'} (${cpus.length} cores, load average: ${os.loadavg().map((n) => n.toFixed(2)).join(', ')})\nMemory: ${usedMem.toFixed(1)} GB used / ${totalMem} GB total (${freeMem} GB free)\nPower: ${battInfo}\nProvider CLI binaries (sign-in not checked): ${cliSetupList || 'None found'}`;
         return {
           id: `act-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
           tool: 'system_status',
-          title: 'Audited macOS Hardware & Subscription Telemetry',
+          title: 'Read macOS hardware and provider setup',
           status: 'success',
           output: summary,
           durationMs: Date.now() - start,
@@ -569,38 +657,19 @@ async function executeAgentTool(tool, args = {}) {
 
       case 'shell_exec': {
         const cmd = String(args.command || 'git status -s').trim();
-        const isSafe = ALLOWED_SHELL_PREFIXES.some((prefix) => cmd.startsWith(prefix));
-        if (!isSafe) {
-          return {
-            id: `act-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-            tool: 'shell_exec',
-            title: `Sentinel Blocked Command: ${cmd}`,
-            status: 'blocked',
-            output: `Muse Sentinel blocked "${cmd}" outside safe allowlist. Allowed prefixes: git, ls, find, cat, df, ps, pmset, node -v.`,
-            durationMs: Date.now() - start,
-          };
-        }
-        const { stdout, stderr } = await execAsync(cmd, {
-          cwd: rootDir,
-          timeout: 6000,
-          env: CHILD_ENV,
-        });
+        const output = await runWorkspaceCommand(cmd);
         return {
           id: `act-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
           tool: 'shell_exec',
-          title: `Executed Shell: ${cmd}`,
+          title: `Ran local command: ${cmd}`,
           status: 'success',
-          output: (stdout || stderr || 'Command completed with 0 output.').slice(0, 2500),
+          output,
           durationMs: Date.now() - start,
         };
       }
 
       case 'fs_write': {
-        const relPath = String(args.path || 'workspace-note.md').replace(/^(\.\.(\/|\\|$))+/, '');
-        const fullPath = path.resolve(rootDir, relPath);
-        if (!fullPath.startsWith(rootDir)) {
-          throw new Error('Path traversal outside workspace is not permitted.');
-        }
+        const { fullPath, relPath } = resolveWorkspacePath(args.path || 'workspace-note.md');
         fs.mkdirSync(path.dirname(fullPath), { recursive: true });
         fs.writeFileSync(fullPath, String(args.content || ''), 'utf8');
         return {
@@ -614,9 +683,8 @@ async function executeAgentTool(tool, args = {}) {
       }
 
       case 'fs_read': {
-        const relPath = String(args.path || 'README.md').replace(/^(\.\.(\/|\\|$))+/, '');
-        const fullPath = path.resolve(rootDir, relPath);
-        if (!fullPath.startsWith(rootDir) || !fs.existsSync(fullPath)) {
+        const { fullPath, relPath } = resolveWorkspacePath(args.path || 'README.md');
+        if (!fs.existsSync(fullPath) || !fs.statSync(fullPath).isFile()) {
           throw new Error(`File not found: ${relPath}`);
         }
         const content = fs.readFileSync(fullPath, 'utf8').slice(0, 2500);
@@ -676,12 +744,23 @@ async function executeAgentTool(tool, args = {}) {
         const output =
           results.length > 0
             ? results.join('\n')
-            : `Live search executed for "${query}". (Tip: Say "open browser for ${query}" to launch full web view).`;
+            : '';
+
+        if (!output) {
+          return {
+            id: `act-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            tool: 'web_search',
+            title: `No quick search results for "${query}"`,
+            status: 'error',
+            output: 'The quick lookup returned no result. Try a more specific query or open a search page in your browser.',
+            durationMs: Date.now() - start,
+          };
+        }
 
         return {
           id: `act-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
           tool: 'web_search',
-          title: `Live Web Recon: "${query}"`,
+          title: `Quick lookup: "${query}"`,
           status: 'success',
           output,
           durationMs: Date.now() - start,
@@ -705,7 +784,7 @@ async function executeAgentTool(tool, args = {}) {
         return {
           id: `act-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
           tool: 'memory_store',
-          title: `Saved to Dot Living Memory (${newMem.category.toUpperCase()})`,
+          title: `Saved ${newMem.category} to context`,
           status: 'success',
           output: `[${newMem.status}] ${newMem.content}`,
           durationMs: Date.now() - start,
@@ -780,7 +859,7 @@ async function detectAndRunNaturalActions(prompt, leadAgent = 'argon') {
     );
   }
 
-  // 3. Dot Living Memory Extraction
+  // 3. Explicit user-requested memory capture
   const memMatch = prompt.match(
     /\b(?:remember that|remember to|my goal is|remind me to|add a task to|save to memory|don't forget that|i prefer)\s+(.+)/i
   );
@@ -806,7 +885,7 @@ async function detectAndRunNaturalActions(prompt, leadAgent = 'argon') {
     const fileName = writeMatch[1];
     const fileContent =
       writeMatch[2]?.trim() ||
-      `# ${fileName}\nCreated autonomously by Aspira (${leadAgent.toUpperCase()}) at ${new Date().toISOString()}\n`;
+      `# ${fileName}\nCreated by Aspira at ${new Date().toISOString()}\n`;
     actions.push(await executeAgentTool('fs_write', { path: fileName, content: fileContent }));
   }
 
@@ -847,11 +926,11 @@ async function detectAndRunNaturalActions(prompt, leadAgent = 'argon') {
 
   // 8. Live Web / News Search
   const searchMatch = prompt.match(
-    /\b(?:search(?:\s+the\s+web)?\s+for|look up|what is the latest on|hackernews|top stories|news about)\s+(.+)/i
+    /\b(?:search(?:\s+the\s+web)?\s+for|look up|what is the latest on|news about)\s+(.+)/i
   );
   if (searchMatch && !urlMatch) {
     actions.push(await executeAgentTool('web_search', { query: searchMatch[1].trim() }));
-  } else if (/\b(?:hackernews|hacker news|tech news|ai news)\b/i.test(lower) && actions.length === 0) {
+  } else if (/\b(?:hackernews|hacker\s+news|top stories|tech news|ai news)\b/i.test(lower) && actions.length === 0) {
     actions.push(await executeAgentTool('web_search', { query: 'HackerNews top stories' }));
   }
 
@@ -865,35 +944,37 @@ app.use(express.json({ limit: '5mb' }));
 // ENDPOINTS: SUBSCRIPTIONS, TELEMETRY, MEMORY, ROUTINES, ACTION EXECUTION
 // ============================================================================
 
-app.get('/api/subscriptions', (_req, res) => {
-  res.json({ subscriptions: detectSubscriptions() });
+app.get('/api/subscriptions', async (_req, res) => {
+  res.json({ subscriptions: await getSubscriptionStatuses() });
 });
 
 app.post('/api/subscriptions/login', async (req, res) => {
   const { modelId } = req.body || {};
-  const subs = detectSubscriptions();
+  const subs = await getSubscriptionStatuses();
   const sub = subs[modelId];
   if (!sub) return res.status(404).json({ error: 'Unknown modelId' });
 
   try {
-    // Open native macOS Terminal or Desktop App to complete OAuth login
-    if (sub.cliPath && (modelId === 'claude' || modelId === 'grok' || modelId === 'gpt')) {
-      const cmd = `${sub.cliPath} login`;
-      await execAsync(
-        `osascript -e 'tell application "Terminal" to do script "${cmd}"' -e 'tell application "Terminal" to activate'`,
-        { env: CHILD_ENV }
+    // A provider's desktop-app session is not exposed to Aspira for inference.
+    if (sub.cliPath) {
+      const loginArgs = modelId === 'argon'
+        ? []
+        : modelId === 'claude'
+        ? ['auth', 'login']
+        : ['login'];
+      const shellQuote = (value) => `'${String(value).replace(/'/g, `'\\''`)}'`;
+      const cmd = [sub.cliPath, ...loginArgs].map(shellQuote).join(' ');
+      const appleScriptCommand = cmd.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+      const script = `tell application "Terminal" to do script "${appleScriptCommand}"`;
+      await execFileAsync(
+        'osascript',
+        ['-e', script, '-e', 'tell application "Terminal" to activate'],
+        { env: CHILD_ENV, timeout: 5000 }
       );
       return res.json({
         launched: true,
-        message: `Opened macOS Terminal running \`${cmd}\` to authenticate your ${sub.providerName}.`,
-        subscriptions: detectSubscriptions(),
-      });
-    } else if (sub.desktopAppPath) {
-      await execAsync(`open "${sub.desktopAppPath}"`, { env: CHILD_ENV });
-      return res.json({
-        launched: true,
-        message: `Launched ${sub.desktopAppPath} for subscription session.`,
-        subscriptions: detectSubscriptions(),
+        message: `Opened ${modelId.toUpperCase()} CLI in Terminal. Complete its sign-in, then refresh this screen.`,
+        subscriptions: await getSubscriptionStatuses(),
       });
     }
   } catch (err) {
@@ -903,9 +984,9 @@ app.post('/api/subscriptions/login', async (req, res) => {
     });
   }
 
-  return res.json({
-    launched: true,
-    message: 'Subscription session active.',
+  return res.status(409).json({
+    launched: false,
+    message: `${sub.providerName} has no supported CLI installed. Opening the desktop or web app does not connect its model to Aspira.`,
     subscriptions: detectSubscriptions(),
   });
 });
@@ -916,42 +997,7 @@ app.post('/api/subscriptions/desktop-handoff', async (req, res) => {
   res.json({ result });
 });
 
-app.get('/api/telemetry', (_req, res) => {
-  const cpus = os.cpus();
-  const totalMem = os.totalmem();
-  const freeMem = os.freemem();
-  const usedMem = totalMem - freeMem;
-  const loadAvg = os.loadavg();
-
-  let idle = 0;
-  let total = 0;
-  for (const cpu of cpus) {
-    for (const type in cpu.times) {
-      total += cpu.times[type];
-    }
-    idle += cpu.times.idle;
-  }
-  const cpuUsagePercent = Math.min(
-    99,
-    Math.max(4, Math.round(((total - idle) / total) * 100 + loadAvg[0] * 4))
-  );
-
-  res.json({
-    hostname: os.hostname(),
-    platform: `${os.type()} ${os.release()} (${os.arch()})`,
-    cpuModel: cpus[0]?.model || 'Apple Silicon Neural Engine',
-    cpuCores: cpus.length,
-    cpuUsagePercent,
-    loadAvg: loadAvg.map((n) => Number(n.toFixed(2))),
-    memoryUsedGB: Number((usedMem / 1024 ** 3).toFixed(2)),
-    memoryTotalGB: Number((totalMem / 1024 ** 3).toFixed(2)),
-    memoryPercent: Math.round((usedMem / totalMem) * 100),
-    uptimeHours: Number((os.uptime() / 3600).toFixed(1)),
-    timestamp: Date.now(),
-  });
-});
-
-// DOT LIVING MEMORY ENDPOINTS
+// Saved context endpoints
 app.get('/api/memory', (_req, res) => {
   res.json({ memories: loadMemories() });
 });
@@ -997,7 +1043,7 @@ app.delete('/api/memory/:id', (req, res) => {
   res.json({ memories });
 });
 
-// GROKBOT / OPENCLAW ROUTINES ENDPOINTS
+// On-demand local playbook endpoints
 app.get('/api/routines', (_req, res) => {
   res.json({ routines: loadRoutines() });
 });
@@ -1010,7 +1056,7 @@ app.post('/api/routines', (req, res) => {
   const newRoutine = {
     id: `routine-${Date.now()}`,
     title,
-    description: description || 'Custom multi-step autonomous agent routine.',
+    description: description || 'Custom multi-step local playbook.',
     schedule,
     leadAgent,
     steps: steps.length > 0 ? steps : [{ tool: 'system_status', label: 'Audit System Telemetry' }],
@@ -1048,7 +1094,31 @@ app.post('/api/execute-action', async (req, res) => {
   res.json({ result, memories: loadMemories() });
 });
 
-// REAL WORKSPACE AST & FILE GRAPH ENDPOINT
+// Workspace file index and read-only Git diff endpoints
+app.get('/api/git/diff', async (req, res) => {
+  try {
+    const { fullPath, relPath } = resolveWorkspacePath(req.query.path);
+    if (!fs.existsSync(fullPath) || !fs.statSync(fullPath).isFile()) {
+      return res.status(404).json({ error: 'Workspace file not found.' });
+    }
+    const [working, staged] = await Promise.all([
+      execFileAsync('git', ['diff', '--no-ext-diff', '--', relPath], {
+        cwd: rootDir, timeout: 6000, maxBuffer: 2 * 1024 * 1024, env: CHILD_ENV,
+      }),
+      execFileAsync('git', ['diff', '--cached', '--no-ext-diff', '--', relPath], {
+        cwd: rootDir, timeout: 6000, maxBuffer: 2 * 1024 * 1024, env: CHILD_ENV,
+      }),
+    ]);
+    res.json({
+      path: relPath,
+      workingDiff: (working.stdout || '').slice(0, 50000),
+      stagedDiff: (staged.stdout || '').slice(0, 50000),
+    });
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
 app.get('/api/fs-graph', (_req, res) => {
   const nodes = [];
   const links = [];
@@ -1090,16 +1160,9 @@ app.get('/api/fs-graph', (_req, res) => {
       } else {
         let content = '';
         let lines = 10;
-        let symbols = [];
         try {
           content = fs.readFileSync(fullPath, 'utf8');
           lines = content.split('\n').length;
-          const fnMatches = [
-            ...content.matchAll(
-              /(?:export\s+)?(?:async\s+)?(?:function|const|class|interface|type)\s+([A-Za-z0-9_]+)/g
-            ),
-          ];
-          symbols = fnMatches.slice(0, 10).map((m) => m[1]);
         } catch {
           // ignore binary
         }
@@ -1110,10 +1173,10 @@ app.get('/api/fs-graph', (_req, res) => {
           label: entry.name,
           type: ext === '.tsx' || ext === '.ts' ? 'module' : ext === '.json' ? 'config' : 'file',
           lines,
-          symbols,
           size: Math.min(34, Math.max(10, Math.round(Math.sqrt(lines) * 1.6))),
           depth,
           preview: content.slice(0, 4000),
+          previewTruncated: content.length > 4000,
         });
         if (parentId) {
           links.push({ source: parentId, target: id, kind: 'contains' });
@@ -1154,9 +1217,9 @@ app.get('/api/fs-graph', (_req, res) => {
   res.json({ nodes, links });
 });
 
-// SAFE LOCAL TERMINAL EXECUTION BRIDGE
+// Curated local command presets. Commands run without a shell.
 const SAFE_COMMANDS = {
-  'git-status': 'git status -s || ls -la',
+  'git-status': 'git status -s && git log -n 3 --oneline',
   'sys-procs': 'ps -Ao comm,%cpu,%mem -r | head -n 10',
   'disk-df': 'df -h .',
   'net-stat': 'ifconfig | grep "inet " | head -n 5',
@@ -1176,43 +1239,120 @@ app.post('/api/terminal', (req, res) => {
     return;
   }
   const cmd = SAFE_COMMANDS[preset] || SAFE_COMMANDS['sys-procs'];
-  exec(cmd, { cwd: rootDir, timeout: 4000, env: CHILD_ENV }, (err, stdout, stderr) => {
+  runWorkspaceCommand(cmd).then((output) => {
     res.json({
       command: cmd,
-      output: stdout || stderr || (err ? err.message : 'Executed with 0 output'),
+      output,
+      timestamp: new Date().toISOString(),
+    });
+  }).catch((err) => {
+    res.status(400).json({
+      command: cmd,
+      output: err instanceof Error ? err.message : String(err),
       timestamp: new Date().toISOString(),
     });
   });
 });
 
-// LOCAL NEURAL VOICE AI BRIDGE (Kokoro-82M / mlx-audio / Orpheus)
+function isLoopbackHttpUrl(value) {
+  try {
+    const url = new URL(value);
+    return (
+      url.protocol === 'http:' &&
+      ['localhost', '127.0.0.1', '[::1]', '::1'].includes(url.hostname) &&
+      !url.username &&
+      !url.password
+    );
+  } catch {
+    return false;
+  }
+}
+
+// Local MLX-Audio TTS bridge. Audio requests stay on the user's machine.
 app.post('/api/tts', async (req, res) => {
-  const { text, endpoint, voice = 'af_heart' } = req.body || {};
-  const targetUrl = endpoint || process.env.LOCAL_TTS_URL;
-  if (!targetUrl || !text) {
-    return res.status(404).json({ localNeuralAudio: false });
+  const {
+    text,
+    endpoint = process.env.LOCAL_TTS_URL || 'http://127.0.0.1:8000/v1/audio/speech',
+    model = 'mlx-community/Qwen3-TTS-12Hz-0.6B-CustomVoice-8bit',
+    voice = 'Ryan',
+  } = req.body || {};
+  if (typeof text !== 'string' || !text.trim()) {
+    return res.status(400).json({ error: 'Speech text is required.' });
+  }
+  if (!isLoopbackHttpUrl(endpoint)) {
+    return res.status(400).json({ error: 'Voice endpoint must use localhost.' });
   }
 
   try {
-    const r = await fetch(targetUrl, {
+    const r = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'kokoro',
-        input: text,
+        model,
+        input: text.trim(),
         voice,
-        response_format: 'mp3',
+        response_format: 'wav',
       }),
+      signal: AbortSignal.timeout(90000),
     });
     if (r.ok) {
       const arrayBuffer = await r.arrayBuffer();
-      res.setHeader('Content-Type', r.headers.get('content-type') || 'audio/mpeg');
+      res.setHeader('Content-Type', r.headers.get('content-type') || 'audio/wav');
       return res.send(Buffer.from(arrayBuffer));
     }
-  } catch {
-    // Fallback to browser neural voice
+    return res.status(502).json({ error: 'The local voice service rejected the request.' });
+  } catch (error) {
+    return res.status(503).json({
+      error: 'Local voice service is unavailable. Start it with npm run voice:local.',
+    });
   }
-  return res.status(404).json({ localNeuralAudio: false });
+});
+
+// Local-only speech recognition through the same MLX-Audio server.
+app.post(
+  '/api/voice/transcribe',
+  express.raw({ type: ['audio/webm', 'audio/mp4', 'audio/wav', 'audio/ogg'], limit: '20mb' }),
+  async (req, res) => {
+    if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
+      return res.status(400).json({ error: 'A recorded audio message is required.' });
+    }
+
+    const baseUrl = process.env.LOCAL_MLX_AUDIO_URL || 'http://127.0.0.1:8000';
+    if (!isLoopbackHttpUrl(baseUrl)) {
+      return res.status(400).json({ error: 'Voice endpoint must use localhost.' });
+    }
+
+    try {
+      const url = new URL('/v1/audio/transcriptions', baseUrl);
+      const audioType = String(req.get('content-type') || 'audio/webm').split(';')[0];
+      const form = new FormData();
+      form.append('file', new Blob([req.body], { type: audioType }), audioType.includes('mp4') ? 'voice.m4a' : 'voice.webm');
+      form.append('model', 'mlx-community/whisper-large-v3-turbo-asr-fp16');
+      const response = await fetch(url, {
+        method: 'POST',
+        body: form,
+        signal: AbortSignal.timeout(120000),
+      });
+      if (!response.ok) {
+        return res.status(502).json({ error: 'The local speech service rejected the recording.' });
+      }
+      const data = await response.json();
+      return res.json({ text: typeof data?.text === 'string' ? data.text.trim() : '' });
+    } catch {
+      return res.status(503).json({ error: 'Local speech service is unavailable. Start it with npm run voice:local.' });
+    }
+  }
+);
+
+app.get('/api/voice/status', async (_req, res) => {
+  try {
+    const response = await fetch('http://127.0.0.1:8000/v1/models', {
+      signal: AbortSignal.timeout(1500),
+    });
+    return res.json({ ready: response.ok, engine: response.ok ? 'MLX-Audio' : null });
+  } catch {
+    return res.json({ ready: false, engine: null });
+  }
 });
 
 // ============================================================================
@@ -1236,7 +1376,7 @@ app.post('/api/dispatch', async (req, res) => {
     executedActions = await detectAndRunNaturalActions(prompt, modelId);
   }
 
-  // 2. Load Dot Living Memory context to inject into the agent's prompt
+  // 2. Load saved user context for the selected provider prompt
   const memories = loadMemories().slice(0, 8);
   const memoryBlock =
     memories.length > 0
@@ -1261,18 +1401,45 @@ app.post('/api/dispatch', async (req, res) => {
       : '';
 
   const fullSystemPrompt = `${
-    systemPrompt || 'You are a conversational, action-executing personal AI agent inside Aspira on macOS.'
-  }\nSpeak naturally, warmly, and concisely in 2-3 sentences like a real-time personal companion (inspired by Dot by New Computer, Meta Muse, and OpenClaw). Do not use robotic headers.${memoryBlock}${actionBlock}`;
+    systemPrompt || 'You are a conversational personal AI assistant inside Aspira.'
+  }\nRespond naturally and be concise. Be clear about completed actions and uncertainty. Do not claim to have used a tool unless its result is included here.${memoryBlock}${actionBlock}`;
 
   const combinedPromptForCli = `${fullSystemPrompt}${recentHistoryText}\n\nUser: ${prompt}\n\nRespond directly in 2-3 concise conversational sentences:`;
+  let unavailableReason = 'No connected model returned a response. Check its connection in Settings.';
+
+  if (modelId === 'local') {
+    if (!executedActions.length) {
+      return res.status(422).json({
+        source: 'UNAVAILABLE',
+        modelId,
+        text: null,
+        error: 'No local action matched that request. Connect and select a provider for a conversation.',
+        executedActions,
+        memories: loadMemories(),
+      });
+    }
+    const summary = executedActions
+      .map((action) => `${action.status === 'success' ? 'Done' : 'Could not complete'}: ${action.title}.`)
+      .join('\n');
+    return res.json({
+      source: 'LOCAL_ACTIONS',
+      modelId,
+      text: summary,
+      executedActions,
+      memories: loadMemories(),
+      latencyMs: Date.now() - startTime,
+    });
+  }
 
   try {
     // ========================================================================
-    // TIER 1: PERSONAL LLM SUBSCRIPTION BRIDGE (Zero API Keys Required!)
-    // Uses active Claude Pro/Max (~/.claude), ChatGPT Plus/Pro (~/.codex),
-    // Grok Subscription (~/.grok), or Local Subscription Proxy (localhost:8317)
-    // ========================================================================
+    // TIER 1: Provider CLI subscription bridge (API keys remain optional).
     const subs = detectSubscriptions();
+    if (!apiKeys[modelId] && !subs[modelId]?.cliPath && !endpointConfig?.baseUrl) {
+      unavailableReason = `${modelId} is not connected. Sign in to its supported CLI or configure a provider in Settings.`;
+    } else if (subs[modelId]?.cliPath) {
+      unavailableReason = `${modelId} CLI did not return a response. Sign in or refresh its session, then try again.`;
+    }
     if (!apiKeys[modelId]) {
       const subOut = await runSubscriptionInference(modelId, combinedPromptForCli, subs);
       if (subOut?.text) {
@@ -1286,6 +1453,7 @@ app.post('/api/dispatch', async (req, res) => {
           latencyMs: Date.now() - startTime,
         });
       }
+      if (subOut?.error) unavailableReason = subOut.error;
     }
 
     // ========================================================================
@@ -1450,68 +1618,15 @@ app.post('/api/dispatch', async (req, res) => {
       }
     }
 
-    // ========================================================================
-    // TIER 4: ZERO-CONFIG APPLE SILICON LOCAL OLLAMA (llama3.2:latest)
-    // ========================================================================
-    const ollamaRes = await fetch('http://127.0.0.1:11434/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'llama3.2:latest',
-        stream: false,
-        messages: [
-          { role: 'system', content: fullSystemPrompt },
-          ...conversationHistory.slice(-6).map((m) => ({
-            role: m.role === 'user' ? 'user' : 'assistant',
-            content: m.text,
-          })),
-          { role: 'user', content: prompt },
-        ],
-      }),
-    });
-
-    if (ollamaRes.ok) {
-      const ollamaData = await ollamaRes.json();
-      const text = ollamaData?.message?.content;
-      if (text) {
-        return res.json({
-          source: 'LOCAL_OLLAMA',
-          modelId,
-          text,
-          executedActions,
-          memories: loadMemories(),
-          latencyMs: Date.now() - startTime,
-        });
-      }
-    }
-
-    // If Argon (Gemini) was requested and Ollama daemon wasn't running yet,
-    // fall back to any active subscription CLI (grok / claude / codex) so Argon still gives live AI answers!
-    if (modelId === 'argon') {
-      const fallbackSub =
-        (await runSubscriptionInference('grok', combinedPromptForCli, subs)) ||
-        (await runSubscriptionInference('claude', combinedPromptForCli, subs)) ||
-        (await runSubscriptionInference('gpt', combinedPromptForCli, subs));
-      if (fallbackSub?.text) {
-        return res.json({
-          source: 'SUBSCRIPTION_OAUTH',
-          subscriptionBadge: 'GEMINI_SUBSCRIPTION_BRIDGE',
-          modelId,
-          text: fallbackSub.text,
-          executedActions,
-          memories: loadMemories(),
-          latencyMs: Date.now() - startTime,
-        });
-      }
-    }
-  } catch {
-    // Fall through if offline
+  } catch (error) {
+    unavailableReason = error instanceof Error ? error.message : unavailableReason;
   }
 
-  return res.json({
-    source: 'NEURAL_SIMULATOR',
+  return res.status(503).json({
+    source: 'UNAVAILABLE',
     modelId,
     text: null,
+    error: unavailableReason,
     executedActions,
     memories: loadMemories(),
     latencyMs: Date.now() - startTime,
@@ -1519,10 +1634,10 @@ app.post('/api/dispatch', async (req, res) => {
 });
 
 const PORT = Number(process.env.PORT || 3001);
-app.listen(PORT, () => {
+app.listen(PORT, '127.0.0.1', () => {
   const subs = detectSubscriptions();
-  const activeCount = Object.values(subs).filter((s) => s.subscriptionAuthenticated).length;
+  const activeCount = Object.values(subs).filter((s) => s.cliPath).length;
   console.log(
-    `\x1b[32m[Aspira Personal Agent OS] Online at http://localhost:${PORT} | Detected ${activeCount}/4 Active LLM Subscriptions (Zero API Keys Needed)\x1b[0m`
+    `\x1b[32m[Aspira local workspace] Online at http://127.0.0.1:${PORT} | ${activeCount}/4 provider CLIs detected\x1b[0m`
   );
 });
