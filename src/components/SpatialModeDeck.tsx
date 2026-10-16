@@ -42,6 +42,8 @@ import {
 } from '../plugins/models/manifest';
 import { soundEngine } from '../audio/soundEngine';
 import { MarkdownMessage } from './MarkdownMessage';
+import { PendingConversationTurn as PendingTurnView } from './PendingConversationTurn';
+import type { PendingConversationTurn } from '../plugins/models/turnProgress';
 
 interface SpatialModeDeckProps {
   spatialMode: SpatialMode;
@@ -49,6 +51,7 @@ interface SpatialModeDeckProps {
   awakeModelIds: string[];
   synergyResult: SynergyExecutionResult | null;
   conversationTurns: ConversationTurn[];
+  pendingTurn: PendingConversationTurn | null;
   memories: LivingMemoryItem[];
   onToggleMemoryStatus: (id: string, nextStatus: 'IN_PROGRESS' | 'COMPLETED' | 'ACTIVE') => void;
   onDeleteMemory: (id: string) => void;
@@ -82,6 +85,7 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
   awakeModelIds,
   synergyResult,
   conversationTurns,
+  pendingTurn,
   memories,
   onToggleMemoryStatus,
   onDeleteMemory,
@@ -179,7 +183,7 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
       scrollContainer?.scrollTo({ top: scrollContainer.scrollHeight, behavior: 'smooth' });
       setShowJumpToLatest(false);
     }
-  }, [conversationTurns.length, conversationTurns[0]?.id, isExecuting]);
+  }, [conversationTurns.length, conversationTurns[0]?.id, isExecuting, pendingTurn]);
 
   useEffect(() => {
     if (spatialMode === 'forge' && fsNodes.length === 0) {
@@ -470,7 +474,11 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
                       <span className="aspira-assistant-mark" aria-hidden="true"><Sparkles /></span>
                       <span className="aspira-assistant-name">Aspira</span>
                       <span className="aspira-answer-summary">
-                        {answeredByCount > 0
+                        {turn.result.completionState === 'stopped'
+                          ? 'Response stopped'
+                          : turn.result.completionState === 'interrupted'
+                          ? 'Response interrupted'
+                          : answeredByCount > 0
                           ? `Answered with ${answeredByCount} ${answeredByCount === 1 ? 'model' : 'models'}`
                           : hasLocalActions
                           ? 'Local action'
@@ -628,7 +636,9 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
               );
             })}
 
-            {isExecuting && (
+            {pendingTurn && <PendingTurnView turn={pendingTurn} />}
+
+            {isExecuting && !pendingTurn && (
               <div className="aspira-progress-state mx-auto w-full max-w-3xl" role="status" aria-live="polite" aria-atomic="true">
                 <span className="aspira-progress-indicator" aria-hidden="true" />
                 <span className="flex min-w-0 flex-col gap-0.5">
@@ -648,7 +658,7 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
               </div>
             )}
 
-            {showJumpToLatest && conversationTurns.length > 0 && (
+            {showJumpToLatest && (conversationTurns.length > 0 || pendingTurn) && (
               <button
                 type="button"
                 className="aspira-jump-to-latest"

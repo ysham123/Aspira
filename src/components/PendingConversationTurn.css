@@ -1,0 +1,29 @@
+.aspira-live-activity { margin-top: 1rem; }
+.aspira-live-agents { display: grid; gap: .65rem; margin-top: 1.1rem; }
+.aspira-live-agent { display: flex; align-items: flex-start; gap: .55rem; font-size: .75rem; line-height: 1.5; color: #77737e; }
+.aspira-live-agent > svg, .aspira-live-running-action > svg { width: .9rem; height: .9rem; flex-shrink: 0; margin-top: .1rem; color: #8271ae; }
+.aspira-live-agent-name { font-weight: 600; color: #4c4854; flex-shrink: 0; }
+.aspira-live-agent-message { overflow-wrap: anywhere; }
+.aspira-live-agent.is-responded > svg { color: #51806b; }
+.aspira-live-agent.is-unavailable > svg { color: #a3655c; }
+.aspira-live-actions { display: grid; gap: .5rem; margin-top: 1rem; }
+.aspira-live-receipt, .aspira-live-running-action { border: 1px solid #e9e6ed; border-radius: .8rem; background: #faf9fb; font-size: .75rem; color: #575160; }
+.aspira-live-receipt summary, .aspira-live-running-action { display: flex; align-items: center; gap: .6rem; padding: .8rem; }
+.aspira-live-receipt summary { cursor: pointer; list-style: none; }
+.aspira-live-receipt summary::-webkit-details-marker { display: none; }
+.aspira-live-receipt summary:focus-visible { outline: 2px solid #9685be; outline-offset: 2px; border-radius: .8rem; }
+.aspira-live-receipt summary > svg { width: .9rem; height: .9rem; flex-shrink: 0; }
+.aspira-live-receipt summary > svg:first-child { color: #51806b; }
+.aspira-live-receipt:not(.is-success) summary > svg:first-child { color: #a3655c; }
+.aspira-live-receipt-state { margin-left: auto; flex-shrink: 0; font-size: .65rem; color: #817b89; }
+.aspira-live-receipt pre { padding: 0 .8rem .8rem; max-height: 14rem; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6; font-size: .7rem; }
+.aspira-live-reply { margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid #edeaf0; }
+.aspira-live-reply-name { margin: 0 0 .75rem; color: #655773; font-size: .7rem; font-weight: 600; }
+.aspira-live-spinner { animation: aspira-live-spin 1.5s linear infinite; }
+@keyframes aspira-live-spin { to { transform: rotate(360deg); } }
+@media (max-width: 480px) {
+  .aspira-live-agent { flex-wrap: wrap; gap: .35rem .5rem; }
+  .aspira-live-agent-message { flex-basis: calc(100% - 1.5rem); margin-left: 1.4rem; }
+  .aspira-live-receipt-state { font-size: .6rem; }
+}
+@media (prefers-reduced-motion: reduce) { .aspira-live-spinner { animation: none; } }

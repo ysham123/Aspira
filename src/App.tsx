@@ -28,8 +28,11 @@ import {
   SynergyExecutionResult,
   SubscriptionStatus,
 } from './plugins/models/manifest';
-import { ConversationMessageContext, runPantheonSynergy } from './plugins/models/synergyEngine';
+import { runPantheonSynergy } from './plugins/models/synergyEngine';
+import { modelConversationContext } from './plugins/models/conversationContext';
 import { soundEngine } from './audio/soundEngine';
+import { applyTurnProgress, createPendingTurn, interruptedTurnResult } from './plugins/models/turnProgress';
+import type { PendingConversationTurn } from './plugins/models/turnProgress';
 import { SpatialModeDeck } from './components/SpatialModeDeck';
 import { ConversationHistoryPanel } from './components/ConversationHistoryPanel';
 import { PlugAndPlayVaultModal } from './components/PlugAndPlayVaultModal';
@@ -114,6 +117,8 @@ export const App: React.FC = () => {
   const [routines, setRoutines] = useState<LocalPlaybook[]>([]);
   const [subscriptionStatuses, setSubscriptionStatuses] = useState<Record<string, SubscriptionStatus>>({});
   const [isExecuting, setIsExecuting] = useState(false);
+  const [pendingTurn, setPendingTurn] = useState<PendingConversationTurn | null>(null);
+  const executionInProgressRef = useRef(false);
   const [activeTaskLabel, setActiveTaskLabel] = useState('');
   const [canCancelRequest, setCanCancelRequest] = useState(false);
   const [commandInput, setCommandInput] = useState('');
@@ -401,7 +406,12 @@ export const App: React.FC = () => {
     ) => {
       const cleanPrompt = promptText.trim();
       const cap = selectedCapability;
-      if (!cleanPrompt) return;
+      if (!cleanPrompt || executionInProgressRef.current) return;
+      executionInProgressRef.current = true;
+      const activeList = models.filter((model) => awakeModelIds.includes(model.id));
+      let progressTurn = createPendingTurn(cleanPrompt, modality, activeList);
+      setPendingTurn(progressTurn);
+      setSpatialMode('nexus');
 
       const concisePrompt = cleanPrompt.replace(/\s+/g, ' ');
       const taskLabel = concisePrompt.length > 88 ? `${concisePrompt.slice(0, 85)}…` : concisePrompt;
@@ -411,18 +421,8 @@ export const App: React.FC = () => {
       setActiveTaskLabel(`Working on: ${taskLabel}`);
       setIsExecuting(true);
       try {
-        const activeList = models.filter((m) => awakeModelIds.includes(m.id));
-
         // Build multi-turn conversation history for LLM context
-        const historyContext: ConversationMessageContext[] = [];
-        for (const t of conversationTurnsRef.current.slice(-5)) {
-          historyContext.push({ role: 'user', text: t.userText });
-          historyContext.push({
-            role: 'assistant',
-            speaker: t.result.modelStreams[0]?.codeName || 'Aspira',
-            text: t.result.synthesizedOutput,
-          });
-        }
+        const historyContext = modelConversationContext(conversationTurnsRef.current);
 
         const result = await runPantheonSynergy({
           prompt: cleanPrompt,
@@ -433,12 +433,21 @@ export const App: React.FC = () => {
           conversationHistory: historyContext,
           signal: controller.signal,
           onMemoriesUpdated: (updated) => setMemories(updated),
+          onProgress: (event) => {
+            if (controller.signal.aborted) return;
+            progressTurn = applyTurnProgress(progressTurn, event);
+            setPendingTurn(progressTurn);
+            if (event.kind === 'action' && event.action.memoryItem) {
+              const memory = event.action.memoryItem;
+              setMemories((previous) => [memory, ...previous.filter((item) => item.id !== memory.id)]);
+            }
+          },
         });
-        if (controller.signal.aborted) return;
+        if (controller.signal.aborted) throw new DOMException('The request was stopped.', 'AbortError');
 
         const newTurn: ConversationTurn = {
-          id: `turn-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          id: progressTurn.id,
+          timestamp: progressTurn.timestamp,
           userText: cleanPrompt,
           inputModality: modality,
           result,
@@ -451,15 +460,17 @@ export const App: React.FC = () => {
           soundEngine.speak(result.spokenReply);
         }
       } catch (error) {
-        if (!controller.signal.aborted) {
-          appendLocalNotice(
-            cleanPrompt,
-            'Request failed',
-            error instanceof Error ? error.message : 'Aspira could not complete this request.'
-          );
-        }
+        const result = interruptedTurnResult(progressTurn, cap, controller.signal.aborted,
+          error instanceof Error ? error.message : 'Aspira could not complete this request.');
+        setLatestResult(result);
+        setConversationTurns((previous) => [...previous, {
+          id: progressTurn.id, timestamp: progressTurn.timestamp, userText: cleanPrompt,
+          inputModality: modality, result,
+        }]);
       } finally {
         if (abortControllerRef.current === controller) abortControllerRef.current = null;
+        executionInProgressRef.current = false;
+        setPendingTurn(null);
         setCanCancelRequest(false);
         setActiveTaskLabel('');
         setIsExecuting(false);
@@ -471,6 +482,8 @@ export const App: React.FC = () => {
   // Run a user-triggered local playbook.
   const handleRunRoutine = useCallback(
     async (routineId: string) => {
+      if (executionInProgressRef.current) return;
+      executionInProgressRef.current = true;
       const routineTitle = routines.find((routine) => routine.id === routineId)?.title;
       setActiveTaskLabel(routineTitle ? `Running ${routineTitle}` : 'Running local playbook');
       setIsExecuting(true);
@@ -534,6 +547,7 @@ export const App: React.FC = () => {
           error instanceof Error ? error.message : 'Aspira could not run that playbook.'
         );
       } finally {
+        executionInProgressRef.current = false;
         setActiveTaskLabel('');
         setIsExecuting(false);
       }
@@ -544,6 +558,8 @@ export const App: React.FC = () => {
   // Execute a Direct Single Tool Action (e.g. clicking "Open Calculator" or "Send macOS Notification")
   const handleExecuteDirectAction = useCallback(
     async (tool: string, args: Record<string, unknown>, label: string) => {
+      if (executionInProgressRef.current) return;
+      executionInProgressRef.current = true;
       const conciseLabel = label.replace(/\s+/g, ' ').trim();
       const taskLabel = conciseLabel.length > 88 ? `${conciseLabel.slice(0, 85)}…` : conciseLabel;
       setActiveTaskLabel(`Running ${taskLabel}`);
@@ -609,6 +625,7 @@ export const App: React.FC = () => {
           error instanceof Error ? error.message : 'Aspira could not reach its local action service.'
         );
       } finally {
+        executionInProgressRef.current = false;
         setActiveTaskLabel('');
         setIsExecuting(false);
       }
@@ -625,6 +642,7 @@ export const App: React.FC = () => {
       return;
     }
 
+    if (executionInProgressRef.current) return;
     if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
       setVoiceStatus('Voice recording is not available in this browser.');
       return;
@@ -1079,6 +1097,7 @@ export const App: React.FC = () => {
           awakeModelIds={awakeModelIds}
           synergyResult={latestResult}
           conversationTurns={conversationTurns}
+          pendingTurn={pendingTurn}
           memories={memories}
           onToggleMemoryStatus={handleToggleMemoryStatus}
           onDeleteMemory={handleDeleteMemory}
@@ -1102,7 +1121,7 @@ export const App: React.FC = () => {
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            if (!commandInput.trim()) return;
+            if (!commandInput.trim() || executionInProgressRef.current || duplexVoiceActive) return;
             handleRunDirective(commandInput, 'text', true);
             setCommandInput('');
           }}
@@ -1192,6 +1211,7 @@ export const App: React.FC = () => {
               type="button"
               onClick={toggleVoiceInput}
               aria-pressed={duplexVoiceActive}
+              disabled={isExecuting && !duplexVoiceActive}
               aria-label={duplexVoiceActive ? 'Finish and send voice message' : 'Aspira voice input'}
               className="aspira-voice-control flex shrink-0 items-center gap-2 text-xs text-slate-600"
               title={duplexVoiceActive
@@ -1226,8 +1246,12 @@ export const App: React.FC = () => {
 
             {isExecuting && canCancelRequest ? (
               <button
+                key="stop-response"
                 type="button"
-                onClick={() => abortControllerRef.current?.abort()}
+                onClick={(event) => {
+                  event.preventDefault();
+                  abortControllerRef.current?.abort();
+                }}
                 title="Stop the agent response. A local action already started may still finish."
                 className="aspira-stop-button flex items-center gap-1.5 rounded-xl px-4 py-2 text-xs font-semibold transition"
               >
@@ -1236,8 +1260,9 @@ export const App: React.FC = () => {
               </button>
             ) : (
               <button
+                key="send-message"
                 type="submit"
-                disabled={isExecuting}
+                disabled={isExecuting || duplexVoiceActive}
                 className="aspira-send-button flex items-center gap-1.5 rounded-xl px-4 py-2 text-xs font-semibold text-white transition disabled:opacity-50"
               >
                 <span>{isExecuting ? 'Acting...' : 'Send'}</span>

@@ -1,3 +1,5 @@
+import { readDispatchResponse } from './dispatchStream';
+import type { TurnProgressEvent } from './turnProgress';
 import {
   AgentActionExecution,
   AttributionPill,
@@ -41,7 +43,8 @@ async function fetchModelStream(
   apiKeys: Record<string, string>,
   conversationHistory: ConversationMessageContext[],
   executeActions: boolean,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  onProgress?: (event: TurnProgressEvent) => void,
 ): Promise<{
   source: 'PROVIDER_CLI' | 'LIVE_API' | 'LOCAL_OLLAMA' | 'UNAVAILABLE';
   text: string;
@@ -57,11 +60,12 @@ async function fetchModelStream(
 
   let executedActions: AgentActionExecution[] = [];
   let updatedMemories: LivingMemoryItem[] | undefined;
+  let unfinishedAction = '';
 
   try {
     const res = await fetch('/api/dispatch', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Accept: 'application/x-ndjson' },
       body: JSON.stringify({
         modelId: model.id,
         prompt,
@@ -74,57 +78,36 @@ async function fetchModelStream(
       signal,
     });
 
-    if (res.ok) {
-      const data = (await res.json()) as DispatchModelResponse;
-      if (Array.isArray(data.executedActions)) {
-        executedActions = data.executedActions;
+    const data = await readDispatchResponse<DispatchModelResponse>(res, (event) => {
+      if (event.type === 'action') {
+        unfinishedAction = '';
+        executedActions = [...executedActions.filter((action) => action.id !== event.action.id), event.action];
+        onProgress?.({ kind: 'action', modelId: model.id, action: event.action });
+      } else {
+        if (event.phase === 'acting') unfinishedAction = event.title;
+        onProgress?.({ kind: 'status', modelId: model.id, phase: event.phase, message: event.title, actionId: event.actionId });
       }
-      if (Array.isArray(data.memories)) {
-        updatedMemories = data.memories;
-      }
-      const responseMs = Math.round(performance.now() - startedAt);
-      if (data.text && data.source !== 'UNAVAILABLE') {
-        return {
-          source: data.source,
-          text: data.text.trim(),
-          executedActions,
-          memories: updatedMemories,
-          latencyMs: responseMs,
-          responseMs,
-        };
-      }
-      return {
-        source: 'UNAVAILABLE',
-        text: data.error || 'No response was returned by this provider.',
-        executedActions,
-        memories: updatedMemories,
-        latencyMs: responseMs,
-        responseMs,
-      };
-    }
-    const data = (await res.json().catch(() => ({}))) as DispatchModelResponse;
-    if (Array.isArray(data.executedActions)) {
-      executedActions = data.executedActions;
-    }
-    if (Array.isArray(data.memories)) {
-      updatedMemories = data.memories;
-    }
+    }, signal);
+    if (Array.isArray(data.executedActions)) executedActions = data.executedActions;
+    if (Array.isArray(data.memories)) updatedMemories = data.memories;
+    const responseMs = Math.round(performance.now() - startedAt);
+    const available = res.ok && data.text && data.source !== 'UNAVAILABLE';
     return {
-      source: 'UNAVAILABLE',
-      text: data.error || `The local agent service returned ${res.status}. Check the service and try again.`,
+      source: available ? data.source : 'UNAVAILABLE',
+      text: available ? data.text.trim() : data.error || `Aspira could not finish the ${model.codeName} response.`,
       executedActions,
       memories: updatedMemories,
-      latencyMs: Math.round(performance.now() - startedAt),
-      responseMs: Math.round(performance.now() - startedAt),
+      latencyMs: responseMs,
+      responseMs,
     };
-  } catch {
+  } catch (error) {
     if (signal?.aborted) {
       throw new DOMException('The request was stopped.', 'AbortError');
     }
     const responseMs = Math.round(performance.now() - startedAt);
     return {
       source: 'UNAVAILABLE',
-      text: 'Could not reach the local agent service. Start Aspira’s server and try again.',
+      text: `${error instanceof Error && !(error instanceof TypeError) ? error.message : 'Could not reach the local agent service. Start Aspira’s server and try again.'}${unfinishedAction ? ` A local action started (${unfinishedAction}) but no completion receipt arrived. It may still finish.` : ''}`,
       executedActions,
       latencyMs: responseMs,
       responseMs,
@@ -141,6 +124,7 @@ export async function runPantheonSynergy(params: {
   conversationHistory?: ConversationMessageContext[];
   signal?: AbortSignal;
   onMemoriesUpdated?: (memories: LivingMemoryItem[]) => void;
+  onProgress?: (event: TurnProgressEvent) => void;
 }): Promise<SynergyExecutionResult> {
   const {
     prompt,
@@ -151,12 +135,14 @@ export async function runPantheonSynergy(params: {
     conversationHistory = [],
     signal,
     onMemoriesUpdated,
+    onProgress,
   } = params;
 
   const capability =
     CAPABILITY_MATRIX.find((c) => c.id === capabilityId) || CAPABILITY_MATRIX[0];
 
   if (awakeModels.length === 0) {
+    const partialActions: AgentActionExecution[] = [];
     let data: {
       source?: string;
       text?: string;
@@ -168,16 +154,23 @@ export async function runPantheonSynergy(params: {
     try {
       const response = await fetch('/api/dispatch', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Accept: 'application/x-ndjson' },
         body: JSON.stringify({ modelId: 'local', prompt, executeActions: true }),
         signal,
       });
-      data = await response.json();
+      data = await readDispatchResponse<typeof data>(response, (event) => {
+        if (event.type === 'action') {
+          partialActions.push(event.action);
+          onProgress?.({ kind: 'action', modelId: 'local', action: event.action });
+        } else {
+          onProgress?.({ kind: 'status', modelId: 'local', phase: event.phase, message: event.title, actionId: event.actionId });
+        }
+      }, signal);
     } catch {
       data.error = 'Could not reach Aspira’s local action service.';
     }
     if (signal?.aborted) throw new DOMException('The request was stopped.', 'AbortError');
-    const executedActions = Array.isArray(data.executedActions) ? data.executedActions : [];
+    const executedActions = Array.isArray(data.executedActions) ? data.executedActions : partialActions;
     if (Array.isArray(data.memories) && onMemoriesUpdated) onMemoriesUpdated(data.memories);
     const localActionCompleted = data.source === 'LOCAL_ACTIONS' &&
       executedActions.some((action) => action.status === 'success');
@@ -215,6 +208,7 @@ export async function runPantheonSynergy(params: {
     const badgeLabel = spec?.badgeLabel || model.vendor;
     const uniqueNuance = spec?.uniqueContribution || model.tagline;
 
+    onProgress?.({ kind: 'status', modelId: model.id, phase: 'connecting', message: 'Connecting…' });
     const result = await fetchModelStream(
       model,
       prompt,
@@ -223,14 +217,15 @@ export async function runPantheonSynergy(params: {
       apiKeys,
       conversationHistory,
       idx === 0, // Lead agent executes macOS/web/file/memory actions
-      signal
+      signal,
+      onProgress,
     );
 
     if (idx === 0 && result.memories && onMemoriesUpdated) {
       onMemoriesUpdated(result.memories);
     }
 
-    return {
+    const stream = {
       modelId: model.id as ModelId,
       codeName: model.codeName,
       accentHex: model.accentHex,
@@ -245,6 +240,8 @@ export async function runPantheonSynergy(params: {
       executedActions: result.executedActions,
       confidence: 0,
     };
+    onProgress?.({ kind: 'response', modelId: model.id, response: stream });
+    return stream;
   });
 
   const allStreams = await Promise.all(streamPromises);
@@ -263,7 +260,9 @@ export async function runPantheonSynergy(params: {
   const executiveHeadline = responseStreams.length
     ? `${responseStreams.length} model response${responseStreams.length === 1 ? '' : 's'}`
     : executedActions.length
-    ? 'Local action completed · model unavailable'
+    ? executedActions.some((action) => action.status === 'success')
+      ? 'Local action completed · model unavailable'
+      : 'Action needs attention · model unavailable'
     : awakeModels.length
     ? 'No selected model responded'
     : 'Connect and select a model';

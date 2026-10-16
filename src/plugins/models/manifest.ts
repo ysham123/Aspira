@@ -169,6 +169,7 @@ export interface AgentActionExecution {
   status: 'success' | 'error' | 'blocked';
   output: string;
   durationMs: number;
+  memoryItem?: LivingMemoryItem;
   stepLabel?: string;
 }
 
@@ -206,6 +207,7 @@ export interface SubscriptionStatus {
 }
 
 export interface SynergyExecutionResult {
+  completionState?: 'stopped' | 'interrupted';
   id: string;
   timestamp: string;
   prompt: string;

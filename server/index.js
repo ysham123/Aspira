@@ -6,6 +6,7 @@ import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { searchPublicWeb } from './webSearch.js';
+import { createDispatchResponse } from './dispatchResponse.js';
 
 const execFileAsync = promisify(execFile);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -1025,6 +1026,31 @@ async function executeAgentTool(tool, args = {}, signal) {
   }
 }
 
+function dispatchActionTitle(tool, args = {}) {
+  const resource = String(args.path || '').replace(/\s+/g, ' ').slice(0, 100);
+  const titles = {
+    'workspace.git_status': 'Read Git status',
+    'workspace.list_files': 'List workspace files',
+    'workspace.search_text': 'Search workspace files',
+    'workspace.read_file': resource ? `Read ${resource}` : 'Read workspace file',
+    'workspace.create_file': resource ? `Create ${resource}` : 'Create workspace file',
+    'system.status': 'Read system status',
+    'app.open': `Open ${String(args.app || 'app')}`,
+    'browser.open_url': 'Open URL in browser',
+    'web.search': 'Search public web',
+    'memory.save': 'Save requested memory',
+    shell_exec: String(args.command || '').startsWith('git') ? 'Read Git status' : 'Run read-only command',
+    fs_list: 'List workspace files', fs_search: 'Search workspace files',
+    fs_read: resource ? `Read ${resource}` : 'Read workspace file',
+    fs_write: resource ? `Create ${resource}` : 'Create workspace file',
+    system_status: 'Read system status', macos_app: `Open ${String(args.app || 'app')}`,
+    open_url: 'Open URL in browser', web_search: 'Search public web',
+    memory_store: 'Save requested memory', macos_notify: 'Send requested notification',
+    subscription_desktop_handoff: 'Open provider app',
+  };
+  return titles[tool] || 'Check requested action';
+}
+
 const MODEL_ACTION_TOOLS = `Available Aspira tools:
 - workspace.git_status {}: read the current branch and working-tree status.
 - workspace.list_files {path?: string}: list non-hidden workspace files under a relative folder.
@@ -1299,8 +1325,17 @@ async function requestProviderCompletion({
 // ============================================================================
 // 4. NATURAL LANGUAGE INTENT -> REAL ACTION PARSER
 // ============================================================================
-async function detectAndRunNaturalActions(prompt, leadAgent = 'argon') {
+async function detectAndRunNaturalActions(prompt, leadAgent = 'argon', { signal, onStart, onAction } = {}) {
   const actions = [];
+  const runAction = async (tool, args) => {
+    signal?.throwIfAborted();
+    const id = `action-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    onStart?.({ actionId: id, title: dispatchActionTitle(tool, args) });
+    const action = await executeAgentTool(tool, args, signal);
+    action.id = id;
+    onAction?.(action);
+    return action;
+  };
   const lower = prompt.toLowerCase().trim();
 
   // 0. Hand off prompt directly to native macOS Subscription Desktop App ("send to chatgpt app", "open in claude app", "open in gemini app")
@@ -1311,7 +1346,7 @@ async function detectAndRunNaturalActions(prompt, leadAgent = 'argon') {
     const target = handoffMatch[1].toLowerCase();
     const modelMap = { chatgpt: 'gpt', claude: 'claude', gemini: 'argon', grok: 'grok' };
     actions.push(
-      await executeAgentTool('subscription_desktop_handoff', {
+      await runAction('subscription_desktop_handoff', {
         modelId: modelMap[target] || 'gpt',
         prompt,
       })
@@ -1323,7 +1358,7 @@ async function detectAndRunNaturalActions(prompt, leadAgent = 'argon') {
     /\b(?:open|launch|start)\s+(?:the\s+)?(Safari|Spotify|Notes|Calendar|Calculator|Terminal|Finder|Mail|Messages|Reminders|Music|Preview|Activity Monitor|System Settings|Cursor|ChatGPT|Claude|Gemini|Ollama|Xcode)\b/i
   );
   if (appMatch && !handoffMatch) {
-    actions.push(await executeAgentTool('macos_app', { app: appMatch[1] }));
+    actions.push(await runAction('macos_app', { app: appMatch[1] }));
   }
 
   // 2. Open Website / URL ("open youtube.com", "go to github.com", "open browser to ...")
@@ -1331,11 +1366,11 @@ async function detectAndRunNaturalActions(prompt, leadAgent = 'argon') {
     /\b(?:open|go to|visit|browse)\s+(https?:\/\/[^\s]+|[a-zA-Z0-9-]+\.(?:com|org|io|ai|dev|net|edu)[^\s]*)/i
   );
   if (urlMatch) {
-    actions.push(await executeAgentTool('open_url', { url: urlMatch[1] }));
+    actions.push(await runAction('open_url', { url: urlMatch[1] }));
   } else if (/\b(?:search google for|open browser for|search on safari for)\s+(.+)/i.test(prompt)) {
     const q = prompt.match(/\b(?:search google for|open browser for|search on safari for)\s+(.+)/i)[1];
     actions.push(
-      await executeAgentTool('open_url', {
+      await runAction('open_url', {
         url: `https://www.google.com/search?q=${encodeURIComponent(q)}`,
       })
     );
@@ -1350,7 +1385,7 @@ async function detectAndRunNaturalActions(prompt, leadAgent = 'argon') {
     const isGoal = /\b(?:goal|objective|target)\b/i.test(lower);
     const isPref = /\b(?:prefer|like|always use)\b/i.test(lower);
     actions.push(
-      await executeAgentTool('memory_store', {
+      await runAction('memory_store', {
         content: memMatch[1].trim(),
         category: isGoal ? 'goal' : isTask ? 'task' : isPref ? 'preference' : 'insight',
         status: isPref ? 'ACTIVE' : 'IN_PROGRESS',
@@ -1368,7 +1403,7 @@ async function detectAndRunNaturalActions(prompt, leadAgent = 'argon') {
     const fileContent =
       writeMatch[2]?.trim() ||
       `# ${fileName}\nCreated by Aspira at ${new Date().toISOString()}\n`;
-    actions.push(await executeAgentTool('fs_write', { path: fileName, content: fileContent }));
+    actions.push(await runAction('fs_write', { path: fileName, content: fileContent }));
   }
 
   // 5. Read a File
@@ -1376,7 +1411,7 @@ async function detectAndRunNaturalActions(prompt, leadAgent = 'argon') {
     /\b(?:read|show me|cat|inspect)\s+(?:the\s+file\s+)?['"`]?([a-zA-Z0-9_./-]+\.(?:md|json|ts|tsx|js|css|html|py|txt))['"`]?/i
   );
   if (readMatch && !writeMatch) {
-    actions.push(await executeAgentTool('fs_read', { path: readMatch[1] }));
+    actions.push(await runAction('fs_read', { path: readMatch[1] }));
   }
 
   // 6. Run Terminal / Git / System Command
@@ -1389,22 +1424,22 @@ async function detectAndRunNaturalActions(prompt, leadAgent = 'argon') {
     .split(/\s+(?:and|then)\s+(?=(?:tell|show|explain|summarize|report|describe|let|whether|if|what|why|how|can|could|please)\b)/i)[0]
     .trim();
   if (requestedCommand) {
-    actions.push(await executeAgentTool('shell_exec', { command: requestedCommand }));
+    actions.push(await runAction('shell_exec', { command: requestedCommand }));
   } else if (/\b(?:git status|repo status|what changed in git)\b/i.test(lower)) {
-    actions.push(await executeAgentTool('shell_exec', { command: 'git status -s && git log -n 3 --oneline' }));
+    actions.push(await runAction('shell_exec', { command: 'git status -s && git log -n 3 --oneline' }));
   } else if (/\b(?:battery|power|cpu|memory|ram|system health|hardware|mac status|system status|subscriptions)\b/i.test(lower)) {
-    actions.push(await executeAgentTool('system_status', {}));
+    actions.push(await runAction('system_status', {}));
   } else if (/\b(?:disk space|storage|free space)\b/i.test(lower)) {
-    actions.push(await executeAgentTool('shell_exec', { command: 'df -h .' }));
+    actions.push(await runAction('shell_exec', { command: 'df -h .' }));
   } else if (/\b(?:running processes|top processes|what is running)\b/i.test(lower)) {
-    actions.push(await executeAgentTool('shell_exec', { command: 'ps -Ao comm,%cpu,%mem -r | head -n 10' }));
+    actions.push(await runAction('shell_exec', { command: 'ps -Ao comm,%cpu,%mem -r | head -n 10' }));
   }
 
   // 7. macOS Notification
   const notifyMatch = prompt.match(/\b(?:send a notification|notify me)\s+(?:saying|that)?\s*(.+)/i);
   if (notifyMatch) {
     actions.push(
-      await executeAgentTool('macos_notify', {
+      await runAction('macos_notify', {
         title: 'Aspira Personal Agent',
         message: notifyMatch[1].trim(),
       })
@@ -1416,9 +1451,9 @@ async function detectAndRunNaturalActions(prompt, leadAgent = 'argon') {
     /\b(?:search(?:\s+the\s+web)?\s+for|look up|what is the latest on|news about)\s+(.+)/i
   );
   if (searchMatch && !urlMatch) {
-    actions.push(await executeAgentTool('web_search', { query: searchMatch[1].trim() }));
+    actions.push(await runAction('web_search', { query: searchMatch[1].trim() }));
   } else if (/\b(?:hackernews|hacker\s+news|top stories|tech news|ai news)\b/i.test(lower) && actions.length === 0) {
-    actions.push(await executeAgentTool('web_search', { query: 'HackerNews top stories' }));
+    actions.push(await runAction('web_search', { query: 'HackerNews top stories' }));
   }
 
   return actions;
@@ -1787,11 +1822,28 @@ app.post('/api/dispatch', async (req, res) => {
     executeActions = false,
   } = req.body || {};
   const startTime = Date.now();
+  const dispatch = createDispatchResponse(req, res);
+  if (typeof prompt !== 'string' || !prompt.trim() || prompt.length > 32_000) {
+    return dispatch.complete(400, { source: 'UNAVAILABLE', modelId, error: 'Enter a message of up to 32,000 characters.', text: null });
+  }
 
   // Keep deterministic local actions available when the user did not select a model.
   let executedActions = [];
   if (modelId === 'local' && executeActions && prompt) {
-    executedActions = await detectAndRunNaturalActions(prompt, modelId);
+    dispatch.emit({ type: 'status', phase: 'thinking', title: 'Checking local actions' });
+    try {
+      executedActions = await detectAndRunNaturalActions(prompt, modelId, {
+        signal: requestAbort.signal,
+        onStart: (activity) => dispatch.emit({ type: 'status', phase: 'acting', ...activity }),
+        onAction: (action) => {
+          executedActions.push(action);
+          dispatch.emit({ type: 'action', action });
+        },
+      });
+    } catch (error) {
+      if (requestAbort.signal.aborted) return;
+      return dispatch.complete(503, { source: 'UNAVAILABLE', modelId, text: null, error: 'The local action could not finish.', executedActions });
+    }
   }
   if (requestAbort.signal.aborted) return;
 
@@ -1814,11 +1866,11 @@ app.post('/api/dispatch', async (req, res) => {
 
   const fullSystemPrompt = `${
     systemPrompt || 'You are a conversational personal AI assistant inside Aspira.'
-  }\nRespond naturally and concisely. Be clear about completed actions and uncertainty. Describe actions in plain language; do not expose internal tool IDs unless the user asks. Summarize the relevant result instead of repeating raw output. Only claim an action was completed when its result is included here.${memoryBlock}${executeActions ? `\n\n${MODEL_ACTION_TOOLS}` : ''}`;
+  }\nRespond naturally and concisely. Be clear about completed actions and uncertainty. Describe actions in plain language; do not expose internal tool IDs unless the user asks. Summarize the relevant result instead of repeating raw output. Only claim an action was completed when its result is included here. A stopped reply may still have completed actions: use recorded receipts as evidence, and treat an absent receipt as an unconfirmed outcome rather than proof nothing happened.${memoryBlock}${executeActions ? `\n\n${MODEL_ACTION_TOOLS}` : ''}`;
 
   if (modelId === 'local') {
     if (!executedActions.length) {
-      return res.status(422).json({
+      return dispatch.complete(422, {
         source: 'UNAVAILABLE',
         modelId,
         text: null,
@@ -1830,7 +1882,7 @@ app.post('/api/dispatch', async (req, res) => {
     const summary = executedActions
       .map((action) => `${action.status === 'success' ? 'Done' : 'Could not complete'}: ${action.title}.`)
       .join('\n');
-    return res.json({
+    return dispatch.complete(200, {
       source: 'LOCAL_ACTIONS',
       modelId,
       text: summary,
@@ -1858,6 +1910,7 @@ app.post('/api/dispatch', async (req, res) => {
         : fullSystemPrompt;
       const currentUserPrompt = `${baseUserPrompt}${toolResultContext}\n\nRespond conversationally and be clear about what you did.`;
       const cliPrompt = `${currentSystemPrompt}\n\n${currentUserPrompt}`;
+      dispatch.emit({ type: 'status', phase: 'thinking', title: toolResults.length ? 'Reviewing action results' : 'Waiting for a response' });
       completion = await requestProviderCompletion({
         modelId,
         cliPrompt,
@@ -1871,7 +1924,7 @@ app.post('/api/dispatch', async (req, res) => {
 
       if (requestAbort.signal.aborted) return;
       if (!completion?.text) {
-        return res.status(503).json({
+        return dispatch.complete(503, {
           source: 'UNAVAILABLE',
           modelId,
           text: null,
@@ -1888,29 +1941,22 @@ app.post('/api/dispatch', async (req, res) => {
       if (!toolCall) break;
 
       toolCallCount += 1;
+      const actionId = `action-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const title = dispatchActionTitle(toolCall.tool, toolCall.arguments);
+      dispatch.emit({ type: 'status', phase: 'acting', actionId, title });
       const action = await executeModelToolCall(toolCall, prompt, modelId, requestAbort.signal);
       if (requestAbort.signal.aborted) return;
       action.tool = toolCall.tool;
-      const modelToolTitles = {
-        'workspace.git_status': 'Read Git status',
-        'workspace.list_files': 'List workspace files',
-        'workspace.search_text': 'Search workspace files',
-        'workspace.read_file': 'Read workspace file',
-        'workspace.create_file': 'Create workspace file',
-        'system.status': 'Read system status',
-        'app.open': `Open ${String(toolCall.arguments.app || 'app')}`,
-        'browser.open_url': 'Open URL in browser',
-        'web.search': 'Search public web',
-        'memory.save': 'Save requested memory',
-      };
-      action.title = modelToolTitles[toolCall.tool] || action.title;
+      action.id = actionId;
+      action.title = title;
       executedActions.push(action);
+      dispatch.emit({ type: 'action', action });
       toolResults.push(action);
     }
   } catch (error) {
     if (requestAbort.signal.aborted) return;
     const message = error instanceof Error ? error.message : 'The provider request failed.';
-    return res.status(503).json({
+    return dispatch.complete(503, {
       source: 'UNAVAILABLE',
       modelId,
       text: null,
@@ -1922,7 +1968,7 @@ app.post('/api/dispatch', async (req, res) => {
   }
 
   if (requestAbort.signal.aborted) return;
-  return res.json({
+  return dispatch.complete(200, {
     source: completion?.source || 'UNAVAILABLE',
     providerBadge: completion?.providerBadge,
     modelId,
