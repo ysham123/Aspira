@@ -340,13 +340,46 @@ class StarkSoundEngine {
     });
   }
 
+  private currentlySpeaking = false;
+  private activeAudioElement: HTMLAudioElement | null = null;
+  public onSpeakingStateChange?: (speaking: boolean) => void;
+
+  public isSpeaking(): boolean {
+    return this.currentlySpeaking;
+  }
+
+  public stopSpeaking() {
+    if (this.activeAudioElement) {
+      this.activeAudioElement.pause();
+      this.activeAudioElement = null;
+    }
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+    if (this.currentlySpeaking) {
+      this.currentlySpeaking = false;
+      this.onSpeakingStateChange?.(false);
+    }
+  }
+
   // Natural Voice Synthesis: tries Local Neural TTS Bridge (/api/tts -> Kokoro-82M / mlx-audio) first,
   // and falls back seamlessly to pre-warmed macOS Neural Voices.
   public async speak(text: string, onEnd?: () => void) {
-    if (!this.voiceEnabled || this.muted || typeof window === 'undefined') {
+    if (!this.voiceEnabled || this.muted || typeof window === 'undefined' || !text.trim()) {
       onEnd?.();
       return;
     }
+
+    this.stopSpeaking();
+    this.currentlySpeaking = true;
+    this.onSpeakingStateChange?.(true);
+
+    const finish = () => {
+      this.currentlySpeaking = false;
+      this.activeAudioElement = null;
+      this.onSpeakingStateChange?.(false);
+      onEnd?.();
+    };
 
     if (this.localTtsEndpoint) {
       try {
@@ -362,9 +395,14 @@ class StarkSoundEngine {
           const blob = await res.blob();
           const url = URL.createObjectURL(blob);
           const audio = new Audio(url);
+          this.activeAudioElement = audio;
           audio.onended = () => {
             URL.revokeObjectURL(url);
-            onEnd?.();
+            finish();
+          };
+          audio.onerror = () => {
+            URL.revokeObjectURL(url);
+            finish();
           };
           await audio.play();
           return;
@@ -375,7 +413,7 @@ class StarkSoundEngine {
     }
 
     if (!('speechSynthesis' in window)) {
-      onEnd?.();
+      finish();
       return;
     }
 
@@ -391,13 +429,13 @@ class StarkSoundEngine {
         voices.find((v) => v.lang.startsWith('en'));
       if (selected) utterance.voice = selected;
       utterance.pitch = 0.98;
-      utterance.rate = 1.02;
-      utterance.volume = 0.88;
-      utterance.onend = () => onEnd?.();
-      utterance.onerror = () => onEnd?.();
+      utterance.rate = 1.03;
+      utterance.volume = 0.9;
+      utterance.onend = () => finish();
+      utterance.onerror = () => finish();
       window.speechSynthesis.speak(utterance);
     } catch {
-      onEnd?.();
+      finish();
     }
   }
 }

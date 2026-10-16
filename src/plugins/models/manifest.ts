@@ -544,6 +544,41 @@ export interface RelayStageArtifact {
   latencyMs: number;
 }
 
+export interface AgentActionExecution {
+  id: string;
+  tool: string;
+  title: string;
+  status: 'success' | 'error' | 'blocked';
+  output: string;
+  durationMs: number;
+  stepLabel?: string;
+}
+
+export interface LivingMemoryItem {
+  id: string;
+  content: string;
+  category: 'goal' | 'task' | 'preference' | 'project' | 'insight';
+  status: 'IN_PROGRESS' | 'COMPLETED' | 'ACTIVE';
+  emotionalTone: string;
+  sourceAgent: string;
+  createdAt: string;
+  tags: string[];
+}
+
+export interface AutonomousRoutine {
+  id: string;
+  title: string;
+  description: string;
+  schedule: string;
+  leadAgent: ModelId;
+  steps: {
+    tool: string;
+    args?: Record<string, unknown>;
+    label: string;
+  }[];
+  lastRunAt: string | null;
+}
+
 export interface SynergyExecutionResult {
   id: string;
   timestamp: string;
@@ -555,6 +590,9 @@ export interface SynergyExecutionResult {
   consensusScore: number;
   executiveHeadline: string;
   synthesizedOutput: string;
+  spokenReply: string;
+  executedActions: AgentActionExecution[];
+  followUpSuggestions: string[];
   attributionPills: AttributionPill[];
   modelStreams: {
     modelId: ModelId;
@@ -564,7 +602,7 @@ export interface SynergyExecutionResult {
     latencyMs: number;
     ttftMs: number;
     tokensPerSec: number;
-    source: 'LIVE_API' | 'NEURAL_SIMULATOR';
+    source: 'LIVE_API' | 'LOCAL_OLLAMA' | 'NEURAL_SIMULATOR';
     keyInsight: string;
     uniqueNuance: string;
     confidence: number;
@@ -579,3 +617,14 @@ export interface SynergyExecutionResult {
   sprintLeaderboard?: SprintTelemetryEntry[];
   relayPipeline?: RelayStageArtifact[];
 }
+
+export interface ConversationTurn {
+  id: string;
+  timestamp: string;
+  userText: string;
+  inputModality: 'voice' | 'text' | 'routine';
+  vocalEmotion?: string;
+  pitchHz?: number;
+  result: SynergyExecutionResult;
+}
+
