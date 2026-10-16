@@ -269,14 +269,20 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
 
   const sessionPhrase = passkeyProfiles[0]?.phrase || '';
   const providerIds = ['claude', 'gpt', 'grok', 'argon'] as const;
-  const readyProviderCount = providerIds.filter((id) =>
+  const signedInProviderCount = providerIds.filter((id) =>
+    Boolean(subscriptions[id]?.cliPath) && subscriptions[id]?.authStatus === 'signed_in'
+  ).length;
+  const savedApiKeyCount = providerIds.filter((id) => Boolean(apiKeys[id])).length;
+  const configuredProviderCount = providerIds.filter((id) =>
     Boolean(apiKeys[id]) || (Boolean(subscriptions[id]?.cliPath) && subscriptions[id]?.authStatus === 'signed_in')
   ).length;
   const connectionSummary = subscriptionScanState === 'checking'
     ? 'Checking local sign-ins'
     : subscriptionScanState === 'error' && !hasVerifiedSubscriptionStatus
     ? 'Status unavailable'
-    : `${readyProviderCount} of ${providerIds.length} ready`;
+    : signedInProviderCount || savedApiKeyCount
+    ? `${signedInProviderCount} signed in · ${savedApiKeyCount} API key${savedApiKeyCount === 1 ? '' : 's'} saved`
+    : 'No verified sign-in or saved API key';
 
   const openApiKeyEditor = (id: string) => {
     setShowByokSection(true);
@@ -366,9 +372,9 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
                 >
                   <Icon className="aspira-vault-tab-icon w-4 h-4" aria-hidden="true" />
                   <span>{tab.label}</span>
-                  {tab.id === 'subscriptions' && readyProviderCount > 0 && (
-                    <span className="aspira-vault-nav-count" aria-label={`${readyProviderCount} providers ready`}>
-                      {readyProviderCount}
+                  {tab.id === 'subscriptions' && configuredProviderCount > 0 && (
+                    <span className="aspira-vault-nav-count" aria-label={`${configuredProviderCount} providers configured`}>
+                      {configuredProviderCount}
                     </span>
                   )}
                 </button>
@@ -402,7 +408,7 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
                 </div>
                 <div className="aspira-vault-header-actions">
                   <span className={`aspira-vault-connection-summary ${subscriptionScanState === 'error' ? 'is-error' : ''}`} role="status" aria-live="polite">
-                    <span className={`aspira-vault-summary-dot ${readyProviderCount > 0 ? 'is-ready' : ''} ${subscriptionScanState === 'checking' ? 'is-checking' : ''}`} />
+                    <span className={`aspira-vault-summary-dot ${signedInProviderCount > 0 ? 'is-ready' : savedApiKeyCount > 0 ? 'is-configured' : ''} ${subscriptionScanState === 'checking' ? 'is-checking' : ''}`} />
                     {connectionSummary}
                   </span>
                   <button
@@ -449,12 +455,12 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
                 </div>
               )}
 
-              {subscriptionScanState === 'ready' && readyProviderCount === 0 && (
+              {subscriptionScanState === 'ready' && configuredProviderCount === 0 && (
                 <div className="aspira-vault-empty-state" role="note">
                   <div className="aspira-vault-empty-icon"><KeyRound className="h-4 w-4" aria-hidden="true" /></div>
                   <div>
-                    <p className="aspira-vault-empty-title">No provider is ready yet</p>
-                    <p className="aspira-vault-empty-copy">A paid plan in a provider app does not grant local access by itself. Use a supported CLI sign-in or add an API key for the provider you want to use.</p>
+                    <p className="aspira-vault-empty-title">No verified connection yet</p>
+                    <p className="aspira-vault-empty-copy">A paid plan in a provider app does not grant local access by itself. A detected CLI may still need sign-in; connect one or add an API key, which Aspira will check on your first reply.</p>
                   </div>
                 </div>
               )}
@@ -500,8 +506,10 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
                     : connectionLabel === 'Sign-in required'
                     ? 'bg-amber-500/15 text-amber-300 border-amber-400/30'
                     : 'bg-white/[0.04] text-slate-300 border-white/[0.1]';
-                  const connectionState = hasSavedApiKey || connectionLabel === 'Signed in'
+                  const connectionState = connectionLabel === 'Signed in'
                     ? 'connected'
+                    : hasSavedApiKey
+                    ? 'configured'
                     : connectionLabel === 'Sign-in required'
                     ? 'attention'
                     : connectionLabel === 'Checking'

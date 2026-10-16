@@ -276,6 +276,11 @@
   box-shadow: 0 0 0 3px rgba(78, 154, 126, 0.12);
 }
 
+.aspira-vault-summary-dot.is-configured {
+  background: #776fc2;
+  box-shadow: 0 0 0 3px rgba(119, 111, 194, 0.12);
+}
+
 .aspira-vault-summary-dot.is-checking {
   background: #766dcc;
   animation: aspira-vault-pulse 1.2s ease-in-out infinite;
@@ -410,6 +415,10 @@
   border-color: rgba(59, 132, 104, 0.2);
 }
 
+.aspira-provider-card[data-state="configured"] {
+  border-color: rgba(119, 111, 194, 0.2);
+}
+
 .aspira-provider-card-heading {
   display: flex;
   align-items: flex-start;
@@ -500,6 +509,16 @@
 
 .aspira-connection-badge[data-state="connected"]::before {
   background: #4f997d;
+}
+
+.aspira-shell .aspira-connection-badge[data-state="configured"] {
+  color: #5f579f;
+  background: #f1effb;
+  border-color: #e1def4;
+}
+
+.aspira-connection-badge[data-state="configured"]::before {
+  background: #776fc2;
 }
 
 .aspira-connection-badge[data-state="attention"] {

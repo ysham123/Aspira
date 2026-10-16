@@ -7,6 +7,7 @@ import { pipeline } from 'node:stream/promises';
 import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
+import { searchPublicWeb } from './webSearch.js';
 
 const execFileAsync = promisify(execFile);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -961,69 +962,18 @@ async function executeAgentTool(tool, args = {}, signal) {
       }
 
       case 'web_search': {
-        const query = String(args.query || 'AI agents');
-        const results = [];
-        try {
-          const ddgRes = await fetch(
-            `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1`,
-            { signal }
-          );
-          if (ddgRes.ok) {
-            const ddg = await ddgRes.json();
-            if (ddg.AbstractText) {
-              results.push(`Summary: ${ddg.AbstractText} (${ddg.AbstractURL || 'DuckDuckGo'})`);
-            }
-            if (Array.isArray(ddg.RelatedTopics)) {
-              for (const topic of ddg.RelatedTopics.slice(0, 4)) {
-                if (topic.Text) results.push(`• ${topic.Text}`);
-              }
-            }
-          }
-        } catch {
-          // ignore
-        }
-
-        try {
-          if (results.length < 2) {
-            const hnRes = await fetch('https://hacker-news.firebaseio.com/v0/topstories.json', { signal });
-            if (hnRes.ok) {
-              const ids = (await hnRes.json()).slice(0, 5);
-              const stories = await Promise.all(
-                ids.map((id) =>
-                  fetch(`https://hacker-news.firebaseio.com/v0/item/${id}.json`, { signal }).then((r) => r.json())
-                )
-              );
-              for (const s of stories) {
-                if (s?.title) {
-                  results.push(`• [HN ${s.score || 0} pts] ${s.title} (${s.url || 'news.ycombinator.com'})`);
-                }
-              }
-            }
-          }
-        } catch {
-          // ignore
-        }
-
-        const output =
-          results.length > 0
-            ? results.join('\n')
-            : '';
-
-        if (!output) {
-          return {
-            id: `act-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-            tool: 'web_search',
-            title: `No quick search results for "${query}"`,
-            status: 'error',
-            output: 'The quick lookup returned no result. Try a more specific query or open a search page in your browser.',
-            durationMs: Date.now() - start,
-          };
-        }
-
+        const query = String(args.query || '').trim().slice(0, 200);
+        if (!query) throw new Error('A search query is required.');
+        const results = await searchPublicWeb(query, signal);
+        const output = results.map((result, index) => [
+          `${index + 1}. ${result.title}`,
+          result.snippet,
+          result.url,
+        ].filter(Boolean).join('\n')).join('\n\n');
         return {
           id: `act-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
           tool: 'web_search',
-          title: `Quick lookup: "${query}"`,
+          title: `Web search: "${query}"`,
           status: 'success',
           output,
           durationMs: Date.now() - start,

@@ -11,6 +11,7 @@
     "voice:local": "uv tool run --python 3.12 --prerelease=allow --from 'mlx-audio[server,tts]' mlx_audio.server --host 127.0.0.1 --port 8000",
     "desktop": "node scripts/launch-desktop.js",
     "build": "vite build",
+    "test": "node --test server/*.test.js",
     "preview": "vite preview"
   },
   "dependencies": {

@@ -44,6 +44,8 @@ This is a bounded text-based tool protocol, not arbitrary computer control. Aspi
 
 Saved memories and user-created playbooks live in `server/data/` and are ignored by Git. They remain on this Mac. Memories are added only when you ask Aspira to save one. Aspira keeps up to 24 conversations in this browser's local storage so you can search, reopen, and delete them; this data is not synced or encrypted. When you use a provider, Aspira sends your prompt, a small recent conversation window, and up to eight saved memory notes as context. If the model reads a workspace file or runs another tool, Aspira sends that tool's bounded result to the same provider so it can answer.
 
+When you explicitly ask Aspira to search the web, it sends the search query to DuckDuckGo and returns up to five result titles, snippets, and links. If search returns no readable results or fails, Aspira reports that instead of substituting unrelated stories.
+
 ## Optional local voice
 
 The local voice service uses MLX-Audio on Apple Silicon. Aspira defaults to the open `mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-6bit` model and streams speech as it is generated. Its weights take about 2.7 GB and download on the first sample request. The Voice settings let you change the speaker and add a natural-language speaking direction. To use a smaller model, change the model ID to `mlx-community/Qwen3-TTS-12Hz-0.6B-CustomVoice-8bit`.
