@@ -800,9 +800,9 @@ async function executeAgentTool(tool, args = {}, signal) {
         return {
           id: `act-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
           tool: 'subscription_desktop_handoff',
-          title: `Handed Off to ${targetApp}.app Subscription`,
+          title: `Opened ${targetApp}.app`,
           status: 'success',
-          output: `Copied prompt to macOS Clipboard and focused ${targetApp}.app (Press ⌘V + Return if not auto-pasted).`,
+          output: `Copied the prompt to the clipboard and attempted to paste it into ${targetApp}.app. Review it there and submit it when ready. If it was not pasted, use ⌘V.`,
           durationMs: Date.now() - start,
         };
       }
@@ -1485,6 +1485,15 @@ app.get('/api/subscriptions', async (_req, res) => {
   res.json({ subscriptions: await getSubscriptionStatuses() });
 });
 
+function validateDesktopHandoff(modelIdValue, promptValue) {
+  const allowedModels = new Set(['argon', 'claude', 'grok', 'gpt']);
+  const modelId = String(modelIdValue || '');
+  const prompt = typeof promptValue === 'string' ? promptValue.trim() : '';
+  if (!allowedModels.has(modelId)) return { error: 'Choose a supported provider before opening its app.' };
+  if (!prompt || prompt.length > 8000) return { error: 'The prompt must contain 1 to 8,000 characters.' };
+  return { modelId, prompt };
+}
+
 app.post('/api/subscriptions/login', async (req, res) => {
   const { modelId } = req.body || {};
   const subs = await getSubscriptionStatuses();
@@ -1530,7 +1539,9 @@ app.post('/api/subscriptions/login', async (req, res) => {
 
 app.post('/api/subscriptions/desktop-handoff', async (req, res) => {
   const { modelId, prompt } = req.body || {};
-  const result = await executeAgentTool('subscription_desktop_handoff', { modelId, prompt });
+  const handoff = validateDesktopHandoff(modelId, prompt);
+  if (handoff.error) return res.status(400).json({ error: handoff.error });
+  const result = await executeAgentTool('subscription_desktop_handoff', handoff);
   res.json({ result });
 });
 
@@ -1626,8 +1637,18 @@ app.post('/api/routines/:id/run', async (req, res) => {
 
 // DIRECT TOOL EXECUTION ENDPOINT
 app.post('/api/execute-action', async (req, res) => {
-  const { tool, args = {} } = req.body || {};
-  const result = await executeAgentTool(tool, args);
+  const { tool, args } = req.body || {};
+  if (tool !== 'subscription_desktop_handoff') {
+    return res.status(403).json({ error: 'This endpoint only supports the explicit Open in App handoff.' });
+  }
+  if (!args || typeof args !== 'object' || Array.isArray(args)) {
+    return res.status(400).json({ error: 'A provider and prompt are required for the handoff.' });
+  }
+
+  const handoff = validateDesktopHandoff(args.modelId, args.prompt);
+  if (handoff.error) return res.status(400).json({ error: handoff.error });
+
+  const result = await executeAgentTool('subscription_desktop_handoff', handoff);
   res.json({ result, memories: loadMemories() });
 });
 

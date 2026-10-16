@@ -557,6 +557,7 @@ export const App: React.FC = () => {
           const act = data.result;
           const succeeded = act?.status === 'success';
           const actionTitle = act?.title || label;
+          const isAppHandoff = tool === 'subscription_desktop_handoff';
           const syntheticResult: SynergyExecutionResult = {
             id: `syn-act-${Date.now()}`,
             timestamp: new Date().toLocaleTimeString(),
@@ -568,9 +569,15 @@ export const App: React.FC = () => {
             consensusScore: null,
             executiveHeadline: succeeded ? `Local action · ${actionTitle}` : `Action failed · ${actionTitle}`,
             synthesizedOutput: succeeded
-              ? `Done. ${actionTitle}. Expand the action receipt below to inspect the result.`
+              ? isAppHandoff
+                ? `${actionTitle}. Review the prompt in the app and send it when ready.`
+                : `Done. ${actionTitle}. Expand the action receipt below to inspect the result.`
               : `Could not complete ${actionTitle}. Expand the action receipt below for details.`,
-            spokenReply: succeeded ? `Done. ${actionTitle}.` : '',
+            spokenReply: succeeded
+              ? isAppHandoff
+                ? `${actionTitle}. Review the prompt and send it when ready.`
+                : `Done. ${actionTitle}.`
+              : '',
             executedActions: [act],
             followUpSuggestions: [],
             attributionPills: [],

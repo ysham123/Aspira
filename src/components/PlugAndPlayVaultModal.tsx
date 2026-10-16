@@ -10,10 +10,10 @@ import {
   Lock,
   Plus,
   RefreshCw,
-  Sparkles,
   Volume2,
   X,
 } from 'lucide-react';
+import './PlugAndPlayVaultModal.css';
 import { soundEngine } from '../audio/soundEngine';
 import {
   ModelPluginManifest,
@@ -266,29 +266,60 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
   };
 
   const sessionPhrase = passkeyProfiles[0]?.phrase || '';
+  const providerIds = ['claude', 'gpt', 'grok', 'argon'] as const;
+  const readyProviderCount = providerIds.filter((id) =>
+    Boolean(apiKeys[id]) || (Boolean(subscriptions[id]?.cliPath) && subscriptions[id]?.authStatus === 'signed_in')
+  ).length;
+  const connectionSummary = subscriptionScanState === 'checking'
+    ? 'Checking local sign-ins'
+    : subscriptionScanState === 'error' && !hasVerifiedSubscriptionStatus
+    ? 'Status unavailable'
+    : `${readyProviderCount} of ${providerIds.length} ready`;
+
+  const openApiKeyEditor = (id: string) => {
+    setShowByokSection(true);
+    setLoginStatusMsg(`${models.find((model) => model.id === id)?.codeName || subscriptions[id]?.providerName || 'This provider'} has no supported CLI. Add an API key below to use it in Aspira.`);
+    window.requestAnimationFrame(() => document.getElementById(`api-key-${id}`)?.focus());
+  };
+
+  const handleTabNavigation = (event: React.KeyboardEvent<HTMLButtonElement>) => {
+    if (!['ArrowDown', 'ArrowRight', 'ArrowUp', 'ArrowLeft', 'Home', 'End'].includes(event.key)) return;
+    const tabs = Array.from(dialogRef.current?.querySelectorAll<HTMLButtonElement>('[role="tab"]') || []);
+    if (tabs.length === 0) return;
+    event.preventDefault();
+    const currentIndex = tabs.indexOf(event.currentTarget);
+    const nextIndex = event.key === 'Home'
+      ? 0
+      : event.key === 'End'
+      ? tabs.length - 1
+      : (currentIndex + (event.key === 'ArrowDown' || event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+    tabs[nextIndex].focus();
+    tabs[nextIndex].click();
+  };
 
   return (
     <div
       ref={dialogRef}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-xl p-4"
+      className="aspira-vault-overlay fixed inset-0 z-50 flex items-center justify-center p-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby="connections-dialog-title"
       tabIndex={-1}
     >
-      <div className="aspira-vault-dialog w-full max-w-4xl aspira-glass-elevated rounded-3xl overflow-hidden flex flex-col max-h-[88vh] shadow-2xl border border-white/[0.1]">
+      <div className="aspira-vault-dialog w-full max-w-5xl aspira-glass-elevated rounded-3xl overflow-hidden flex flex-col max-h-[90vh] shadow-2xl border border-white/[0.1]">
         {/* TOP HEADER */}
         <div className="aspira-vault-header flex items-center justify-between px-7 py-5 border-b border-white/[0.07]">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-indigo-500/15 border border-indigo-400/30 flex items-center justify-center">
-              <Sparkles className="w-4 h-4 text-indigo-300" />
+            <div className="aspira-vault-brand-mark w-10 h-10 rounded-xl flex items-center justify-center">
+              <Layers className="w-4 h-4" />
             </div>
             <div>
-              <h2 id="connections-dialog-title" className="text-base font-semibold text-white tracking-tight">
-                Models & settings
+              <p className="aspira-vault-eyebrow">ASPIRA · WORKSPACE</p>
+              <h2 id="connections-dialog-title" className="text-lg font-semibold text-white tracking-tight">
+                Connections & settings
               </h2>
               <p className="text-xs text-slate-400">
-                Connect provider CLIs, local models, and optional voice
+                Manage the models and preferences available in your studio.
               </p>
             </div>
           </div>
@@ -304,9 +335,10 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
           </button>
         </div>
 
-        {/* 4-TAB SEGMENTED NAVIGATION */}
-        <div className="aspira-vault-tabs-shell border-b border-white/[0.06]">
-          <div className="aspira-vault-tabs flex items-center gap-2 overflow-x-auto px-7 pt-4 pb-2" role="group" aria-label="Settings sections">
+        <div className="aspira-vault-content-layout">
+          <aside className="aspira-vault-sidebar" aria-label="Settings navigation">
+            <p className="aspira-vault-sidebar-heading">PREFERENCES</p>
+            <nav className="aspira-vault-tabs" role="tablist" aria-label="Settings sections" aria-orientation="vertical">
             {[
               { id: 'subscriptions', label: 'Connections', icon: CheckCircle2 },
               { id: 'models', label: 'Models', icon: Layers },
@@ -322,54 +354,72 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
                   onClick={() => {
                     setActiveTab(tab.id as VaultTab);
                   }}
-                  aria-label={tab.label}
-                  aria-pressed={active}
-                  className={`px-4 py-2 rounded-xl text-xs font-medium flex items-center gap-2 transition-all whitespace-nowrap ${
-                    active
-                      ? 'bg-white/[0.1] text-white border border-white/[0.14] shadow-sm'
-                      : 'text-slate-400 hover:text-slate-200 hover:bg-white/[0.04] border border-transparent'
-                  }`}
+                  role="tab"
+                  id={`aspira-vault-tab-${tab.id}`}
+                  aria-selected={active}
+                  aria-controls="aspira-vault-panel"
+                  tabIndex={active ? 0 : -1}
+                  onKeyDown={handleTabNavigation}
+                  className={`aspira-vault-tab ${active ? 'is-active' : ''}`}
                 >
-                  <Icon className="w-3.5 h-3.5 text-indigo-400" />
-                  <span className="aspira-vault-tab-label-full">{tab.label}</span>
-                  <span className="aspira-vault-tab-label-short" aria-hidden="true">
-                    {tab.id === 'passkeys' ? 'Passkeys' : tab.label}
-                  </span>
+                  <Icon className="aspira-vault-tab-icon w-4 h-4" aria-hidden="true" />
+                  <span>{tab.label}</span>
+                  {tab.id === 'subscriptions' && readyProviderCount > 0 && (
+                    <span className="aspira-vault-nav-count" aria-label={`${readyProviderCount} providers ready`}>
+                      {readyProviderCount}
+                    </span>
+                  )}
                 </button>
               );
             })}
-          </div>
-          <p className="aspira-vault-tabs-hint" aria-hidden="true">More sections →</p>
-        </div>
+            </nav>
+            <div className="aspira-vault-sidebar-note">
+              <Lock className="h-3.5 w-3.5" aria-hidden="true" />
+              <span>API keys are stored in this browser.</span>
+            </div>
+          </aside>
 
         {/* MODAL BODY */}
-        <div className="aspira-vault-body p-7 overflow-y-auto custom-scrollbar space-y-6 flex-1 min-h-0">
+        <main
+          className="aspira-vault-body p-7 overflow-y-auto custom-scrollbar space-y-6 flex-1 min-h-0"
+          id="aspira-vault-panel"
+          role="tabpanel"
+          aria-labelledby={`aspira-vault-tab-${activeTab}`}
+          tabIndex={0}
+        >
           {/* TAB 1: PROVIDER CLI CONNECTIONS AND OPTIONAL API ENDPOINTS */}
           {activeTab === 'subscriptions' && (
             <div className="space-y-6">
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <div>
-                  <h3 className="text-sm font-semibold text-white">Provider connections</h3>
+                  <p className="aspira-vault-section-kicker">MODEL ACCESS</p>
+                  <h3 className="text-xl font-semibold text-white">Provider connections</h3>
                   <p className="text-xs text-slate-400 mt-0.5">
-                    Aspira connects through provider CLIs and reports sign-in only when the CLI exposes it. Plan tier is not checked; a desktop app alone does not connect a model here.
+                    Connect a supported local CLI or add an API key. Aspira can only use providers it can access here; a consumer subscription or desktop app alone does not connect a model.
                   </p>
                 </div>
-                <button
-                  type="button"
-                  disabled={subscriptionScanState === 'checking'}
-                  onClick={() => {
-                    void refreshSubscriptions();
-                  }}
-                  aria-label={subscriptionScanState === 'checking' ? 'Checking provider status' : 'Refresh provider status'}
-                  className="px-3 py-1.5 rounded-xl bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] text-xs text-slate-200 flex items-center gap-1.5 disabled:cursor-wait disabled:opacity-60"
-                >
-                  <RefreshCw className={`w-3.5 h-3.5 text-indigo-400 ${subscriptionScanState === 'checking' ? 'animate-spin' : ''}`} />
-                  {subscriptionScanState === 'checking' ? 'Checking…' : 'Refresh status'}
-                </button>
+                <div className="aspira-vault-header-actions">
+                  <span className={`aspira-vault-connection-summary ${subscriptionScanState === 'error' ? 'is-error' : ''}`} role="status" aria-live="polite">
+                    <span className={`aspira-vault-summary-dot ${readyProviderCount > 0 ? 'is-ready' : ''} ${subscriptionScanState === 'checking' ? 'is-checking' : ''}`} />
+                    {connectionSummary}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={subscriptionScanState === 'checking'}
+                    onClick={() => {
+                      void refreshSubscriptions();
+                    }}
+                    aria-label={subscriptionScanState === 'checking' ? 'Checking provider status' : 'Refresh provider status'}
+                    className="aspira-vault-refresh-button px-3 py-1.5 rounded-xl bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] text-xs text-slate-200 flex items-center gap-1.5 disabled:cursor-wait disabled:opacity-60"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${subscriptionScanState === 'checking' ? 'animate-spin' : ''}`} />
+                    {subscriptionScanState === 'checking' ? 'Checking…' : 'Refresh'}
+                  </button>
+                </div>
               </div>
 
               {subscriptionScanState === 'checking' && (
-                <p className="text-xs text-slate-400" role="status" aria-live="polite">
+                <p className="aspira-vault-scan-progress text-xs text-slate-400" role="status" aria-live="polite">
                   Checking local provider CLIs. Sign-in is shown only when the CLI exposes it.
                 </p>
               )}
@@ -386,7 +436,7 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
               )}
 
               {loginStatusMsg && (
-                <div className="p-3 rounded-2xl bg-indigo-500/15 border border-indigo-400/30 text-xs text-indigo-200 flex items-center justify-between" role="status" aria-live="polite">
+                <div className="aspira-vault-feedback p-3 rounded-2xl bg-indigo-500/15 border border-indigo-400/30 text-xs text-indigo-200 flex items-center justify-between" role="status" aria-live="polite">
                   <span>{loginStatusMsg}</span>
                   <button
                     onClick={() => setLoginStatusMsg(null)}
@@ -397,9 +447,19 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
                 </div>
               )}
 
+              {subscriptionScanState === 'ready' && readyProviderCount === 0 && (
+                <div className="aspira-vault-empty-state" role="note">
+                  <div className="aspira-vault-empty-icon"><KeyRound className="h-4 w-4" aria-hidden="true" /></div>
+                  <div>
+                    <p className="aspira-vault-empty-title">No provider is ready yet</p>
+                    <p className="aspira-vault-empty-copy">A paid plan in a provider app does not grant local access by itself. Use a supported CLI sign-in or add an API key for the provider you want to use.</p>
+                  </div>
+                </div>
+              )}
+
               {/* Supported provider CLI connections */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-                {(['claude', 'gpt', 'grok', 'argon'] as const).map((id) => {
+              <div className="aspira-provider-grid grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                {providerIds.map((id) => {
                   const sub = subscriptions[id];
                   const model = models.find((m) => m.id === id);
                   const cliAvailable = Boolean(sub?.cliPath);
@@ -438,31 +498,44 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
                     : connectionLabel === 'Sign-in required'
                     ? 'bg-amber-500/15 text-amber-300 border-amber-400/30'
                     : 'bg-white/[0.04] text-slate-300 border-white/[0.1]';
+                  const connectionState = hasSavedApiKey || connectionLabel === 'Signed in'
+                    ? 'connected'
+                    : connectionLabel === 'Sign-in required'
+                    ? 'attention'
+                    : connectionLabel === 'Checking'
+                    ? 'checking'
+                    : connectionLabel === 'Status unknown'
+                    ? 'unknown'
+                    : connectionLabel === 'Not detected' || connectionLabel === 'CLI not found'
+                    ? 'not-detected'
+                    : 'available';
 
                   return (
                     <div
                       key={id}
-                      className="p-4 rounded-2xl bg-white/[0.03] border border-white/[0.08] flex flex-col justify-between gap-3"
+                      className="aspira-provider-card p-4 rounded-2xl bg-white/[0.03] border border-white/[0.08] flex flex-col justify-between gap-3"
+                      data-state={connectionState}
                     >
                       <div>
-                        <div className="flex items-center justify-between mb-1.5">
-                          <div className="flex items-center gap-2">
-                            <span
-                              className="w-2.5 h-2.5 rounded-full"
-                              style={{ backgroundColor: model?.accentHex || '#6E8EFB' }}
-                            />
-                            <span className="text-sm font-semibold text-white">
-                              {model?.codeName} · {sub?.providerName || model?.family}
+                        <div className="aspira-provider-card-heading">
+                          <div className="aspira-provider-identity">
+                            <span className="aspira-provider-mark" style={{ '--provider-accent': model?.accentHex || '#6E8EFB' } as React.CSSProperties} aria-hidden="true">
+                              {(model?.codeName || id).slice(0, 1)}
                             </span>
+                            <div className="aspira-provider-names">
+                              <span className="aspira-provider-name">{model?.codeName || id}</span>
+                              <span className="aspira-provider-family">{sub?.providerName || model?.family || 'Provider connection'}</span>
+                            </div>
                           </div>
                           <span
-                            className={`text-[10px] font-medium px-2.5 py-1 rounded-full border ${connectionColor}`}
+                            className={`aspira-connection-badge text-[10px] font-medium px-2.5 py-1 rounded-full border ${connectionColor}`}
+                            data-state={connectionState}
                           >
                             {connectionLabel}
                           </span>
                         </div>
 
-                        <div className="text-xs leading-5 text-slate-300 bg-black/30 rounded-xl px-3 py-2 border border-white/[0.05]">
+                        <div className="aspira-provider-detail text-xs leading-5 text-slate-300 bg-black/30 rounded-xl px-3 py-2 border border-white/[0.05]">
                           {connectionDetail}
                         </div>
                       </div>
@@ -475,7 +548,7 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
                               onUseModel(id);
                               onClose();
                             }}
-                            className="flex-1 py-2 px-3 rounded-xl bg-indigo-500/20 hover:bg-indigo-500/30 border border-indigo-400/30 text-indigo-200 text-xs font-medium flex items-center justify-center gap-1.5 transition-all"
+                            className="aspira-connection-action is-primary flex-1 py-2 px-3 rounded-xl bg-indigo-500/20 hover:bg-indigo-500/30 border border-indigo-400/30 text-indigo-200 text-xs font-medium flex items-center justify-center gap-1.5 transition-all"
                           >
                             <CheckCircle2 className="w-3.5 h-3.5" />
                             {awakeModelIds.includes(id) ? 'Return to Studio' : 'Use in Studio'}
@@ -484,7 +557,7 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
                           <button
                             type="button"
                             onClick={() => handleSubscriptionLogin(id)}
-                            className="flex-1 py-2 px-3 rounded-xl bg-indigo-500/20 hover:bg-indigo-500/30 border border-indigo-400/30 text-indigo-200 text-xs font-medium flex items-center justify-center gap-1.5 transition-all"
+                            className="aspira-connection-action is-primary flex-1 py-2 px-3 rounded-xl bg-indigo-500/20 hover:bg-indigo-500/30 border border-indigo-400/30 text-indigo-200 text-xs font-medium flex items-center justify-center gap-1.5 transition-all"
                           >
                             <ExternalLink className="w-3.5 h-3.5" />
                             {connectionLabel === 'Sign-in required' ? 'Sign in in Terminal' : 'Open CLI in Terminal'}
@@ -492,11 +565,8 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
                         ) : (
                           <button
                             type="button"
-                            onClick={() => {
-                              setShowByokSection(true);
-                              setLoginStatusMsg(`${model?.codeName || sub?.providerName || 'This provider'} has no supported CLI. Add an API key below to use it in Aspira.`);
-                            }}
-                            className="flex-1 py-2 px-3 rounded-xl bg-indigo-500/20 hover:bg-indigo-500/30 border border-indigo-400/30 text-indigo-200 text-xs font-medium flex items-center justify-center gap-1.5 transition-all"
+                            onClick={() => openApiKeyEditor(id)}
+                            className="aspira-connection-action is-secondary flex-1 py-2 px-3 rounded-xl bg-indigo-500/20 hover:bg-indigo-500/30 border border-indigo-400/30 text-indigo-200 text-xs font-medium flex items-center justify-center gap-1.5 transition-all"
                           >
                             <KeyRound className="w-3.5 h-3.5" />
                             Add API key
@@ -509,17 +579,19 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
               </div>
 
               {/* Collapsible optional API key fallback */}
-              <div className="rounded-2xl bg-white/[0.02] border border-white/[0.07] p-4">
+              <div className={`aspira-byok-card rounded-2xl bg-white/[0.02] border border-white/[0.07] p-4 ${showByokSection ? 'is-open' : ''}`}>
                 <button
                   type="button"
+                  aria-expanded={showByokSection}
+                  aria-controls="aspira-byok-fields"
                   onClick={() => setShowByokSection((v) => !v)}
-                  className="w-full flex items-center justify-between text-left"
+                  className="aspira-byok-toggle w-full flex items-center justify-between text-left"
                 >
                   <div>
-                    <div className="text-xs font-semibold text-slate-300">
+                    <div className="text-sm font-semibold text-slate-300">
                       Optional API keys
                     </div>
-                    <div className="text-[11px] text-slate-500">
+                    <div className="text-xs text-slate-500">
                       Add an API key if you want direct API access or a CLI is unavailable.
                     </div>
                   </div>
@@ -531,7 +603,7 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
                 </button>
 
                 {showByokSection && (
-                  <form onSubmit={handleSaveKeys} className="space-y-3 pt-4 mt-3 border-t border-white/[0.06]">
+                  <form id="aspira-byok-fields" onSubmit={handleSaveKeys} className="aspira-byok-form space-y-3 pt-4 mt-3 border-t border-white/[0.06]">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       {[
                         { id: 'argon', label: 'Argon · Google Gemini API Key', placeholder: 'AIzaSy...' },
@@ -541,7 +613,7 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
                       ].map((item) => (
                         <div
                           key={item.id}
-                          className="p-3 rounded-xl bg-black/30 border border-white/[0.06] space-y-1.5"
+                          className="aspira-key-field p-3 rounded-xl bg-black/30 border border-white/[0.06] space-y-1.5"
                         >
                           <label htmlFor={`api-key-${item.id}`} className="text-[11px] font-medium text-slate-300 block">
                             {item.label}
@@ -558,9 +630,9 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
                             }}
                             placeholder={item.placeholder}
                             aria-describedby={`api-key-hint-${item.id}`}
-                            className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-1.5 text-xs font-mono text-white focus:outline-none focus:border-indigo-400"
+                            className="aspira-vault-field w-full bg-black/40 border border-white/10 rounded-lg px-3 py-1.5 text-xs font-mono text-white focus:outline-none focus:border-indigo-400"
                           />
-                          <p id={`api-key-hint-${item.id}`} className="text-[10px] leading-4 text-slate-500">
+                          <p id={`api-key-hint-${item.id}`} className="aspira-vault-field-hint text-[10px] leading-4 text-slate-500">
                             Saved locally. Aspira checks this key when you request a response.
                           </p>
                         </div>
@@ -568,18 +640,18 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
                     </div>
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       {keysSavedBanner && (
-                        <p className="text-xs text-emerald-700" role="status" aria-live="polite">
+                        <p className="aspira-vault-save-success text-xs" role="status" aria-live="polite">
                           API keys saved in this browser.
                         </p>
                       )}
                       {keysSaveError && (
-                        <p className="text-xs text-amber-700" role="alert">
+                        <p className="aspira-vault-save-error text-xs" role="alert">
                           {keysSaveError}
                         </p>
                       )}
                       <button
                         type="submit"
-                        className="px-4 py-2 rounded-xl bg-white text-slate-950 font-semibold text-xs hover:bg-slate-100 transition-all flex items-center gap-1.5"
+                        className="aspira-vault-save-button px-4 py-2 rounded-xl bg-white text-slate-950 font-semibold text-xs hover:bg-slate-100 transition-all flex items-center gap-1.5"
                       >
                         <KeyRound className="w-3.5 h-3.5 text-indigo-600" /> Save optional API keys
                       </button>
@@ -818,6 +890,7 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
               {!sessionPhrase.trim() && <p className="text-xs text-amber-200/80">Set a passphrase above to enable the lock.</p>}
             </div>
           )}
+        </main>
         </div>
       </div>
     </div>

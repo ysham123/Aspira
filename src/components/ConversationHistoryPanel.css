@@ -1,0 +1,501 @@
+/* Conversation history is intentionally scoped so the shared mobile drawer
+   and desktop sidebar can use the same interactions without affecting other UI. */
+section.aspira-history-content {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 10px;
+  margin: 18px 0 12px;
+  color: #28292f;
+}
+
+section.aspira-history-content .aspira-history-heading {
+  display: flex;
+  min-height: 34px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 1px 0 4px;
+}
+
+section.aspira-history-content .aspira-history-heading-label {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
+}
+
+section.aspira-history-content .aspira-history-heading h2 {
+  overflow: hidden;
+  color: #55565e;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+section.aspira-history-content .aspira-history-count {
+  display: inline-flex;
+  min-width: 18px;
+  height: 18px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: rgba(36, 38, 45, 0.055);
+  color: #777881;
+  font-size: 9px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+section.aspira-history-content .aspira-new-chat-button {
+  display: inline-flex;
+  min-width: 82px;
+  min-height: 34px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 9px;
+  border: 1px solid #303139;
+  border-radius: 10px;
+  background: #303139;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 620;
+  box-shadow: 0 2px 5px rgba(30, 31, 37, 0.1);
+  transition: background 150ms ease, border-color 150ms ease, transform 150ms ease, box-shadow 150ms ease;
+}
+
+section.aspira-history-content .aspira-new-chat-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: #222329;
+  background: #222329;
+  color: #fff;
+  box-shadow: 0 4px 10px rgba(30, 31, 37, 0.14);
+}
+
+section.aspira-history-content .aspira-new-chat-button:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+section.aspira-history-content .aspira-new-chat-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+section.aspira-history-content .aspira-new-chat-button svg {
+  width: 14px;
+  height: 14px;
+  stroke-width: 2.2;
+}
+
+section.aspira-history-content .aspira-history-search {
+  display: flex;
+  min-height: 38px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 9px 0 11px;
+  border: 1px solid rgba(37, 38, 43, 0.09);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.62);
+  color: #898a91;
+  transition: border-color 150ms ease, background 150ms ease, box-shadow 150ms ease;
+}
+
+section.aspira-history-content .aspira-history-search:focus-within {
+  border-color: rgba(87, 82, 153, 0.32);
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(87, 82, 153, 0.07);
+}
+
+section.aspira-history-content .aspira-history-search > svg {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  stroke-width: 1.8;
+}
+
+section.aspira-history-content .aspira-history-search input {
+  width: 100%;
+  min-width: 0;
+  min-height: 36px;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #303139;
+  font-size: 11px;
+}
+
+section.aspira-history-content .aspira-history-search input::placeholder {
+  color: #999aa1;
+}
+
+section.aspira-history-content .aspira-history-search input::-webkit-search-cancel-button {
+  display: none;
+}
+
+section.aspira-history-content .aspira-history-search-clear {
+  display: grid;
+  width: 26px;
+  min-width: 26px;
+  height: 26px;
+  place-items: center;
+  border-radius: 7px;
+  color: #85868d;
+  transition: background 140ms ease, color 140ms ease;
+}
+
+section.aspira-history-content .aspira-history-search-clear:hover {
+  background: rgba(37, 38, 43, 0.07);
+  color: #303139;
+}
+
+section.aspira-history-content .aspira-history-search-clear svg {
+  width: 13px;
+  height: 13px;
+}
+
+section.aspira-history-content .aspira-history-list {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 2px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  margin: 0;
+  padding: 1px 2px 2px 0;
+  list-style: none;
+  overscroll-behavior: contain;
+  scrollbar-color: rgba(74, 76, 83, 0.22) transparent;
+  scrollbar-width: thin;
+}
+
+section.aspira-history-content .aspira-history-list::-webkit-scrollbar {
+  width: 5px;
+}
+
+section.aspira-history-content .aspira-history-list::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(74, 76, 83, 0.18);
+}
+
+section.aspira-history-content .aspira-history-group-label {
+  padding: 11px 8px 5px;
+  color: #96979d;
+  font-size: 9px;
+  font-weight: 650;
+  letter-spacing: 0.055em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+section.aspira-history-content .aspira-history-entry {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  transition: border-color 150ms ease, background 150ms ease, box-shadow 150ms ease;
+}
+
+section.aspira-history-content .aspira-history-entry:hover {
+  border-color: rgba(37, 38, 43, 0.035);
+  background: rgba(37, 38, 43, 0.032);
+}
+
+section.aspira-history-content .aspira-history-entry.is-active {
+  border-color: rgba(37, 38, 43, 0.06);
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: 0 1px 2px rgba(32, 33, 38, 0.035);
+}
+
+section.aspira-history-content .aspira-history-entry-main {
+  display: flex;
+  min-width: 0;
+  min-height: 44px;
+  align-items: center;
+  gap: 1px;
+}
+
+section.aspira-history-content .aspira-history-select {
+  display: flex;
+  min-width: 0;
+  min-height: 42px;
+  flex: 1 1 auto;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  overflow: hidden;
+  padding: 6px 5px 6px 9px;
+  border-radius: 9px;
+  background: transparent;
+  text-align: left;
+}
+
+section.aspira-history-content .aspira-history-select:disabled,
+section.aspira-history-content .aspira-history-delete:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+section.aspira-history-content .aspira-history-title {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
+  overflow: hidden;
+  color: #505159;
+  font-size: 10.5px;
+  font-weight: 530;
+  line-height: 1.3;
+}
+
+section.aspira-history-content .aspira-history-title-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+section.aspira-history-content .aspira-history-active-dot {
+  display: block;
+  width: 5px;
+  min-width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: transparent;
+}
+
+section.aspira-history-content .aspira-history-entry.is-active .aspira-history-title {
+  color: #292a31;
+  font-weight: 640;
+}
+
+section.aspira-history-content .aspira-history-entry.is-active .aspira-history-active-dot {
+  background: #7469be;
+  box-shadow: 0 0 0 3px rgba(116, 105, 190, 0.11);
+}
+
+section.aspira-history-content .aspira-history-date {
+  padding-left: 12px;
+  color: #96979e;
+  font-size: 9px;
+  font-weight: 450;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+}
+
+section.aspira-history-content .aspira-history-delete {
+  display: grid;
+  width: 32px;
+  min-width: 32px;
+  height: 34px;
+  place-items: center;
+  border-radius: 8px;
+  color: #93949a;
+  opacity: 0;
+  transition: background 140ms ease, color 140ms ease, opacity 140ms ease;
+}
+
+section.aspira-history-content .aspira-history-entry:hover .aspira-history-delete,
+section.aspira-history-content .aspira-history-entry:focus-within .aspira-history-delete {
+  opacity: 1;
+}
+
+section.aspira-history-content .aspira-history-delete:hover {
+  background: rgba(174, 55, 67, 0.09);
+  color: #a23743;
+}
+
+section.aspira-history-content .aspira-history-delete svg {
+  width: 14px;
+  height: 14px;
+  stroke-width: 1.8;
+}
+
+section.aspira-history-content .aspira-history-empty {
+  display: flex;
+  min-height: 154px;
+  flex: 1 0 auto;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  margin: 8px 2px;
+  padding: 18px 14px;
+  border: 1px dashed rgba(42, 43, 49, 0.12);
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.36);
+  color: #85868d;
+  text-align: center;
+}
+
+section.aspira-history-content .aspira-history-empty-icon {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border: 1px solid rgba(42, 43, 49, 0.06);
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.82);
+  color: #77717f;
+}
+
+section.aspira-history-content .aspira-history-empty-icon svg {
+  width: 15px;
+  height: 15px;
+  stroke-width: 1.7;
+}
+
+section.aspira-history-content .aspira-history-empty-copy {
+  display: flex;
+  max-width: 230px;
+  flex-direction: column;
+  gap: 4px;
+}
+
+section.aspira-history-content .aspira-history-empty-copy strong {
+  color: #4b4c53;
+  font-size: 10px;
+  font-weight: 640;
+}
+
+section.aspira-history-content .aspira-history-empty-copy > span {
+  color: #898a91;
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+section.aspira-history-content .aspira-history-storage-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  margin: 0;
+  padding: 10px 6px 0;
+  border-top: 1px solid rgba(37, 38, 43, 0.065);
+  color: #96979e;
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+section.aspira-history-content .aspira-history-storage-note svg {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+  margin-top: 1px;
+  stroke-width: 1.8;
+}
+
+section.aspira-history-content .aspira-history-storage-note.has-error {
+  border-color: rgba(168, 95, 47, 0.18);
+  color: #99633e;
+}
+
+section.aspira-history-content .aspira-history-storage-note.has-error svg {
+  color: #b47547;
+}
+
+section.aspira-history-content button:focus-visible,
+section.aspira-history-content input:focus-visible {
+  outline: 2px solid rgba(89, 82, 167, 0.68);
+  outline-offset: 2px;
+}
+
+@media (hover: none), (pointer: coarse) {
+  section.aspira-history-content .aspira-history-delete {
+    opacity: 1;
+  }
+}
+
+@media (max-width: 720px) {
+  .aspira-mobile-history-dialog section.aspira-history-content {
+    width: 100%;
+    min-height: 0;
+    margin: 12px 0 0;
+    gap: 12px;
+  }
+
+  .aspira-mobile-history-dialog section.aspira-history-content .aspira-history-heading {
+    min-height: 42px;
+  }
+
+  .aspira-mobile-history-dialog section.aspira-history-content .aspira-history-heading h2 {
+    font-size: 12px;
+  }
+
+  .aspira-mobile-history-dialog section.aspira-history-content .aspira-new-chat-button {
+    min-height: 40px;
+    padding: 0 11px;
+    font-size: 11px;
+  }
+
+  .aspira-mobile-history-dialog section.aspira-history-content .aspira-history-search {
+    min-height: 44px;
+  }
+
+  .aspira-mobile-history-dialog section.aspira-history-content .aspira-history-search input {
+    min-height: 42px;
+    font-size: 12px;
+  }
+
+  .aspira-mobile-history-dialog section.aspira-history-content .aspira-history-group-label {
+    padding-top: 13px;
+    font-size: 10px;
+  }
+
+  .aspira-mobile-history-dialog section.aspira-history-content .aspira-history-entry-main {
+    min-height: 50px;
+  }
+
+  .aspira-mobile-history-dialog section.aspira-history-content .aspira-history-select {
+    min-height: 48px;
+  }
+
+  .aspira-mobile-history-dialog section.aspira-history-content .aspira-history-title {
+    font-size: 12px;
+  }
+
+  .aspira-mobile-history-dialog section.aspira-history-content .aspira-history-date {
+    font-size: 10px;
+  }
+
+  .aspira-mobile-history-dialog section.aspira-history-content .aspira-history-delete {
+    width: 42px;
+    min-width: 42px;
+    height: 42px;
+  }
+
+  .aspira-mobile-history-dialog section.aspira-history-content .aspira-history-delete svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  .aspira-mobile-history-dialog section.aspira-history-content .aspira-history-empty {
+    min-height: 190px;
+    margin-top: 4px;
+  }
+
+  .aspira-mobile-history-dialog section.aspira-history-content .aspira-history-storage-note {
+    padding-top: 12px;
+    font-size: 10px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  section.aspira-history-content *,
+  section.aspira-history-content *::before,
+  section.aspira-history-content *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}

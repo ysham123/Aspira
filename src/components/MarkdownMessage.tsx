@@ -1,4 +1,6 @@
-import React, { ReactNode } from 'react';
+import React, { ReactNode, useEffect, useState } from 'react';
+import { Check, Clipboard, CircleAlert } from 'lucide-react';
+import './MarkdownMessage.css';
 
 type MessageBlock =
   | { type: 'paragraph' | 'quote'; value: string }
@@ -94,6 +96,52 @@ function parseBlocks(content: string): MessageBlock[] {
   return blocks;
 }
 
+const MessageCodeBlock: React.FC<{ language: string; value: string }> = ({ language, value }) => {
+  const [copyState, setCopyState] = useState<'ready' | 'copied' | 'error'>('ready');
+
+  useEffect(() => {
+    if (copyState === 'ready') return undefined;
+    const timeout = window.setTimeout(() => setCopyState('ready'), 1800);
+    return () => window.clearTimeout(timeout);
+  }, [copyState]);
+
+  const copyCode = async () => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopyState('copied');
+    } catch {
+      setCopyState('error');
+    }
+  };
+
+  const CopyIcon = copyState === 'copied' ? Check : copyState === 'error' ? CircleAlert : Clipboard;
+  const copyLabel = copyState === 'copied' ? 'Copied' : copyState === 'error' ? 'Try again' : 'Copy code';
+
+  return (
+    <div className="aspira-markdown-code-shell">
+      <div className="aspira-markdown-code-header">
+        <span className="aspira-markdown-language">{language || 'Code'}</span>
+        <button
+          type="button"
+          className={`aspira-markdown-copy${copyState === 'error' ? ' is-error' : ''}`}
+          onClick={copyCode}
+          aria-label={copyLabel}
+          title={copyState === 'error' ? 'Clipboard access failed. Try again.' : copyLabel}
+        >
+          <CopyIcon aria-hidden="true" />
+          <span>{copyLabel}</span>
+        </button>
+        <span className="aspira-markdown-visually-hidden" aria-live="polite">
+          {copyState === 'copied' ? 'Code copied to clipboard.' : copyState === 'error' ? 'Could not copy code.' : ''}
+        </span>
+      </div>
+      <pre className="aspira-markdown-code">
+        <code>{value}</code>
+      </pre>
+    </div>
+  );
+};
+
 export const MarkdownMessage: React.FC<{ content: string; className?: string }> = ({
   content,
   className = '',
@@ -102,10 +150,7 @@ export const MarkdownMessage: React.FC<{ content: string; className?: string }> 
     {parseBlocks(content).map((block, index) => {
       if (block.type === 'code') {
         return (
-          <pre key={index} className="aspira-markdown-code">
-            {block.language && <span className="aspira-markdown-language">{block.language}</span>}
-            <code>{block.value}</code>
-          </pre>
+          <MessageCodeBlock key={index} language={block.language} value={block.value} />
         );
       }
       if (block.type === 'heading') {
