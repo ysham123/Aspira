@@ -235,8 +235,12 @@ export const App: React.FC = () => {
     soundEngine.onSpeakingStateChange = (speaking) => {
       setIsAgentSpeaking(speaking);
     };
+    soundEngine.onStatusChange = (message) => {
+      setVoiceStatus(message);
+    };
     return () => {
       soundEngine.onSpeakingStateChange = undefined;
+      soundEngine.onStatusChange = undefined;
     };
   }, []);
 
@@ -617,7 +621,7 @@ export const App: React.FC = () => {
     if (currentRecorder?.state === 'recording') {
       currentRecorder.stop();
       setDuplexVoiceActive(false);
-      setVoiceStatus('Transcribing on this Mac…');
+      setVoiceStatus('Preparing your voice message…');
       return;
     }
 
@@ -627,6 +631,7 @@ export const App: React.FC = () => {
     }
 
     try {
+      soundEngine.stopSpeaking();
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       voiceStreamRef.current = stream;
       voiceChunksRef.current = [];
@@ -651,26 +656,22 @@ export const App: React.FC = () => {
         }
 
         try {
-          const response = await fetch('/api/voice/transcribe', {
-            method: 'POST',
-            headers: { 'Content-Type': audioBlob.type || 'audio/webm' },
-            body: audioBlob,
-          });
-          const data = await response.json();
-          if (!response.ok || !data?.text) {
-            setVoiceStatus(data?.error || 'Local speech recognition is unavailable. Start the voice service in Settings.');
+          setVoiceStatus('Preparing Aspira voice input…');
+          const transcript = await soundEngine.transcribe(audioBlob);
+          if (!transcript) {
+            setVoiceStatus('Aspira could not transcribe this voice message. Try again.');
             return;
           }
-          setLiveTranscript(data.text);
-          setVoiceStatus('Voice input processed locally');
-          await handleRunDirective(data.text, 'voice', true);
+          setLiveTranscript(transcript);
+          setVoiceStatus('Voice message received');
+          await handleRunDirective(transcript, 'voice', true);
         } catch {
-          setVoiceStatus('Could not reach the local speech service. Start it from Settings.');
+          setVoiceStatus('Aspira could not process this voice message. Try again.');
         }
       };
       recorder.start();
       setDuplexVoiceActive(true);
-      setVoiceStatus('Listening on this Mac · click again to send');
+      setVoiceStatus('Listening · click again to send');
     } catch {
       setDuplexVoiceActive(false);
       setVoiceStatus('Microphone access was not granted. Voice input stays off.');
@@ -846,6 +847,15 @@ export const App: React.FC = () => {
             return false;
           }
         }}
+        voiceStatus={voiceStatus}
+        isVoicePlaying={isAgentSpeaking}
+        onPreviewVoice={() => {
+          if (isAgentSpeaking) {
+            soundEngine.stopSpeaking();
+            return;
+          }
+          void soundEngine.speak("Hi, I'm Aspira. I'm here to help you think things through and get useful work done.");
+        }}
       />
 
       {mobileHistoryOpen && (
@@ -901,32 +911,37 @@ export const App: React.FC = () => {
         </div>
 
         <nav className="aspira-sidebar-nav" aria-label="Workspace navigation">
-          <p className="aspira-sidebar-label">Workspace</p>
-          {primaryViews.map((view) => {
-            const Icon = view.icon;
-            const active = spatialMode === view.id;
-            return (
-              <button
-                key={view.id}
-                type="button"
-                onClick={() => switchSpatialMode(view.id)}
-                aria-current={active ? 'page' : undefined}
-                className={`aspira-sidebar-link ${active ? 'is-active' : ''}`}
-              >
-                <Icon className="h-4 w-4" />
-                <span>{view.label}</span>
-              </button>
-            );
-          })}
-          <button
-            type="button"
-            onClick={() => setVaultModalOpen(true)}
-            aria-haspopup="dialog"
-            className="aspira-sidebar-link"
-          >
-            <Sliders className="h-4 w-4" />
-            <span>Connections</span>
-          </button>
+          <div className="aspira-sidebar-nav-group">
+            <p className="aspira-sidebar-label">Workspace</p>
+            {primaryViews.map((view) => {
+              const Icon = view.icon;
+              const active = spatialMode === view.id;
+              return (
+                <button
+                  key={view.id}
+                  type="button"
+                  onClick={() => switchSpatialMode(view.id)}
+                  aria-current={active ? 'page' : undefined}
+                  className={`aspira-sidebar-link ${active ? 'is-active' : ''}`}
+                >
+                  <Icon className="h-4 w-4" />
+                  <span>{view.label}</span>
+                </button>
+              );
+            })}
+          </div>
+          <div className="aspira-sidebar-nav-group">
+            <p className="aspira-sidebar-label">Manage</p>
+            <button
+              type="button"
+              onClick={() => setVaultModalOpen(true)}
+              aria-haspopup="dialog"
+              className="aspira-sidebar-link"
+            >
+              <Sliders className="h-4 w-4" />
+              <span>Connections</span>
+            </button>
+          </div>
         </nav>
 
         <ConversationHistoryPanel
@@ -962,10 +977,9 @@ export const App: React.FC = () => {
                 <CurrentViewIcon className="h-4 w-4" />
               </span>
               <div className="min-w-0">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">Personal workspace</p>
-                <p className="mt-0.5 truncate text-sm font-semibold tracking-[-0.02em] text-slate-800">
-                  {currentView.label}
-                  <span className="ml-2 font-normal text-slate-500">· {spatialMode === 'nexus' ? conversationLabel : 'Local project workspace'}</span>
+                <p className="aspira-topbar-eyebrow">{currentView.label}</p>
+                <p className="aspira-topbar-title">
+                  {spatialMode === 'nexus' ? conversationLabel : 'Local project workspace'}
                 </p>
               </div>
             </div>
@@ -1018,7 +1032,7 @@ export const App: React.FC = () => {
               aria-haspopup="dialog"
               aria-label="Connections"
               title="Connections"
-              className="aspira-card-interactive flex min-h-11 items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-medium text-slate-700"
+              className="aspira-card-interactive aspira-topbar-connections flex min-h-11 items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-medium text-slate-700 lg:hidden"
             >
               <Sliders className="h-3.5 w-3.5" />
               <span className="aspira-connect-label hidden min-[560px]:inline">Connections</span>
@@ -1178,12 +1192,15 @@ export const App: React.FC = () => {
               type="button"
               onClick={toggleVoiceInput}
               aria-pressed={duplexVoiceActive}
+              aria-label={duplexVoiceActive ? 'Finish and send voice message' : 'Aspira voice input'}
               className="aspira-voice-control flex shrink-0 items-center gap-2 text-xs text-slate-600"
-              title="Record a voice message locally"
+              title={duplexVoiceActive
+                ? 'Finish and send your voice message.'
+                : 'Aspira voice input. Microphone access begins only after you press this control.'}
             >
               <Mic className={`h-4 w-4 ${duplexVoiceActive ? 'text-emerald-600' : 'text-slate-500'}`} />
               <span className="hidden sm:inline text-[11px] font-medium">
-                {duplexVoiceActive ? 'Stop recording' : 'Voice'}
+                {duplexVoiceActive ? 'Stop & send' : 'Voice input'}
               </span>
             </button>
 

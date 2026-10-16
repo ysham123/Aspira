@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   AlertTriangle,
+  Check,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
@@ -10,11 +11,11 @@ import {
   Lock,
   Plus,
   RefreshCw,
+  Terminal,
   Volume2,
   X,
 } from 'lucide-react';
 import './PlugAndPlayVaultModal.css';
-import { soundEngine } from '../audio/soundEngine';
 import {
   ModelPluginManifest,
   PasskeyProfile,
@@ -36,6 +37,9 @@ interface PlugAndPlayVaultModalProps {
   onUpdatePasskeyPhrase: (id: string, newPhrase: string) => void;
   apiKeys: Record<string, string>;
   onSaveApiKeys: (keys: Record<string, string>) => boolean;
+  voiceStatus: string;
+  isVoicePlaying: boolean;
+  onPreviewVoice: () => void;
 }
 
 type VaultTab = 'subscriptions' | 'models' | 'voice' | 'passkeys';
@@ -77,6 +81,9 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
   onUpdatePasskeyPhrase,
   apiKeys,
   onSaveApiKeys,
+  voiceStatus,
+  isVoicePlaying,
+  onPreviewVoice,
 }) => {
   const [activeTab, setActiveTab] = useState<VaultTab>('subscriptions');
   const [subscriptions, setSubscriptions] = useState<Record<string, SubscriptionStatus>>({});
@@ -94,17 +101,9 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
   const [baseUrl, setBaseUrl] = useState('http://localhost:11434/v1');
   const [apiModelId, setApiModelId] = useState('llama3.2:latest');
 
-  // Local API Keys & Local Neural Voice TTS state
+  // Local API key state
   const [localKeys, setLocalKeys] = useState<Record<string, string>>(apiKeys);
   const [keysSavedBanner, setKeysSavedBanner] = useState(false);
-  const [localTtsUrl, setLocalTtsUrl] = useState<string>(
-    soundEngine.getLocalTtsEndpoint() || 'http://127.0.0.1:8000/v1/audio/speech'
-  );
-  const [localTtsModel, setLocalTtsModel] = useState(soundEngine.getLocalTtsModel());
-  const [localTtsVoice, setLocalTtsVoice] = useState(soundEngine.getLocalTtsVoice());
-  const [localTtsInstruct, setLocalTtsInstruct] = useState(soundEngine.getLocalTtsInstruct());
-  const [ttsSavedBanner, setTtsSavedBanner] = useState(false);
-  const [ttsStatus, setTtsStatus] = useState('');
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const subscriptionRequestIdRef = useRef(0);
 
@@ -255,18 +254,6 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
     setKeysSaveError(saved ? '' : 'Keys are active for this session, but browser storage could not save them.');
   };
 
-  const handleSaveTtsEndpoint = async () => {
-    soundEngine.setLocalTtsEndpoint(localTtsUrl.trim());
-    soundEngine.setLocalTtsModel(localTtsModel.trim());
-    soundEngine.setLocalTtsVoice(localTtsVoice.trim());
-    soundEngine.setLocalTtsInstruct(localTtsInstruct.trim());
-    setTtsStatus('Generating a short sample with the local voice model…');
-    const ready = await soundEngine.speak('Aspira is ready to work with you.');
-    setTtsSavedBanner(ready);
-    setTtsStatus(ready ? 'Local voice is ready.' : 'Could not reach the local voice model. Start it with npm run voice:local.');
-    setTimeout(() => setTtsSavedBanner(false), 2600);
-  };
-
   const sessionPhrase = passkeyProfiles[0]?.phrase || '';
   const providerIds = ['claude', 'gpt', 'grok', 'argon'] as const;
   const signedInProviderCount = providerIds.filter((id) =>
@@ -400,10 +387,10 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
             <div className="space-y-6">
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <div>
-                  <p className="aspira-vault-section-kicker">MODEL ACCESS</p>
-                  <h3 className="text-xl font-semibold text-white">Provider connections</h3>
-                  <p className="text-xs text-slate-400 mt-0.5">
-                    Connect a supported local CLI or add an API key. Aspira can only use providers it can access here; a consumer subscription or desktop app alone does not connect a model.
+                  <p className="aspira-vault-section-kicker">CONNECTIONS</p>
+                  <h3 className="text-xl font-semibold text-white">Connect your AI providers</h3>
+                  <p className="aspira-vault-intro-copy text-xs text-slate-400 mt-0.5">
+                    Sign in through a supported local CLI, or add a direct API key. A provider app subscription or desktop sign-in alone does not connect an account to Aspira.
                   </p>
                 </div>
                 <div className="aspira-vault-header-actions">
@@ -519,6 +506,16 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
                     : connectionLabel === 'Not detected' || connectionLabel === 'CLI not found'
                     ? 'not-detected'
                     : 'available';
+                  const StatusIcon = hasSavedApiKey
+                    ? KeyRound
+                    : connectionLabel === 'Signed in'
+                    ? Check
+                    : connectionLabel === 'Status unknown'
+                    ? AlertTriangle
+                    : cliAvailable
+                    ? Terminal
+                    : KeyRound;
+                  const AccessIcon = hasSavedApiKey ? KeyRound : cliAvailable ? Terminal : KeyRound;
 
                   return (
                     <div
@@ -541,11 +538,13 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
                             className={`aspira-connection-badge text-[10px] font-medium px-2.5 py-1 rounded-full border ${connectionColor}`}
                             data-state={connectionState}
                           >
+                            <StatusIcon className="aspira-connection-status-icon" aria-hidden="true" />
                             {connectionLabel}
                           </span>
                         </div>
 
-                        <div className="aspira-provider-detail text-xs leading-5 text-slate-300 bg-black/30 rounded-xl px-3 py-2 border border-white/[0.05]">
+                        <div className="aspira-provider-detail text-xs leading-5 text-slate-300">
+                          <AccessIcon className="aspira-provider-access-icon" aria-hidden="true" />
                           {connectionDetail}
                         </div>
                       </div>
@@ -799,69 +798,31 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
           )}
 
           {activeTab === 'voice' && (
-            <div className="space-y-5">
-              <div>
-                <h3 className="text-sm font-semibold text-white">Private voice, on your Mac</h3>
-                <p className="mt-1 max-w-2xl text-xs leading-5 text-slate-400">
-                  Aspira streams speech from an open Qwen3-TTS model running locally through MLX-Audio. The default 1.7B model uses about 2.7 GB of weights and downloads when you first play a sample. Choose the smaller 0.6B model ID if you prefer a lighter option.
-                </p>
+            <div className="aspira-vault-voice-panel">
+              <div className="aspira-vault-voice-heading">
+                <div className="aspira-vault-voice-mark" aria-hidden="true">
+                  <Volume2 className="h-5 w-5" />
+                </div>
+                <div>
+                  <p className="aspira-vault-section-kicker">BUILT INTO ASPIRA</p>
+                  <h3>Voice is part of the conversation</h3>
+                  <p className="aspira-vault-voice-copy">
+                    Aspira handles speech in the browser. There is no separate service, account, or endpoint to connect. Voice models download automatically on first use and stay cached in your browser.
+                  </p>
+                </div>
               </div>
-              <div className="rounded-2xl border border-white/[0.08] bg-white/[0.025] p-5 space-y-4">
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                  <label className="space-y-1.5 text-xs text-slate-400">
-                    <span>Local speech endpoint</span>
-                    <input
-                      type="url"
-                      value={localTtsUrl}
-                      onChange={(event) => setLocalTtsUrl(event.target.value)}
-                      placeholder="http://127.0.0.1:8000/v1/audio/speech"
-                      className="w-full rounded-xl border border-white/10 bg-black/30 px-3.5 py-2.5 font-mono text-xs text-white outline-none focus:border-white/25"
-                    />
-                  </label>
-                  <label className="space-y-1.5 text-xs text-slate-400">
-                    <span>Voice model</span>
-                    <input
-                      value={localTtsModel}
-                      onChange={(event) => setLocalTtsModel(event.target.value)}
-                      className="w-full rounded-xl border border-white/10 bg-black/30 px-3.5 py-2.5 font-mono text-xs text-white outline-none focus:border-white/25"
-                    />
-                  </label>
-                  <label className="space-y-1.5 text-xs text-slate-400">
-                    <span>Speaker preset</span>
-                    <input
-                      value={localTtsVoice}
-                      onChange={(event) => setLocalTtsVoice(event.target.value)}
-                      className="w-full rounded-xl border border-white/10 bg-black/30 px-3.5 py-2.5 text-sm text-white outline-none focus:border-white/25"
-                    />
-                  </label>
-                  <label className="space-y-1.5 text-xs text-slate-400 md:col-span-2">
-                    <span>Speaking style</span>
-                    <textarea
-                      value={localTtsInstruct}
-                      onChange={(event) => setLocalTtsInstruct(event.target.value)}
-                      maxLength={1000}
-                      rows={3}
-                      placeholder="Describe a natural speaking style for this voice…"
-                      className="w-full resize-y rounded-xl border border-white/10 bg-black/30 px-3.5 py-2.5 text-sm leading-6 text-white outline-none focus:border-white/25"
-                    />
-                    <span className="block text-[11px] leading-5 text-slate-500">This direction is sent with each local speech request. Try changing pace, warmth, or emphasis to suit your voice.</span>
-                  </label>
-                </div>
-                <div className="flex flex-col gap-3 border-t border-white/[0.07] pt-4 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <p className="text-xs text-slate-300">Start the local service in Terminal:</p>
-                    <code className="mt-1 block text-xs text-indigo-200">npm run voice:local</code>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleSaveTtsEndpoint}
-                    className="rounded-xl bg-white px-4 py-2.5 text-xs font-medium text-slate-950 transition hover:bg-slate-200"
-                  >
-                    {ttsSavedBanner ? 'Sample played' : 'Save and play sample'}
-                  </button>
-                </div>
-                {ttsStatus && <p role="status" className="text-xs text-slate-400">{ttsStatus}</p>}
-                <p className="text-[11px] leading-5 text-slate-500">Voice playback stays off unless you start a voice conversation or choose Speak on a reply. Aspira does not fall back to the browser’s synthetic voice.</p>
+              <div className="aspira-vault-voice-status" role="status">
+                <span className="aspira-vault-voice-status-label">{voiceStatus === 'Voice input is off' ? 'Included with Aspira' : voiceStatus || 'Ready when you are'}</span>
+                <p>English speech and transcription run in your browser after the voice models are ready. Audio stays in your browser; the transcript is sent to your selected model for a reply.</p>
+                <button
+                  type="button"
+                  onClick={onPreviewVoice}
+                  className="aspira-vault-voice-preview"
+                  aria-label={isVoicePlaying ? 'Stop Aspira voice playback' : 'Preview Aspira voice'}
+                >
+                  <Volume2 className="h-4 w-4" aria-hidden="true" />
+                  {isVoicePlaying ? 'Stop speaking' : 'Preview voice'}
+                </button>
               </div>
             </div>
           )}

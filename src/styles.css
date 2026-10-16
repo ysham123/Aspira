@@ -139,23 +139,24 @@ select:focus-visible {
 }
 
 .aspira-sidebar {
-  width: 224px;
-  min-width: 224px;
-  flex: 0 0 224px;
+  width: 244px;
+  min-width: 244px;
+  flex: 0 0 244px;
   flex-direction: column;
-  padding: 20px 14px 14px;
+  padding: 18px 13px 13px;
   border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-panel);
-  background: rgba(255, 255, 255, 0.72);
-  box-shadow: 0 12px 38px -34px rgba(30, 32, 39, 0.24);
-  backdrop-filter: blur(18px);
+  border-radius: 20px;
+  background: rgba(250, 249, 246, 0.9);
+  box-shadow: 0 10px 32px -30px rgba(30, 32, 39, 0.2);
+  backdrop-filter: blur(14px);
 }
 
 .aspira-sidebar-brand {
   display: flex;
   align-items: center;
   gap: 11px;
-  padding: 0 8px 24px;
+  padding: 1px 8px 17px;
+  border-bottom: 1px solid rgba(31, 36, 44, 0.075);
 }
 
 .aspira-brand-mark {
@@ -173,20 +174,46 @@ select:focus-visible {
 .aspira-sidebar-nav {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 13px;
+  margin-top: 14px;
+}
+
+.aspira-sidebar-nav-group {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
 }
 
 .aspira-sidebar-label {
   padding: 0 10px;
-  color: #8b8c94;
+  color: #82838c;
   font-size: 10px;
   font-weight: 650;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.085em;
   text-transform: uppercase;
 }
 
 .aspira-sidebar-nav .aspira-sidebar-label {
-  margin: 0 0 7px;
+  margin: 0 0 3px;
+}
+
+.aspira-topbar-eyebrow {
+  color: #777982;
+  font-size: 10px;
+  font-weight: 570;
+  line-height: 1.25;
+}
+
+.aspira-topbar-title {
+  overflow: hidden;
+  margin-top: 2px;
+  color: #282930;
+  font-size: 13px;
+  font-weight: 640;
+  letter-spacing: -0.018em;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .aspira-history-content {
@@ -506,48 +533,72 @@ select:focus-visible {
 }
 
 .aspira-sidebar-link {
+  position: relative;
   display: flex;
-  min-height: 40px;
+  min-height: 41px;
   align-items: center;
-  gap: 10px;
-  padding: 0 10px;
+  gap: 11px;
+  padding: 0 11px;
   border: 1px solid transparent;
-  border-radius: 12px;
+  border-radius: 10px;
   background: transparent;
-  color: #656770;
+  color: #5c5e67;
   text-align: left;
   font-size: 12px;
-  font-weight: 520;
+  font-weight: 540;
   transition: background 140ms ease, color 140ms ease, border-color 140ms ease;
 }
 
 .aspira-sidebar-link:hover {
-  background: rgba(31, 36, 44, 0.045);
+  background: rgba(31, 36, 44, 0.04);
   color: #282930;
 }
 
 .aspira-sidebar-link.is-active {
-  border-color: rgba(31, 36, 44, 0.075);
-  background: #fff;
-  color: #282930;
-  box-shadow: 0 3px 12px -10px rgba(30, 34, 42, 0.35);
+  border-color: rgba(98, 90, 193, 0.08);
+  background: #f0eff9;
+  color: #353351;
+  box-shadow: none;
+}
+
+.aspira-sidebar-link.is-active::before {
+  position: absolute;
+  top: 11px;
+  bottom: 11px;
+  left: 0;
+  width: 3px;
+  border-radius: 0 4px 4px 0;
+  background: var(--accent-primary);
+  content: '';
 }
 
 .aspira-sidebar-link.is-active svg {
   color: #6258c9;
 }
 
+.aspira-sidebar-link svg {
+  flex: 0 0 auto;
+  color: #777982;
+  stroke-width: 1.8;
+}
+
 .aspira-sidebar-footer {
   display: flex;
   flex-direction: column;
   margin-top: auto;
-  padding: 15px 9px 5px;
+  padding: 13px 9px 4px;
   border-top: 1px solid rgba(31, 36, 44, 0.085);
 }
 
 .aspira-sidebar-footer .aspira-sidebar-label {
   padding: 0;
   margin-bottom: 5px;
+}
+
+.aspira-sidebar > section.aspira-history-content {
+  margin: 13px 0 10px;
+  padding-top: 13px;
+  border-top: 1px solid rgba(31, 36, 44, 0.075);
 }
 
 .aspira-app-content {

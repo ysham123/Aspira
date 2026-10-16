@@ -2,21 +2,22 @@
   "name": "aspira",
   "version": "1.0.0",
   "license": "MIT",
-  "description": "Open-source conversational personal agent workspace with local tools and optional on-device voice",
+  "description": "Open-source conversational personal agent workspace with private in-browser voice",
   "type": "module",
   "scripts": {
     "dev": "node scripts/dev.js",
     "client": "vite --host 127.0.0.1 --port 5173 --strictPort",
     "server": "node server/index.js",
-    "voice:local": "uv tool run --python 3.12 --prerelease=allow --from 'mlx-audio[server,tts]' mlx_audio.server --host 127.0.0.1 --port 8000",
     "desktop": "node scripts/launch-desktop.js",
     "build": "vite build",
     "test": "node --test server/*.test.js",
     "preview": "vite preview"
   },
   "dependencies": {
+    "@huggingface/transformers": "^4.3.1",
     "@tailwindcss/vite": "^4.3.3",
     "express": "^5.1.0",
+    "kokoro-js": "^1.2.1",
     "lucide-react": "^0.511.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
@@ -31,5 +32,10 @@
     "@vitejs/plugin-react": "^4.4.1",
     "typescript": "^5.8.3",
     "vite": "^6.3.5"
+  },
+  "overrides": {
+    "kokoro-js": {
+      "@huggingface/transformers": "^4.3.1"
+    }
   }
 }

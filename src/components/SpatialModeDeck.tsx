@@ -279,26 +279,43 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
     return (
       <div className="aspira-studio-layout flex h-full w-full min-w-0 gap-4 overflow-hidden">
         <div className="aspira-conversation-column flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-hidden">
-          <div className="flex shrink-0 items-end justify-between gap-4 px-1">
-            <div>
-              <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-slate-500">Your workspace</p>
-              <h1 className="mt-1 text-2xl font-semibold tracking-tight text-white">Studio</h1>
-              <p className="mt-1 text-xs text-slate-400">Ask, explore, and take action from one conversation.</p>
+          <div className="aspira-conversation-heading">
+            <div className="aspira-conversation-heading-copy">
+              <p className="aspira-conversation-kicker">PERSONAL WORKSPACE</p>
+              <h1 className="aspira-conversation-title">Conversation</h1>
+              <p className="aspira-conversation-subtitle">Ask naturally. Think together. Get useful work done.</p>
             </div>
-            <div className="flex items-center gap-2 text-right">
-              {voiceStatus !== 'Voice input is off' && <span className={`h-2 w-2 rounded-full ${isAgentSpeaking ? 'bg-indigo-300 animate-pulse' : duplexVoiceActive ? 'bg-emerald-300 animate-pulse' : 'bg-slate-500'}`} />}
-              <div>
-                {voiceStatus !== 'Voice input is off' && <p role="status" className="text-[11px] text-slate-300">{voiceStatus}</p>}
-                {liveTranscript && <p className="mt-0.5 max-w-[300px] truncate text-[10px] text-slate-500">“{liveTranscript}”</p>}
-              </div>
-              {isAgentSpeaking && <button onClick={() => soundEngine.stopSpeaking()} className="ml-2 rounded-lg border border-white/10 px-2.5 py-1.5 text-[11px] text-slate-300 hover:bg-white/[0.06]">Stop voice</button>}
+            <div className="aspira-conversation-controls">
+              {selectedModelNames.length > 0 ? (
+                <div className="aspira-conversation-model-state" aria-label={`${selectedModelNames.join(', ')} selected for replies`}>
+                  <span className="aspira-conversation-presence-dot" aria-hidden="true" />
+                  <span className="aspira-conversation-model-state-label">Selected</span>
+                  <span className="aspira-conversation-model-divider" aria-hidden="true" />
+                  <span className="aspira-conversation-model-names">{selectedModelNames.join(' · ')}</span>
+                </div>
+              ) : (
+                <div className="aspira-conversation-model-state is-local" aria-label="Local actions available; no model selected">
+                  <span className="aspira-conversation-presence-dot" aria-hidden="true" />
+                  <span className="aspira-conversation-model-state-label">Local actions ready</span>
+                </div>
+              )}
+              {voiceStatus !== 'Voice input is off' && (
+                <div className={`aspira-voice-presence${isAgentSpeaking ? ' is-speaking' : duplexVoiceActive ? ' is-listening' : ''}`} role="status" aria-live="polite">
+                  <span className="aspira-voice-presence-dot" aria-hidden="true" />
+                  <span className="aspira-voice-presence-copy">
+                    <span>{voiceStatus}</span>
+                    {liveTranscript && <span className="aspira-voice-transcript">“{liveTranscript}”</span>}
+                  </span>
+                </div>
+              )}
+              {isAgentSpeaking && <button type="button" onClick={() => soundEngine.stopSpeaking()} className="aspira-voice-stop">Stop voice</button>}
               <button
                 type="button"
                 onClick={() => setContextExpanded((expanded) => !expanded)}
                 aria-controls="workspace-context-rail"
                 aria-expanded={contextExpanded}
                 aria-label={contextExpanded ? 'Hide workspace context' : 'Show workspace context'}
-                className="aspira-context-toggle flex min-h-11 min-w-11 items-center gap-1.5 whitespace-nowrap rounded-xl px-3 py-2 text-xs font-medium"
+                className="aspira-context-toggle aspira-conversation-context-toggle flex min-h-11 min-w-11 items-center gap-1.5 whitespace-nowrap rounded-xl px-3 py-2 text-xs font-medium"
               >
                 <Layers className="h-3.5 w-3.5" />
                 <span className="hidden sm:inline">{contextExpanded ? 'Hide context' : 'Show context'}</span>
@@ -311,44 +328,44 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
           <div
             ref={conversationScrollRef}
             onScroll={handleConversationScroll}
-            className="aspira-conversation-surface flex flex-1 flex-col gap-5 overflow-y-auto p-6 custom-scrollbar"
+            className="aspira-conversation-surface aspira-conversation-feed flex flex-1 flex-col overflow-y-auto custom-scrollbar"
           >
-            {conversationTurns.length === 0 && (
-              <section className="aspira-empty-state mx-auto flex w-full max-w-2xl flex-col justify-start py-4" aria-labelledby="aspira-empty-title">
-                <div className="flex flex-wrap items-center gap-2">
-                  <p className="aspira-empty-eyebrow text-[11px] font-semibold uppercase tracking-[0.14em] text-indigo-300">A good place to begin</p>
-                  <span className="inline-flex min-h-7 items-center gap-1.5 rounded-full border border-slate-200/80 bg-white/70 px-2.5 text-[10px] font-medium text-slate-500">
-                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
+            {conversationTurns.length === 0 && !isExecuting && (
+              <section className="aspira-empty-state" aria-labelledby="aspira-empty-title">
+                <div className="aspira-empty-copy">
+                  <p className="aspira-empty-eyebrow">A GOOD PLACE TO BEGIN</p>
+                  <h2 id="aspira-empty-title" className="aspira-empty-title">What would you like to work through?</h2>
+                  <p className="aspira-empty-intro">
+                    Start with a question, an idea, or something you want done on this Mac.
                     {selectedModelNames.length > 0
-                      ? `${selectedModelNames.join(' + ')} ready`
-                      : 'Local actions ready'}
-                  </span>
+                      ? ' Your selected models will respond in this conversation.'
+                      : ' Connect a model for a conversation, or start with a local action.'}
+                  </p>
+                  {selectedModelNames.length > 0 && (
+                    <div className="aspira-empty-agents" aria-label={`Models selected for this chat: ${selectedModelNames.join(', ')}`}>
+                      <span className="aspira-empty-agents-label">SELECTED FOR THIS CHAT</span>
+                      {selectedModelNames.map((name) => <span className="aspira-empty-agent" key={name}>{name}</span>)}
+                    </div>
+                  )}
                 </div>
-                <h2 id="aspira-empty-title" className="aspira-empty-title mt-3 max-w-xl text-3xl font-semibold leading-tight tracking-tight text-white sm:text-4xl">What would you like to get done?</h2>
-                <p className="aspira-empty-intro mt-3 max-w-lg text-sm leading-6 text-slate-400">
-                  Ask a question, think through an idea, or ask Aspira to help with something on this Mac.
-                  {selectedModelNames.length > 0
-                    ? ` Your selected models are ${selectedModelNames.join(' and ')}.`
-                    : ' Connect a model for conversation, or start with a local action.'}
-                </p>
                 {selectedModelNames.length === 0 && (
                   <button type="button" className="aspira-empty-connect" onClick={onOpenConnections}>
                     <Plus className="h-4 w-4" aria-hidden="true" />
                     Connect a model
                   </button>
                 )}
-                <div className="aspira-empty-prompts mt-6 grid gap-2 sm:grid-cols-2" aria-label="Suggested things to try">
+                <div className="aspira-empty-prompts" aria-label="Suggested things to try">
                   {[
                     { icon: Brain, title: 'Get oriented', detail: 'Understand this project and find a useful next step.', prompt: 'Summarize this workspace and tell me what I should work on next.' },
                     { icon: Cpu, title: 'Check this Mac', detail: 'See current CPU, memory, and battery status.', prompt: 'Check my Mac CPU, memory, and battery status.' },
                     { icon: FolderGit2, title: 'Review my changes', detail: 'See what changed in the current Git worktree.', prompt: 'Run git status' },
                     { icon: Globe, title: 'Explore what’s new', detail: 'Catch up on the latest Hacker News stories.', prompt: 'Show me the Hacker News top stories.' },
                   ].map((item) => (
-                    <button key={item.title} type="button" onClick={() => onRunPrompt(item.prompt)} className="aspira-empty-prompt group flex items-start gap-2.5 px-3 py-2.5 text-left transition">
-                      <item.icon className="mt-0.5 h-4 w-4 shrink-0 text-indigo-500/80" aria-hidden="true" />
-                      <span className="min-w-0">
-                        <span className="block text-[13px] font-semibold text-slate-200">{item.title}</span>
-                        <span className="mt-1 block text-[10px] leading-4 text-slate-500">{item.detail}</span>
+                    <button key={item.title} type="button" onClick={() => onRunPrompt(item.prompt)} className="aspira-empty-prompt">
+                      <span className="aspira-suggestion-icon"><item.icon aria-hidden="true" /></span>
+                      <span className="aspira-suggestion-copy">
+                        <span className="aspira-suggestion-title">{item.title}</span>
+                        <span className="aspira-suggestion-detail">{item.detail}</span>
                       </span>
                     </button>
                   ))}
@@ -364,14 +381,15 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
               return (
                 <div
                   key={turn.id}
-                  className="aspira-turn mx-auto flex w-full max-w-3xl flex-col gap-3 border-b border-white/[0.06] pb-5 last:border-b-0 last:pb-1"
+                  className="aspira-turn"
                   role="article"
                   aria-label={`Conversation turn ${idx + 1}`}
                 >
                   {/* 1. User Conversational Turn Bubble */}
-                  <div className="flex items-start justify-end gap-3">
-                    <div className="aspira-user-message max-w-[82%] px-4 py-2.5">
-                      <div className="mb-1 flex flex-wrap items-center justify-end gap-x-2 gap-y-1 text-[10px] text-indigo-300/80 font-mono">
+                  <div className="aspira-user-turn">
+                    <div className="aspira-user-message">
+                      <div className="aspira-user-meta">
+                        <span className="aspira-user-author">You</span>
                         <span>
                           {turn.inputModality === 'voice'
                             ? 'Voice'
@@ -380,24 +398,24 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
                             : 'Message'}
                         </span>
                         {turn.vocalEmotion && (
-                          <span className="px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-200">
+                          <span className="aspira-emotion-label">
                             {turn.vocalEmotion}
                           </span>
                         )}
-                        <span>{turn.timestamp}</span>
+                        <time>{turn.timestamp}</time>
                       </div>
-                      <p className="text-[14px] leading-relaxed">{turn.userText}</p>
+                      <p className="aspira-user-copy">{turn.userText}</p>
                     </div>
                   </div>
 
                   {/* Local actions executed during this turn */}
                   {turn.result.executedActions && turn.result.executedActions.length > 0 && (
                     <div
-                      className="aspira-action-receipts flex flex-col gap-2 pl-2"
+                      className="aspira-action-receipts"
                       role="group"
                       aria-label={`${turn.result.executedActions.length} local action ${turn.result.executedActions.length === 1 ? 'receipt' : 'receipts'}`}
                     >
-                      <p className="px-2 text-[10px] font-medium uppercase tracking-[0.12em] text-slate-500">
+                      <p className="aspira-action-section-label">
                         {turn.result.executedActions.length === 1 ? 'Local action' : `${turn.result.executedActions.length} local actions`}
                       </p>
                       {turn.result.executedActions.map((act: AgentActionExecution) => {
@@ -416,12 +434,12 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
                             key={act.id}
                             role="group"
                             aria-label={`${act.title}. ${statusLabel} in ${act.durationMs} milliseconds.`}
-                            className={`aspira-action-card aspira-action-card--${act.status} flex flex-col gap-1.5 rounded-2xl px-4 py-3`}
+                            className={`aspira-action-card aspira-action-card--${act.status}`}
                           >
-                            <div className="flex flex-wrap items-start justify-between gap-2">
-                              <div className="flex min-w-0 items-center gap-2">
-                                <StatusIcon className="aspira-action-status-icon h-4 w-4 shrink-0" aria-hidden="true" />
-                                <span className="aspira-action-title min-w-0 break-words text-[12px] font-semibold">
+                            <div className="aspira-action-card-heading">
+                              <div className="aspira-action-card-title-row">
+                                <StatusIcon className="aspira-action-status-icon" aria-hidden="true" />
+                                <span className="aspira-action-title">
                                   {act.title}
                                 </span>
                               </div>
@@ -447,55 +465,54 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
                   )}
 
                   {/* 3. Multi-Agent Conversational Reply Card */}
-                  <div className="aspira-response-card flex flex-col gap-3 p-4">
+                  <div className="aspira-response-card">
                     <div className="aspira-response-byline">
-                      <span className="aspira-assistant-mark" aria-hidden="true"><Sparkles className="h-3.5 w-3.5" /></span>
-                      <span>Aspira</span>
-                      <span className="text-[11px] font-normal text-slate-500">
+                      <span className="aspira-assistant-mark" aria-hidden="true"><Sparkles /></span>
+                      <span className="aspira-assistant-name">Aspira</span>
+                      <span className="aspira-answer-summary">
                         {answeredByCount > 0
-                          ? `· answered with ${answeredByCount} ${answeredByCount === 1 ? 'model' : 'models'}`
+                          ? `Answered with ${answeredByCount} ${answeredByCount === 1 ? 'model' : 'models'}`
                           : hasLocalActions
-                          ? '· local action'
-                          : '· response'}
+                          ? 'Local action'
+                          : 'Response'}
                       </span>
                     </div>
-                    <div className="flex items-center justify-between gap-2 flex-wrap">
-                      <div className="flex items-center gap-2 flex-wrap" role="group" aria-label="Models and connections used for this response">
+                    <div className="aspira-answer-toolbar">
+                      <div className="aspira-model-provenance" role="group" aria-label="Models and connections used for this response">
                         {turn.result.modelStreams.map((stream) => {
                           const m = models.find((mod) => mod.id === stream.modelId);
                           return (
                             <span
                               key={stream.modelId}
-                              className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-white/[0.05] border border-white/[0.08] text-slate-200"
+                              className="aspira-model-provenance-chip"
                             >
                               <span
-                                className="w-2 h-2 rounded-full"
+                                className="aspira-model-provenance-dot"
                                 style={{ backgroundColor: m?.accentHex || '#6E8EFB' }}
                               />
-                              {stream.codeName}
-                              <span
-                                className={`text-[10px] font-mono ${
+                              <span className="aspira-model-provenance-name">{stream.codeName}</span>
+                              <span className={`aspira-model-provenance-source ${
                                   stream.source === 'PROVIDER_CLI' || stream.source === 'SUBSCRIPTION_OAUTH'
-                                    ? 'text-emerald-300'
-                                    : 'text-slate-400'
+                                    ? 'is-connected'
+                                    : ''
                                 }`}
                               >
                                 {stream.source === 'PROVIDER_CLI' || stream.source === 'SUBSCRIPTION_OAUTH'
-                                  ? '· Provider CLI'
+                                  ? 'Provider CLI'
                                   : stream.source === 'LOCAL_OLLAMA'
-                                  ? '· Ollama Local'
+                                  ? 'Local'
                                   : stream.source === 'LIVE_API'
-                                  ? '· API'
+                                  ? 'API'
                                   : stream.source === 'UNAVAILABLE'
-                                  ? '· Unavailable'
-                                  : `· Local · ${stream.latencyMs}ms`}
+                                  ? 'Unavailable'
+                                  : `Local · ${stream.latencyMs}ms`}
                               </span>
                             </span>
                           );
                         })}
                       </div>
 
-                      <div className="flex items-center gap-2">
+                      <div className="aspira-answer-actions">
                         {turn.result.modelStreams.some((stream) => stream.source !== 'UNAVAILABLE') && <button
                           onClick={() => {
                             onExecuteDirectAction(
@@ -507,10 +524,10 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
                               `Continue "${turn.userText.slice(0, 32)}..." in provider app`
                             );
                           }}
-                          className="px-2.5 py-1 rounded-lg bg-white/[0.04] hover:bg-white/[0.1] border border-white/[0.08] text-[11px] text-slate-300 flex items-center gap-1.5 transition-all"
+                          className="aspira-answer-action"
                           title="Copy this prompt and open the provider app. Review it there before sending."
                         >
-                          <AppWindow className="w-3.5 h-3.5 text-emerald-400" />
+                          <AppWindow aria-hidden="true" />
                           Continue in App
                         </button>}
 
@@ -518,10 +535,10 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
                           onClick={() => {
                             soundEngine.speak(turn.result.spokenReply);
                           }}
-                          className="px-2.5 py-1 rounded-lg bg-white/[0.04] hover:bg-white/[0.1] border border-white/[0.08] text-[11px] text-slate-300 flex items-center gap-1.5 transition-all"
+                          className="aspira-answer-action"
                           title="Speak this response aloud"
                         >
-                          <Volume2 className="w-3.5 h-3.5 text-indigo-400" />
+                          <Volume2 aria-hidden="true" />
                           Speak
                         </button>}
 
@@ -531,16 +548,16 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
                               setExpandedTurnId(expandedTurnId === turn.id ? null : turn.id);
                             }}
                             aria-expanded={showDetails}
-                            className="px-2.5 py-1 rounded-lg bg-white/[0.04] hover:bg-white/[0.1] border border-white/[0.08] text-[11px] text-slate-300 flex items-center gap-1 transition-all"
+                            className="aspira-answer-action"
                           >
                             {showDetails ? (
                               <>
-                                Hide perspectives <ChevronUp className="w-3 h-3" />
+                                Hide perspectives <ChevronUp aria-hidden="true" />
                               </>
                             ) : (
                               <>
-                                View {turn.result.modelStreams.length} perspectives{' '}
-                                <ChevronDown className="w-3 h-3" />
+                                Compare {turn.result.modelStreams.length} perspectives{' '}
+                                <ChevronDown aria-hidden="true" />
                               </>
                             )}
                           </button>
@@ -551,36 +568,35 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
                     {/* Primary Conversational Output */}
                     <MarkdownMessage
                       content={turn.result.synthesizedOutput}
-                      className="text-[14px] text-slate-100 leading-relaxed"
+                      className="aspira-answer-markdown"
                     />
 
                     {/* Expandable Individual Agent Perspectives / Debate / Race / Relay */}
                     {showDetails && (
-                      <div className="pt-3 border-t border-white/[0.06] grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                      <div className="aspira-perspective-grid">
                         {turn.result.modelStreams.map((stream) => {
                           const m = models.find((mod) => mod.id === stream.modelId);
                           return (
                             <div
                               key={stream.modelId}
-                              className="aspira-perspective-card rounded-xl p-3"
+                              className="aspira-perspective-card"
                             >
-                              <div className="flex items-center justify-between mb-1">
-                                <span className="text-xs font-semibold text-white">
+                              <div className="aspira-perspective-heading">
+                                <span className="aspira-perspective-name">
                                   {stream.codeName}{' '}
-                                  <span className="text-[10px] font-normal text-slate-400">
-                                    · {stream.badgeLabel}
+                                  <span className="aspira-perspective-badge">
+                                    {stream.badgeLabel}
                                   </span>
                                 </span>
-                                <span
-                                  className="text-[10px] font-mono"
+                                <span className="aspira-perspective-latency"
                                   style={{ color: m?.accentHex }}
                                 >
-                          {stream.latencyMs}ms response
+                                  {stream.latencyMs}ms
                                 </span>
                               </div>
                               <MarkdownMessage
                                 content={stream.keyInsight}
-                                className="text-xs text-slate-300 leading-relaxed"
+                                className="aspira-perspective-markdown"
                               />
                             </div>
                           );
@@ -592,15 +608,15 @@ export const SpatialModeDeck: React.FC<SpatialModeDeckProps> = ({
                     {isLatest &&
                       turn.result.followUpSuggestions &&
                       turn.result.followUpSuggestions.length > 0 && (
-                        <div className="flex flex-wrap items-center gap-1.5 pt-2">
-                          <span className="text-[10px] font-mono uppercase tracking-wider text-slate-500 mr-1">
-                            Next Actions:
+                        <div className="aspira-follow-up">
+                          <span className="aspira-follow-up-label">
+                            Keep going
                           </span>
                           {turn.result.followUpSuggestions.map((suggestion, sIdx) => (
                             <button
                               key={sIdx}
                               onClick={() => onRunPrompt(suggestion)}
-                              className="px-2.5 py-1 rounded-full bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-400/25 text-[11px] text-indigo-200 transition-all"
+                              className="aspira-follow-up-chip"
                             >
                               {suggestion}
                             </button>

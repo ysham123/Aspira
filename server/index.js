@@ -2,8 +2,6 @@ import express from 'express';
 import os from 'node:os';
 import fs from 'node:fs';
 import path from 'node:path';
-import { Readable } from 'node:stream';
-import { pipeline } from 'node:stream/promises';
 import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
@@ -1762,129 +1760,6 @@ app.post('/api/terminal', (req, res) => {
       timestamp: new Date().toISOString(),
     });
   });
-});
-
-function isLoopbackHttpUrl(value) {
-  try {
-    const url = new URL(value);
-    return (
-      url.protocol === 'http:' &&
-      ['localhost', '127.0.0.1', '[::1]', '::1'].includes(url.hostname) &&
-      !url.username &&
-      !url.password
-    );
-  } catch {
-    return false;
-  }
-}
-
-// Local MLX-Audio TTS bridge. Audio requests stay on the user's machine.
-app.post('/api/tts', async (req, res) => {
-  const {
-    text,
-    endpoint = process.env.LOCAL_TTS_URL || 'http://127.0.0.1:8000/v1/audio/speech',
-    model = 'mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-6bit',
-    voice = 'Ryan',
-    instruct = 'Speak naturally and conversationally, with a warm, relaxed cadence, subtle pitch variation, clear articulation, and restrained emphasis. Sound like a thoughtful person speaking to one person, not an announcer.',
-  } = req.body || {};
-  if (typeof text !== 'string' || !text.trim()) {
-    return res.status(400).json({ error: 'Speech text is required.' });
-  }
-  if (!isLoopbackHttpUrl(endpoint)) {
-    return res.status(400).json({ error: 'Voice endpoint must use localhost.' });
-  }
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 5 * 60 * 1000);
-  const abortWhenClientLeaves = () => {
-    if (!res.writableEnded) controller.abort();
-  };
-  res.on('close', abortWhenClientLeaves);
-
-  try {
-    const r = await fetch(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model,
-        input: text.trim(),
-        voice,
-        instruct: typeof instruct === 'string' ? instruct.slice(0, 1000) : '',
-        stream: true,
-        streaming_interval: 0.32,
-        response_format: 'wav',
-      }),
-      // First use may fetch and load a multi-gigabyte local model. Give the
-      // on-device service time to complete its cold start before failing.
-      signal: controller.signal,
-    });
-    if (r.ok) {
-      res.setHeader('Content-Type', r.headers.get('content-type') || 'audio/wav');
-      res.setHeader('Cache-Control', 'no-store');
-      if (!r.body) return res.status(502).json({ error: 'The local voice service returned no audio.' });
-      await pipeline(Readable.fromWeb(r.body), res);
-      return;
-    }
-    return res.status(502).json({ error: 'The local voice service rejected the request.' });
-  } catch (error) {
-    if (res.headersSent) {
-      if (!res.destroyed) res.destroy(error);
-      return;
-    }
-    return res.status(503).json({
-      error: 'Local voice service is unavailable. Start it with npm run voice:local.',
-    });
-  } finally {
-    clearTimeout(timeout);
-    res.off('close', abortWhenClientLeaves);
-  }
-});
-
-// Local-only speech recognition through the same MLX-Audio server.
-app.post(
-  '/api/voice/transcribe',
-  express.raw({ type: ['audio/webm', 'audio/mp4', 'audio/wav', 'audio/ogg'], limit: '20mb' }),
-  async (req, res) => {
-    if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
-      return res.status(400).json({ error: 'A recorded audio message is required.' });
-    }
-
-    const baseUrl = process.env.LOCAL_MLX_AUDIO_URL || 'http://127.0.0.1:8000';
-    if (!isLoopbackHttpUrl(baseUrl)) {
-      return res.status(400).json({ error: 'Voice endpoint must use localhost.' });
-    }
-
-    try {
-      const url = new URL('/v1/audio/transcriptions', baseUrl);
-      const audioType = String(req.get('content-type') || 'audio/webm').split(';')[0];
-      const form = new FormData();
-      form.append('file', new Blob([req.body], { type: audioType }), audioType.includes('mp4') ? 'voice.m4a' : 'voice.webm');
-      form.append('model', 'mlx-community/whisper-large-v3-turbo-asr-fp16');
-      const response = await fetch(url, {
-        method: 'POST',
-        body: form,
-        signal: AbortSignal.timeout(120000),
-      });
-      if (!response.ok) {
-        return res.status(502).json({ error: 'The local speech service rejected the recording.' });
-      }
-      const data = await response.json();
-      return res.json({ text: typeof data?.text === 'string' ? data.text.trim() : '' });
-    } catch {
-      return res.status(503).json({ error: 'Local speech service is unavailable. Start it with npm run voice:local.' });
-    }
-  }
-);
-
-app.get('/api/voice/status', async (_req, res) => {
-  try {
-    const response = await fetch('http://127.0.0.1:8000/v1/models', {
-      signal: AbortSignal.timeout(1500),
-    });
-    return res.json({ ready: response.ok, engine: response.ok ? 'MLX-Audio' : null });
-  } catch {
-    return res.json({ ready: false, engine: null });
-  }
 });
 
 // ============================================================================

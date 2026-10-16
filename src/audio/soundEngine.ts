@@ -1,173 +1,185 @@
+type VoiceWorkerResponse =
+  | { type: 'status'; requestId: number; message: string }
+  | { type: 'progress'; requestId: number; task: 'speech' | 'transcription'; progress: number | null }
+  | { type: 'audio'; requestId: number; wav: ArrayBuffer }
+  | { type: 'transcription'; requestId: number; text: string }
+  | { type: 'complete'; requestId: number }
+  | { type: 'error'; requestId: number; task: 'speech' | 'transcription'; message: string };
+
+type SpeechWorker = Worker & {
+  postMessage(message: unknown, transfer?: Transferable[]): void;
+};
+
+type PendingSpeech = {
+  requestId: number;
+  resolve: (success: boolean) => void;
+  queue: Promise<void>;
+  done: boolean;
+  activeSources: number;
+  hadAudio: boolean;
+  scheduledUntil: number;
+};
+
 class AspiraVoiceService {
-  public localTtsEndpoint = 'http://127.0.0.1:8000/v1/audio/speech';
-  public localTtsModel = 'mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-6bit';
-  public localTtsVoice = 'Ryan';
-  public localTtsInstruct = 'Speak naturally and conversationally, with a warm, relaxed cadence, subtle pitch variation, clear articulation, and restrained emphasis. Sound like a thoughtful person speaking to one person, not an announcer.';
   public onSpeakingStateChange?: (speaking: boolean) => void;
+  public onStatusChange?: (message: string) => void;
 
   private currentlySpeaking = false;
-  private activeTtsController: AbortController | null = null;
   private activeAudioContext: AudioContext | null = null;
   private activeAudioSources = new Set<AudioBufferSourceNode>();
-  private speechRequestId = 0;
+  private worker: SpeechWorker | null = null;
+  private nextRequestId = 1;
+  private pendingSpeech: PendingSpeech | null = null;
+  private pendingTranscriptions = new Map<number, { resolve: (text: string) => void; reject: (error: Error) => void }>();
   private lastVoiceError = '';
 
-  constructor() {
-    try {
-      if (typeof window === 'undefined') return;
-      this.localTtsEndpoint = localStorage.getItem('aspira_local_tts_url') || this.localTtsEndpoint;
-      this.localTtsModel = localStorage.getItem('aspira_local_tts_model') || this.localTtsModel;
-      this.localTtsVoice = localStorage.getItem('aspira_local_tts_voice') || this.localTtsVoice;
-      this.localTtsInstruct = localStorage.getItem('aspira_local_tts_instruct') || this.localTtsInstruct;
-    } catch {
-      // Keep the defaults when browser storage is unavailable.
-    }
-  }
-
-  public getLocalTtsEndpoint() { return this.localTtsEndpoint; }
-  public getLocalTtsModel() { return this.localTtsModel; }
-  public getLocalTtsVoice() { return this.localTtsVoice; }
-  public getLocalTtsInstruct() { return this.localTtsInstruct; }
   public getLastVoiceError() { return this.lastVoiceError; }
   public isSpeaking() { return this.currentlySpeaking; }
 
-  public setLocalTtsEndpoint(value: string) {
-    this.localTtsEndpoint = value;
-    this.persist('aspira_local_tts_url', value);
+  private ensureWorker(): SpeechWorker {
+    if (this.worker) return this.worker;
+    const worker = new Worker(new URL('./speech.worker.ts', import.meta.url), { type: 'module' }) as SpeechWorker;
+    worker.onmessage = (event: MessageEvent<VoiceWorkerResponse>) => this.handleWorkerMessage(event.data);
+    worker.onerror = () => {
+      this.lastVoiceError = 'Aspira could not start its built-in voice engine.';
+      this.finishSpeech(false);
+      for (const pending of this.pendingTranscriptions.values()) {
+        pending.reject(new Error(this.lastVoiceError));
+      }
+      this.pendingTranscriptions.clear();
+      this.onStatusChange?.(this.lastVoiceError);
+    };
+    this.worker = worker;
+    return worker;
   }
 
-  public setLocalTtsModel(value: string) {
-    this.localTtsModel = value;
-    this.persist('aspira_local_tts_model', value);
+  private handleWorkerMessage(message: VoiceWorkerResponse) {
+    if (message.type === 'status') {
+      if (message.requestId === this.pendingSpeech?.requestId || this.pendingTranscriptions.has(message.requestId)) {
+        this.onStatusChange?.(message.message);
+      }
+      return;
+    }
+
+    if (message.type === 'progress') {
+      const pending = message.task === 'speech'
+        ? this.pendingSpeech?.requestId === message.requestId
+        : this.pendingTranscriptions.has(message.requestId);
+      if (!pending) return;
+      const percent = message.progress === null ? '' : ` (${Math.round(message.progress)}%)`;
+      this.onStatusChange?.(`${message.task === 'speech' ? 'Preparing voice' : 'Preparing voice input'}${percent}…`);
+      return;
+    }
+
+    if (message.type === 'audio') {
+      const pending = this.pendingSpeech;
+      if (!pending || pending.requestId !== message.requestId) return;
+      pending.hadAudio = true;
+      pending.queue = pending.queue.then(() => this.playAudioChunk(message.wav, message.requestId));
+      void pending.queue.then(() => this.finishSpeechIfDrained(message.requestId)).catch((error) => {
+        this.lastVoiceError = error instanceof Error ? error.message : 'Aspira could not play this voice reply.';
+        this.finishSpeech(false);
+      });
+      return;
+    }
+
+    if (message.type === 'transcription') {
+      const pending = this.pendingTranscriptions.get(message.requestId);
+      if (!pending) return;
+      this.pendingTranscriptions.delete(message.requestId);
+      pending.resolve(message.text.trim());
+      return;
+    }
+
+    if (message.type === 'complete') {
+      if (this.pendingSpeech?.requestId === message.requestId) {
+        this.pendingSpeech.done = true;
+        void this.pendingSpeech.queue.then(() => this.finishSpeechIfDrained(message.requestId));
+      }
+      return;
+    }
+
+    if (message.type === 'error') {
+      this.lastVoiceError = message.message;
+      if (message.task === 'speech' && this.pendingSpeech?.requestId === message.requestId) {
+        this.finishSpeech(false);
+      } else if (message.task === 'transcription') {
+        const pending = this.pendingTranscriptions.get(message.requestId);
+        if (pending) {
+          this.pendingTranscriptions.delete(message.requestId);
+          pending.reject(new Error(message.message));
+        }
+      }
+      this.onStatusChange?.(message.message);
+    }
   }
 
-  public setLocalTtsVoice(value: string) {
-    this.localTtsVoice = value;
-    this.persist('aspira_local_tts_voice', value);
+  private async playAudioChunk(wav: ArrayBuffer, requestId: number) {
+    const pending = this.pendingSpeech;
+    if (!pending || pending.requestId !== requestId) return;
+
+    const audioContext = this.activeAudioContext || new AudioContext();
+    this.activeAudioContext = audioContext;
+    if (audioContext.state === 'suspended') await audioContext.resume();
+    const audioBuffer = await audioContext.decodeAudioData(wav.slice(0));
+    if (this.pendingSpeech?.requestId !== requestId) return;
+
+    const source = audioContext.createBufferSource();
+    source.buffer = audioBuffer;
+    source.connect(audioContext.destination);
+    pending.activeSources += 1;
+    this.activeAudioSources.add(source);
+    source.onended = () => {
+      pending.activeSources = Math.max(0, pending.activeSources - 1);
+      this.activeAudioSources.delete(source);
+      this.finishSpeechIfDrained(requestId);
+    };
+    const startsAt = Math.max(audioContext.currentTime + 0.02, pending.scheduledUntil);
+    source.start(startsAt);
+    pending.scheduledUntil = startsAt + audioBuffer.duration;
   }
 
-  public setLocalTtsInstruct(value: string) {
-    this.localTtsInstruct = value;
-    this.persist('aspira_local_tts_instruct', value);
+  private finishSpeechIfDrained(requestId: number) {
+    const pending = this.pendingSpeech;
+    if (!pending || pending.requestId !== requestId || !pending.done || pending.activeSources > 0) return;
+    if (!pending.hadAudio) {
+      this.lastVoiceError = 'Aspira did not produce speech for this reply.';
+      this.finishSpeech(false);
+      return;
+    }
+    this.lastVoiceError = '';
+    this.finishSpeech(true);
   }
 
-  private persist(key: string, value: string) {
-    try { localStorage.setItem(key, value); } catch { /* Keep this session usable. */ }
+  private finishSpeech(success: boolean) {
+    const pending = this.pendingSpeech;
+    if (!pending) return;
+    if (!success) {
+      for (const source of this.activeAudioSources) {
+        try { source.stop(); } catch { /* The source may have ended already. */ }
+      }
+      this.activeAudioSources.clear();
+    }
+    this.pendingSpeech = null;
+    this.currentlySpeaking = false;
+    this.onSpeakingStateChange?.(false);
+    if (success) this.onStatusChange?.('Voice input is off');
+    pending.resolve(success);
+    const context = this.activeAudioContext;
+    this.activeAudioContext = null;
+    if (context && context.state !== 'closed') void context.close().catch(() => undefined);
   }
 
   public stopSpeaking() {
-    this.speechRequestId += 1;
-    this.activeTtsController?.abort();
-    this.activeTtsController = null;
+    const pending = this.pendingSpeech;
+    if (!pending) return;
+    this.ensureWorker().postMessage({ type: 'cancel', requestId: pending.requestId });
     for (const source of this.activeAudioSources) {
-      try { source.stop(); } catch { /* A source may already have ended. */ }
+      try { source.stop(); } catch { /* The source may have ended already. */ }
     }
     this.activeAudioSources.clear();
-    const audioContext = this.activeAudioContext;
-    this.activeAudioContext = null;
-    if (audioContext && audioContext.state !== 'closed') {
-      void audioContext.close().catch(() => undefined);
-    }
-    if (this.currentlySpeaking) {
-      this.currentlySpeaking = false;
-      this.onSpeakingStateChange?.(false);
-    }
-  }
-
-  private async playWavStream(response: Response, signal: AbortSignal, requestId: number): Promise<void> {
-    if (!response.body) throw new Error('Local voice stream was empty');
-
-    const audioContext = new AudioContext();
-    this.activeAudioContext = audioContext;
-    let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
-    const requestSources = new Set<AudioBufferSourceNode>();
-    let pending = new Uint8Array(0);
-    let scheduledUntil = 0;
-    let decodedChunkCount = 0;
-    let streamFinished = false;
-    let resolvePlayback: (() => void) | undefined;
-    const playbackDrained = new Promise<void>((resolve) => { resolvePlayback = resolve; });
-    let resolveAbort: (() => void) | undefined;
-    const aborted = new Promise<void>((resolve) => { resolveAbort = resolve; });
-    const onAbort = () => resolveAbort?.();
-    signal.addEventListener('abort', onAbort, { once: true });
-
-    const finishIfDrained = () => {
-      if (streamFinished && requestSources.size === 0) resolvePlayback?.();
-    };
-
-    const appendBytes = (current: Uint8Array, next: Uint8Array) => {
-      const combined = new Uint8Array(current.length + next.length);
-      combined.set(current);
-      combined.set(next, current.length);
-      return combined;
-    };
-
-    try {
-      if (signal.aborted || requestId !== this.speechRequestId) throw new DOMException('Speech stopped', 'AbortError');
-      if (audioContext.state === 'suspended') await audioContext.resume();
-      scheduledUntil = audioContext.currentTime + 0.03;
-      reader = response.body.getReader();
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        if (!value?.length) continue;
-        pending = appendBytes(pending, value);
-
-        while (pending.length >= 12) {
-          const header = new DataView(pending.buffer, pending.byteOffset, pending.byteLength);
-          const isRiff = pending[0] === 0x52 && pending[1] === 0x49 && pending[2] === 0x46 && pending[3] === 0x46;
-          const isWave = pending[8] === 0x57 && pending[9] === 0x41 && pending[10] === 0x56 && pending[11] === 0x45;
-          if (!isRiff || !isWave) throw new Error('Local voice returned an invalid WAV chunk');
-
-          const wavLength = header.getUint32(4, true) + 8;
-          if (wavLength < 44 || wavLength > 32 * 1024 * 1024) {
-            throw new Error('Local voice returned an invalid WAV chunk size');
-          }
-          if (pending.length < wavLength) break;
-
-          const wavBytes = pending.slice(0, wavLength);
-          pending = pending.slice(wavLength);
-          const audioBuffer = await audioContext.decodeAudioData(wavBytes.buffer.slice(
-            wavBytes.byteOffset,
-            wavBytes.byteOffset + wavBytes.byteLength
-          ));
-          if (signal.aborted || requestId !== this.speechRequestId) return;
-
-          const source = audioContext.createBufferSource();
-          source.buffer = audioBuffer;
-          source.connect(audioContext.destination);
-          this.activeAudioSources.add(source);
-          requestSources.add(source);
-          source.onended = () => {
-            this.activeAudioSources.delete(source);
-            requestSources.delete(source);
-            finishIfDrained();
-          };
-          const startsAt = Math.max(audioContext.currentTime + 0.02, scheduledUntil);
-          source.start(startsAt);
-          scheduledUntil = startsAt + audioBuffer.duration;
-          decodedChunkCount += 1;
-        }
-      }
-
-      if (pending.length > 0) throw new Error('Local voice stream ended mid-chunk');
-      if (decodedChunkCount === 0) throw new Error('Local voice stream contained no audio');
-      streamFinished = true;
-      finishIfDrained();
-      await Promise.race([playbackDrained, aborted]);
-      if (signal.aborted || requestId !== this.speechRequestId) throw new DOMException('Speech stopped', 'AbortError');
-    } finally {
-      signal.removeEventListener('abort', onAbort);
-      try { await reader?.cancel(); } catch { /* The stream may already be closed. */ }
-      for (const source of requestSources) {
-        try { source.stop(); } catch { /* A source may already have ended. */ }
-        this.activeAudioSources.delete(source);
-      }
-      requestSources.clear();
-      if (this.activeAudioContext === audioContext) this.activeAudioContext = null;
-      if (audioContext.state !== 'closed') await audioContext.close().catch(() => undefined);
-    }
+    this.finishSpeech(false);
+    this.onStatusChange?.('Voice input is off');
   }
 
   public async speak(text: string, onEnd?: () => void): Promise<boolean> {
@@ -177,54 +189,69 @@ class AspiraVoiceService {
     }
 
     this.stopSpeaking();
-    const requestId = ++this.speechRequestId;
-    const controller = new AbortController();
-    this.activeTtsController = controller;
+    const requestId = this.nextRequestId++;
     this.currentlySpeaking = true;
     this.onSpeakingStateChange?.(true);
-    let finished = false;
-    const finish = () => {
-      if (finished) return;
-      finished = true;
-      if (requestId !== this.speechRequestId) return;
-      this.currentlySpeaking = false;
-      this.activeTtsController = null;
-      this.onSpeakingStateChange?.(false);
-      onEnd?.();
-    };
+    this.onStatusChange?.('Preparing Aspira voice…');
+    const playback = new Promise<boolean>((resolve) => {
+      this.pendingSpeech = {
+        requestId,
+        resolve,
+        queue: Promise.resolve(),
+        done: false,
+        activeSources: 0,
+        hadAudio: false,
+        scheduledUntil: 0,
+      };
+    });
+    this.ensureWorker().postMessage({
+      type: 'speak',
+      requestId,
+      text: text.trim(),
+      voice: 'af_heart',
+    });
+    const success = await playback;
+    onEnd?.();
+    return success;
+  }
 
+  private async toMono16k(audio: Blob): Promise<Float32Array> {
+    const context = new AudioContext();
     try {
-      const response = await fetch('/api/tts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          text,
-          endpoint: this.localTtsEndpoint,
-          model: this.localTtsModel,
-          voice: this.localTtsVoice,
-          instruct: this.localTtsInstruct,
-        }),
-        signal: controller.signal,
-      });
-      if (!response.ok || !response.headers.get('content-type')?.includes('audio')) {
-        this.lastVoiceError = 'Local voice service unavailable';
-        finish();
-        return false;
+      const decoded = await context.decodeAudioData(await audio.arrayBuffer());
+      const mono = new Float32Array(decoded.length);
+      for (let channel = 0; channel < decoded.numberOfChannels; channel += 1) {
+        const samples = decoded.getChannelData(channel);
+        for (let index = 0; index < samples.length; index += 1) mono[index] += samples[index] / decoded.numberOfChannels;
       }
-      if (requestId !== this.speechRequestId || controller.signal.aborted) return false;
-      await this.playWavStream(response, controller.signal, requestId);
-      if (requestId !== this.speechRequestId || controller.signal.aborted) return false;
-      this.lastVoiceError = '';
-      finish();
-      return true;
-    } catch (error) {
-      if (controller.signal.aborted || requestId !== this.speechRequestId) return false;
-      this.lastVoiceError = error instanceof Error && error.message.includes('Local voice')
-        ? error.message
-        : 'Local voice audio could not be played';
-      finish();
-      return false;
+
+      const targetRate = 16000;
+      if (decoded.sampleRate === targetRate) return mono;
+      const ratio = decoded.sampleRate / targetRate;
+      const targetLength = Math.floor(mono.length / ratio);
+      const resampled = new Float32Array(targetLength);
+      for (let index = 0; index < targetLength; index += 1) {
+        const position = index * ratio;
+        const left = Math.floor(position);
+        const right = Math.min(left + 1, mono.length - 1);
+        const fraction = position - left;
+        resampled[index] = mono[left] * (1 - fraction) + mono[right] * fraction;
+      }
+      return resampled;
+    } finally {
+      if (context.state !== 'closed') await context.close().catch(() => undefined);
     }
+  }
+
+  public async transcribe(audio: Blob): Promise<string> {
+    if (typeof window === 'undefined' || audio.size === 0) throw new Error('No voice message was captured.');
+    const requestId = this.nextRequestId++;
+    this.onStatusChange?.('Preparing voice input…');
+    const samples = await this.toMono16k(audio);
+    return new Promise<string>((resolve, reject) => {
+      this.pendingTranscriptions.set(requestId, { resolve, reject });
+      this.ensureWorker().postMessage({ type: 'transcribe', requestId, samples }, [samples.buffer]);
+    });
   }
 }
 

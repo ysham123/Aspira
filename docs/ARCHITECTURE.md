@@ -27,17 +27,19 @@ Workspace reads are limited to text/source extensions and exclude hidden, genera
 
 Memories and user-edited playbooks are stored in `server/data/` on this Mac and excluded from Git. Memories are saved only after an explicit request; Aspira does not automatically extract them from conversation. Up to 24 conversations are stored in browser local storage, where the user can search, reopen, and delete them; this data is not synced or encrypted. Provider prompts include the user's prompt, a small recent conversation window, and up to eight saved memory notes. Results from a requested tool call are sent to the same provider for the follow-up response.
 
-Voice starts only after pressing the microphone button. The browser records a short message and sends it to the local MLX-Audio transcription endpoint. Speech output uses the local MLX-Audio service when configured. Neither path has a synthetic browser voice fallback. The optional passphrase is a browser convenience lock, not device authentication.
+Voice input and spoken replies run in a browser worker with Kokoro-82M and Whisper Tiny through Transformers.js. The browser downloads model files from Hugging Face on first use and caches them. Audio inference does not call a local or remote speech service; only the recognized transcript is sent to the selected model when the user submits a voice message. Microphone capture begins only after the user presses the voice control. The optional passphrase is a browser convenience lock, not device authentication.
 
 ## Main code paths
 
-- `src/App.tsx`: top-level state, chat flow and local conversation-history persistence, provider selection, optional voice and lock.
+- `src/App.tsx`: top-level state, chat flow and local conversation-history persistence, provider selection, voice controls, and lock.
 - `src/components/ConversationHistoryPanel.tsx`: searchable local chat history and thread controls.
 - `src/plugins/models/conversationHistory.ts`: browser-local conversation validation, titles, dates, and retention cap.
 - `src/components/SpatialModeDeck.tsx`: Studio, Workbench, saved context, local playbooks, and tool results.
-- `src/components/PlugAndPlayVaultModal.tsx`: provider, endpoint, voice, and passphrase settings.
+- `src/components/PlugAndPlayVaultModal.tsx`: provider, endpoint, built-in voice, and passphrase settings.
+- `src/audio/speech.worker.ts`: browser worker for speech generation and transcription.
+- `src/audio/soundEngine.ts`: voice model status, browser audio playback, and microphone audio preparation.
 - `src/plugins/models/manifest.ts`: provider and conversation data types.
 - `src/plugins/models/synergyEngine.ts`: provider dispatch and truthful result aggregation.
-- `server/index.js`: local API, CLI invocation, local actions, memory, routines, file graph, Git diff, and voice proxy.
+- `server/index.js`: local API, CLI invocation, local actions, memory, routines, file graph, and Git diff.
 
-Run `npm run dev` for local development, `npm run build` for the production bundle, and `npx tsc --noEmit` for the TypeScript check. `npm run voice:local` starts the optional on-device voice service on Apple Silicon.
+Run `npm run dev` for local development, `npm run build` for the production bundle, and `npx tsc --noEmit` for the TypeScript check. Voice model files download automatically when voice is first used.

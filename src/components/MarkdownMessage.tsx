@@ -6,10 +6,26 @@ type MessageBlock =
   | { type: 'paragraph' | 'quote'; value: string }
   | { type: 'heading'; level: 1 | 2 | 3; value: string }
   | { type: 'list'; ordered: boolean; items: string[] }
+  | { type: 'table'; headers: string[]; rows: string[][] }
   | { type: 'code'; language: string; value: string };
 
 function inlineContent(value: string): ReactNode[] {
-  return value.split(/(\*\*[^*]+\*\*|`[^`]+`|\*[^*]+\*)/g).map((part, index) => {
+  return value.split(/(\[[^\]]+\]\(https?:\/\/[^\s)]+\)|\*\*[^*]+\*\*|`[^`]+`|\*[^*]+\*)/g).map((part, index) => {
+    const link = part.match(/^\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)$/);
+    if (link) {
+      try {
+        const url = new URL(link[2]);
+        if (url.protocol === 'https:' || url.protocol === 'http:') {
+          return (
+            <a key={index} href={url.href} target="_blank" rel="noreferrer noopener">
+              {link[1]}
+            </a>
+          );
+        }
+      } catch {
+        return part;
+      }
+    }
     if (part.startsWith('**') && part.endsWith('**')) {
       return <strong key={index}>{part.slice(2, -2)}</strong>;
     }
@@ -21,6 +37,15 @@ function inlineContent(value: string): ReactNode[] {
     }
     return part;
   });
+}
+
+function tableCells(line: string): string[] {
+  return line.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((cell) => cell.trim());
+}
+
+function isTableDivider(line: string): boolean {
+  const cells = tableCells(line);
+  return cells.length > 0 && cells.every((cell) => /^:?-{3,}:?$/.test(cell));
 }
 
 function parseBlocks(content: string): MessageBlock[] {
@@ -45,6 +70,19 @@ function parseBlocks(content: string): MessageBlock[] {
       }
       if (index < lines.length) index += 1;
       blocks.push({ type: 'code', language, value: codeLines.join('\n') });
+      continue;
+    }
+
+    if (line.trimStart().startsWith('|') && index + 1 < lines.length && isTableDivider(lines[index + 1])) {
+      const headers = tableCells(line);
+      index += 2;
+      const rows: string[][] = [];
+      while (index < lines.length && lines[index].trim().startsWith('|')) {
+        const cells = tableCells(lines[index]);
+        rows.push(headers.map((_, cellIndex) => cells[cellIndex] || ''));
+        index += 1;
+      }
+      blocks.push({ type: 'table', headers, rows });
       continue;
     }
 
@@ -151,6 +189,22 @@ export const MarkdownMessage: React.FC<{ content: string; className?: string }> 
       if (block.type === 'code') {
         return (
           <MessageCodeBlock key={index} language={block.language} value={block.value} />
+        );
+      }
+      if (block.type === 'table') {
+        return (
+          <div key={index} className="aspira-markdown-table-wrap" role="region" aria-label="Scrollable response table" tabIndex={0}>
+            <table className="aspira-markdown-table">
+              <thead>
+                <tr>{block.headers.map((header, cellIndex) => <th key={cellIndex} scope="col">{inlineContent(header)}</th>)}</tr>
+              </thead>
+              <tbody>
+                {block.rows.map((row, rowIndex) => (
+                  <tr key={rowIndex}>{row.map((cell, cellIndex) => <td key={cellIndex}>{inlineContent(cell)}</td>)}</tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         );
       }
       if (block.type === 'heading') {
