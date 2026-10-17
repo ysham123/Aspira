@@ -1,5 +1,7 @@
 export function toolAuthorizationError(tool, prompt, readContinuation) {
-  const text = String(prompt || '').toLowerCase();
+  const rawText = String(prompt || '').trim();
+  const text = rawText.toLowerCase();
+  const informationalQuestion = /^(?:how (?:do|can|would) i|what (?:is|does|should)|why (?:should|would|does)|should i|explain how)\b/.test(text);
   const namesWorkspaceFile = /(?:^|[\s`'"(])(?:[\w.-]+\/)*[\w.-]+\.(?:md|mdx|txt|json|ts|tsx|js|jsx|css|html|py|yml|yaml|toml|xml|sh|sql|swift|go|rs)\b/i.test(text);
   const hasWorkspaceIntent = namesWorkspaceFile || /\b(workspace|repository|repo|codebase|project|folder|file|files|source|git|branch|diff|code)\b/.test(text) || (tool === 'workspace.read_file' && Boolean(readContinuation));
   if (tool.startsWith('workspace.') && !hasWorkspaceIntent) {
@@ -29,8 +31,11 @@ export function toolAuthorizationError(tool, prompt, readContinuation) {
   if (tool === 'memory.save' && !/\b(remember|save to memory|don't forget|do not forget)\b/.test(text)) {
     return 'Saving a memory requires an explicit request to remember or save it.';
   }
-  if (tool === 'reminders.create' && !/\b(?:remind me to|remind me about|remember to|add (?:a )?(?:reminder|task|to-?do) (?:to|for)|create (?:a )?(?:reminder|task) (?:to|for))\b/.test(text)) {
+  if (tool === 'reminders.create' && (informationalQuestion || !/\b(?:remind me to|remind me about|remember to|add (?:a )?(?:reminder|task|to-?do) (?:to|for)|create (?:a )?(?:reminder|task) (?:to|for))\b/.test(text))) {
     return 'Creating a reminder requires an explicit request to add a reminder, task, or to-do.';
+  }
+  if (tool === 'notes.create' && (informationalQuestion || !/\b(?:create|write|save)\s+(?:a\s+)?note\b/.test(text))) {
+    return 'Creating a note requires an explicit request to create, write, or save one.';
   }
   return null;
 }

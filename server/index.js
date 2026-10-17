@@ -14,6 +14,7 @@ import { createWorkspaceResolver, isInsideDirectory, WORKSPACE_IGNORED_NAMES, WO
 import { FileEditStore } from './fileEdits.js';
 import { runCodexAppServerTurn } from './codexAppServer.js';
 import { extractReminderRequest, reminderAppleScriptRequest } from './reminderActions.js';
+import { extractNoteRequest, noteAppleScriptRequest } from './noteActions.js';
 
 const execFileAsync = promisify(execFile);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -761,6 +762,21 @@ async function executeAgentTool(tool, args = {}, signal) {
         };
       }
 
+      case 'notes_create': {
+        const note = noteAppleScriptRequest(args);
+        const { stdout } = await execFileAsync('osascript', ['-e', note.script, '--', ...note.args], {
+          env: CHILD_ENV, timeout: 12_000, maxBuffer: 16 * 1024,
+        });
+        return {
+          id: `act-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          tool: 'notes.create',
+          title: `Created note: ${String(args.title).trim().slice(0, 80)}`,
+          status: 'success',
+          output: `Created “${String(args.title).trim()}” in the Notes app's default folder.${stdout.trim() ? ` Notes confirmed: ${stdout.trim()}.` : ''}`,
+          durationMs: Date.now() - start,
+        };
+      }
+
       case 'open_url': {
         const rawUrl = String(args.url || 'https://news.ycombinator.com');
         const safeUrl = new URL(rawUrl.startsWith('http') ? rawUrl : `https://${rawUrl}`);
@@ -989,6 +1005,7 @@ function dispatchActionTitle(tool, args = {}) {
     'web.search': 'Search public web',
     'memory.save': 'Save requested memory',
     'reminders.create': `Create reminder: ${String(args.title || 'Reminder').slice(0, 80)}`,
+    'notes.create': `Create note: ${String(args.title || 'Note').slice(0, 80)}`,
     shell_exec: String(args.command || '').startsWith('git') ? 'Read Git status' : 'Run read-only command',
     fs_list: 'List workspace files', fs_search: 'Search workspace files',
     fs_read: resource ? `Read ${resource}` : 'Read workspace file',
@@ -1014,6 +1031,7 @@ const MODEL_ACTION_TOOLS = `Available Aspira tools:
 - web.search {query: string}: search public web sources; use only when the user asks for search or current information.
 - memory.save {content: string, category?: "goal"|"task"|"preference"|"insight"}: save context only when the user explicitly asks Aspira to remember it.
 - reminders.create {title: string, notes?: string, dueAt?: string, dueOn?: string}: create a reminder in the macOS default Reminders list. Use only when explicitly asked to add a reminder, task, or to-do. If a date and time are specified, provide dueAt as ISO-8601 with a timezone offset. For an all-day date, provide dueOn as YYYY-MM-DD. Aspira cannot create a reminder without macOS permission.
+- notes.create {title: string, body: string}: create a note in the macOS Notes default folder. Use only when the user asks to create, write, or save a note. Aspira passes note text as data and cannot create a note without macOS permission.
 
 To request a tool, return exactly one JSON object and no prose:
 {"type":"aspira_tool_call","tool":"workspace.git_status","arguments":{}}
@@ -1122,6 +1140,15 @@ async function executeModelToolCall(toolCall, userPrompt, leadAgent, signal, rea
         return makeToolFailure(tool, 'Reminder due dates need an ISO-8601 timezone.');
       }
       return executeAgentTool('reminders_create', { title, notes, dueAt, dueOn }, signal);
+    }
+    case 'notes.create': {
+      const title = String(args.title || '').trim();
+      const body = String(args.body || '').trim();
+      if (!title || !body) return makeToolFailure(tool, 'A note title and body are required.');
+      if (!/\b(?:create|write|save)\s+(?:a\s+)?note\b/.test(prompt.toLowerCase())) {
+        return makeToolFailure(tool, 'Creating a note requires an explicit request to create, write, or save one.');
+      }
+      return executeAgentTool('notes_create', { title, body }, signal);
     }
     default:
       return makeToolFailure(tool, 'That tool is not available in Aspira.');
@@ -1324,6 +1351,11 @@ async function detectAndRunNaturalActions(prompt, leadAgent = 'argon', { signal,
   const reminder = extractReminderRequest(prompt);
   if (reminder) {
     actions.push(await runAction('reminders_create', reminder));
+  }
+
+  const note = extractNoteRequest(prompt);
+  if (note) {
+    actions.push(await runAction('notes_create', note));
   }
 
   // 4. Explicit user-requested memory capture
