@@ -29,5 +29,8 @@ export function toolAuthorizationError(tool, prompt, readContinuation) {
   if (tool === 'memory.save' && !/\b(remember|save to memory|don't forget|do not forget)\b/.test(text)) {
     return 'Saving a memory requires an explicit request to remember or save it.';
   }
+  if (tool === 'reminders.create' && !/\b(?:remind me to|remind me about|remember to|add (?:a )?(?:reminder|task|to-?do) (?:to|for)|create (?:a )?(?:reminder|task) (?:to|for))\b/.test(text)) {
+    return 'Creating a reminder requires an explicit request to add a reminder, task, or to-do.';
+  }
   return null;
 }

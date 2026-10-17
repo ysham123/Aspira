@@ -13,6 +13,7 @@ import { toolAuthorizationError } from './toolAuthorization.js';
 import { createWorkspaceResolver, isInsideDirectory, WORKSPACE_IGNORED_NAMES, WORKSPACE_TEXT_EXTENSIONS, isSensitiveWorkspacePath, assertReadableWorkspacePath } from './workspacePaths.js';
 import { FileEditStore } from './fileEdits.js';
 import { runCodexAppServerTurn } from './codexAppServer.js';
+import { extractReminderRequest, reminderAppleScriptRequest } from './reminderActions.js';
 
 const execFileAsync = promisify(execFile);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -745,6 +746,21 @@ async function executeAgentTool(tool, args = {}, signal) {
         };
       }
 
+      case 'reminders_create': {
+        const reminder = reminderAppleScriptRequest(args);
+        const { stdout } = await execFileAsync('osascript', ['-e', reminder.script, '--', ...reminder.args], {
+          env: CHILD_ENV, timeout: 12_000, maxBuffer: 16 * 1024,
+        });
+        return {
+          id: `act-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          tool: 'reminders.create',
+          title: 'Created a reminder',
+          status: 'success',
+          output: `Added “${String(args.title).trim()}” to the default Reminders list${args.dueAt || args.dueOn ? `, due ${reminder.args[2]}` : ''}.${args.assumedDueTime ? ` Aspira used ${args.assumedDueTime} because you said “tonight.”` : ''}${stdout.trim() ? ` Reminders confirmed: ${stdout.trim()}.` : ''}`,
+          durationMs: Date.now() - start,
+        };
+      }
+
       case 'open_url': {
         const rawUrl = String(args.url || 'https://news.ycombinator.com');
         const safeUrl = new URL(rawUrl.startsWith('http') ? rawUrl : `https://${rawUrl}`);
@@ -972,6 +988,7 @@ function dispatchActionTitle(tool, args = {}) {
     'browser.open_url': 'Open URL in browser',
     'web.search': 'Search public web',
     'memory.save': 'Save requested memory',
+    'reminders.create': `Create reminder: ${String(args.title || 'Reminder').slice(0, 80)}`,
     shell_exec: String(args.command || '').startsWith('git') ? 'Read Git status' : 'Run read-only command',
     fs_list: 'List workspace files', fs_search: 'Search workspace files',
     fs_read: resource ? `Read ${resource}` : 'Read workspace file',
@@ -996,6 +1013,7 @@ const MODEL_ACTION_TOOLS = `Available Aspira tools:
 - browser.open_url {url: string}: open a public HTTP(S) URL in the default browser.
 - web.search {query: string}: search public web sources; use only when the user asks for search or current information.
 - memory.save {content: string, category?: "goal"|"task"|"preference"|"insight"}: save context only when the user explicitly asks Aspira to remember it.
+- reminders.create {title: string, notes?: string, dueAt?: string, dueOn?: string}: create a reminder in the macOS default Reminders list. Use only when explicitly asked to add a reminder, task, or to-do. If a date and time are specified, provide dueAt as ISO-8601 with a timezone offset. For an all-day date, provide dueOn as YYYY-MM-DD. Aspira cannot create a reminder without macOS permission.
 
 To request a tool, return exactly one JSON object and no prose:
 {"type":"aspira_tool_call","tool":"workspace.git_status","arguments":{}}
@@ -1092,6 +1110,18 @@ async function executeModelToolCall(toolCall, userPrompt, leadAgent, signal, rea
       const categories = new Set(['goal', 'task', 'preference', 'insight']);
       const category = categories.has(args.category) ? args.category : 'insight';
       return executeAgentTool('memory_store', { content, category, sourceAgent: leadAgent }, signal);
+    }
+    case 'reminders.create': {
+      const title = String(args.title || '').trim();
+      if (!title) return makeToolFailure(tool, 'A reminder title is required.');
+      const notes = String(args.notes || '').slice(0, 2000);
+      const dueAt = String(args.dueAt || '').trim();
+      const dueOn = String(args.dueOn || '').trim();
+      if (dueAt && dueOn) return makeToolFailure(tool, 'Choose either a timed reminder or an all-day due date.');
+      if (dueAt && !/(?:Z|[+-]\d{2}:\d{2})$/i.test(dueAt)) {
+        return makeToolFailure(tool, 'Reminder due dates need an ISO-8601 timezone.');
+      }
+      return executeAgentTool('reminders_create', { title, notes, dueAt, dueOn }, signal);
     }
     default:
       return makeToolFailure(tool, 'That tool is not available in Aspira.');
@@ -1290,9 +1320,15 @@ async function detectAndRunNaturalActions(prompt, leadAgent = 'argon', { signal,
     );
   }
 
-  // 3. Explicit user-requested memory capture
+  // 3. A task request creates a real Reminders item, not a memory note.
+  const reminder = extractReminderRequest(prompt);
+  if (reminder) {
+    actions.push(await runAction('reminders_create', reminder));
+  }
+
+  // 4. Explicit user-requested memory capture
   const memMatch = prompt.match(
-    /\b(?:remember that|remember to|my goal is|remind me to|add a task to|save to memory|don't forget that|i prefer)\s+(.+)/i
+    /\b(?:remember that|my goal is|save to memory|don't forget that|i prefer)\s+(.+)/i
   );
   if (memMatch) {
     const isTask = /\b(?:remind|task|todo|need to)\b/i.test(lower);
