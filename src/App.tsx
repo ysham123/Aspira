@@ -300,7 +300,7 @@ export const App: React.FC = () => {
     }
 
     const connectedModel = models.find((model) =>
-      Boolean(apiKeys[model.id]) || (model.id !== 'claude' && subscriptionStatuses[model.id]?.authStatus === 'signed_in') ||
+      Boolean(apiKeys[model.id]) || subscriptionStatuses[model.id]?.authStatus === 'signed_in' ||
       model.endpointConfig?.providerType === 'openai_compatible'
     );
     if (!connectedModel) return;
@@ -637,7 +637,6 @@ export const App: React.FC = () => {
 
   const providerStatusLabel = (modelId: string) => {
     if (apiKeys[modelId]) return 'API key saved';
-    if (modelId === 'claude' && subscriptionStatuses[modelId]?.cliPath) return 'Use in Claude Code';
     if (subscriptionStatuses[modelId]?.authStatus === 'signed_in') return 'Signed in';
     if (subscriptionStatuses[modelId]?.authStatus === 'signed_out') return 'Sign-in required';
     if (subscriptionStatuses[modelId]?.cliPath) return 'CLI found';
@@ -707,7 +706,7 @@ export const App: React.FC = () => {
         <button type="button" key={model.id} className="aspira-agent-row" onClick={() => openAgentSettings(model.id)}>
           <span className="aspira-agent-avatar" aria-hidden="true">{model.codeName.slice(0, 1)}</span>
           <span><strong>{model.codeName}</strong><small>{providerStatusLabel(model.id)}</small></span>
-          <span className={`aspira-agent-status-dot ${apiKeys[model.id] || (model.id !== 'claude' && subscriptionStatuses[model.id]?.authStatus === 'signed_in') ? 'is-connected' : ''}`} aria-hidden="true" />
+          <span className={`aspira-agent-status-dot ${apiKeys[model.id] || subscriptionStatuses[model.id]?.authStatus === 'signed_in' ? 'is-connected' : ''}`} aria-hidden="true" />
         </button>
       ))}
       {mobile && <button type="button" className="aspira-settings-link" onClick={() => openAgentSettings()}><Settings2 aria-hidden="true" /> Settings</button>}

@@ -14,6 +14,7 @@ import { createWorkspaceResolver, isInsideDirectory, WORKSPACE_IGNORED_NAMES, WO
 import { FileEditStore } from './fileEdits.js';
 import { runCodexAppServerTurn } from './codexAppServer.js';
 import { parseAntigravityStream } from './antigravityStream.js';
+import { parseClaudeStream } from './claudeStream.js';
 import { extractReminderRequest, reminderAppleScriptRequest } from './reminderActions.js';
 import { extractNoteRequest, noteAppleScriptRequest } from './noteActions.js';
 import { mailDraftAppleScriptRequest } from './mailActions.js';
@@ -129,7 +130,7 @@ export function detectSubscriptions() {
       cliPath: claudeCli,
       desktopAppPath: claudeDesktopApp,
       methodLabel: claudeCli
-        ? 'Claude Code available · subscription chat stays in Claude; add an API key to use Claude in Aspira'
+        ? 'Claude Code CLI found · sign-in checked locally; usage follows the connected account'
         : claudeDesktopApp
         ? 'Claude desktop app found · install Claude Code CLI to connect inference'
         : 'Not connected',
@@ -161,7 +162,7 @@ export function detectSubscriptions() {
 }
 
 // Run a CLI binary safely with argument array (no shell injection) and timeout
-function runCliProcess(binary, args, timeoutMs = 16000, signal, env = CHILD_ENV, inputText, cwd = rootDir) {
+function runCliProcess(binary, args, timeoutMs = 16000, signal, env = CHILD_ENV, inputText, cwd = rootDir, allowNonZeroStdout = false) {
   return new Promise((resolve, reject) => {
     let stdout = '';
     let stderr = '';
@@ -202,7 +203,7 @@ function runCliProcess(binary, args, timeoutMs = 16000, signal, env = CHILD_ENV,
       finish(reject, err);
     });
     child.on('close', (code) => {
-      if (code === 0 && stdout.trim()) {
+      if ((code === 0 || allowNonZeroStdout) && stdout.trim()) {
         finish(resolve, stdout.trim());
       } else {
         finish(reject, new Error(stderr.trim() || `Exited with code ${code}`));
@@ -332,8 +333,40 @@ async function runSubscriptionInference(modelId, fullPrompt, subs, signal) {
       }
     }
 
-    // Anthropic requires third-party products to use API credentials. Keep
-    // Claude subscription sessions inside the official Claude products.
+    // Use Claude Code's documented non-interactive CLI mode. It runs from an
+    // isolated empty directory with provider tools, user customizations, MCP,
+    // and session persistence disabled; Aspira remains the action boundary.
+    if (modelId === 'claude' && subs.claude?.cliPath) {
+      try {
+        const out = await runCliProcess(
+          subs.claude.cliPath,
+          [
+            '--print',
+            '--verbose',
+            '--input-format', 'stream-json',
+            '--output-format', 'stream-json',
+            '--permission-mode', 'plan',
+            '--safe-mode',
+            '--strict-mcp-config',
+            '--tools', '',
+            '--no-session-persistence',
+            '--max-turns', '1',
+          ],
+          timeoutMs,
+          signal,
+          SUBSCRIPTION_CHILD_ENV,
+          `${JSON.stringify({ type: 'user', message: { role: 'user', content: fullPrompt } })}\n`,
+          isolatedDir,
+          true,
+        );
+        const result = parseClaudeStream(out);
+        if (result.text) return { text: result.text, badge: 'CLAUDE_CODE_CLI' };
+        error = result.error;
+      } catch (err) {
+        if (signal?.aborted) throw err;
+        error = summarizeProviderFailure('Claude Code', err);
+      }
+    }
 
     // 2. GROK SUBSCRIPTION (via Grok Build CLI)
     if (modelId === 'grok' && subs.grok?.cliPath) {
@@ -1403,8 +1436,6 @@ async function requestProviderCompletion({
   return {
     error: lastError || (subscriptions[modelId]?.cliPath
       ? `${modelId} CLI did not return a response. Check its sign-in and connection, then retry.`
-      : modelId === 'claude' && !apiKeys.claude
-      ? 'Claude subscription chat stays in Claude Code. Add an Anthropic API key if you want to use Claude in Aspira.'
       : `${modelId} is not connected. Sign in to its supported CLI or configure a provider in Settings.`),
   };
 }

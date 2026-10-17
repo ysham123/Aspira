@@ -268,11 +268,11 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
   const sessionPhrase = passkeyProfiles[0]?.phrase || '';
   const providerIds = ['claude', 'gpt', 'grok', 'argon'] as const;
   const signedInProviderCount = providerIds.filter((id) =>
-    id !== 'claude' && Boolean(subscriptions[id]?.cliPath) && subscriptions[id]?.authStatus === 'signed_in'
+    Boolean(subscriptions[id]?.cliPath) && subscriptions[id]?.authStatus === 'signed_in'
   ).length;
   const savedApiKeyCount = providerIds.filter((id) => Boolean(apiKeys[id])).length;
   const configuredProviderCount = providerIds.filter((id) =>
-    Boolean(apiKeys[id]) || (id !== 'claude' && Boolean(subscriptions[id]?.cliPath) && subscriptions[id]?.authStatus === 'signed_in')
+    Boolean(apiKeys[id]) || (Boolean(subscriptions[id]?.cliPath) && subscriptions[id]?.authStatus === 'signed_in')
   ).length;
   const connectionSummary = subscriptionScanState === 'checking'
     ? 'Checking local sign-ins'
@@ -284,9 +284,7 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
 
   const openApiKeyEditor = (id: string) => {
     setShowByokSection(true);
-    setLoginStatusMsg(id === 'claude'
-      ? 'Claude subscription sign-in stays in Claude Code. Add an Anthropic API key below to use Claude in Aspira.'
-      : `${models.find((model) => model.id === id)?.codeName || subscriptions[id]?.providerName || 'This provider'} has no supported CLI. Add an API key below to use it in Aspira.`);
+    setLoginStatusMsg(`${models.find((model) => model.id === id)?.codeName || subscriptions[id]?.providerName || 'This provider'} has no supported CLI. Add an API key below to use it in Aspira.`);
     window.requestAnimationFrame(() => document.getElementById(`api-key-${id}`)?.focus());
   };
 
@@ -403,7 +401,7 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
                   <p className="aspira-vault-section-kicker">YOUR AGENTS</p>
                   <h3 className="text-xl font-semibold text-white">Bring your agents together</h3>
                   <p className="aspira-vault-intro-copy text-xs text-slate-400 mt-0.5">
-                    Connect a supported provider sign-in or add an API key. Claude subscription conversations stay in Claude Code; add an API key to use Claude inside Aspira.
+                    Connect a supported provider sign-in or add an API key. Aspira uses each provider’s own CLI where available; account limits and included tools remain provider-controlled.
                   </p>
                 </div>
                 <div className="aspira-vault-header-actions">
@@ -472,8 +470,7 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
                   const model = models.find((m) => m.id === id);
                   const cliAvailable = Boolean(sub?.cliPath);
                   const hasSavedApiKey = Boolean(apiKeys[id]);
-                  const isClaudeHandoff = id === 'claude' && cliAvailable && !hasSavedApiKey;
-                  const canUseInConversation = hasSavedApiKey || (!isClaudeHandoff && cliAvailable && sub?.authStatus === 'signed_in');
+                  const canUseInConversation = hasSavedApiKey || (cliAvailable && sub?.authStatus === 'signed_in');
                   const connectionLabel = hasSavedApiKey
                     ? 'API key saved'
                     : !sub
@@ -486,8 +483,6 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
                       : 'Not checked'
                     : !cliAvailable
                     ? 'CLI not found'
-                    : sub.authStatus === 'signed_in' && isClaudeHandoff
-                    ? 'Use in Claude Code'
                     : sub.authStatus === 'signed_in'
                     ? 'Signed in'
                     : sub.authStatus === 'signed_out'
