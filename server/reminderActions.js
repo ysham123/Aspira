@@ -30,7 +30,9 @@ const formatAppleScriptDate = (value) => {
 };
 
 export function extractReminderRequest(prompt, now = new Date()) {
-  const match = String(prompt || '').match(/\b(?:remind me to|remind me about|remember to|add (?:a )?(?:reminder|task|to-?do) (?:to|for)|create (?:a )?(?:reminder|task) (?:to|for))\s+([\s\S]+)/i);
+  const request = String(prompt || '').trim();
+  if (/^(?:how (?:do|can|would) i|what (?:is|does|should)|why (?:should|would|does)|should i|explain how)\b/i.test(request)) return null;
+  const match = request.match(/\b(?:remind me to|remind me about|remember to|add (?:a )?(?:reminder|task|to-?do) (?:to|for)|create (?:a )?(?:reminder|task) (?:to|for))\s+([\s\S]+)/i);
   if (!match) return null;
   let title = match[1].trim().replace(/[.!?]+$/, '');
   const timed = title.match(/\s+(today|tomorrow|tonight)\s+at\s+(\d{1,2})(?::([0-5]\d))?\s*(a\.?m\.?|p\.?m\.?)\s*$/i);

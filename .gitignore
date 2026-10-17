@@ -10,6 +10,7 @@ server/data/memory.json
 server/data/routines.json
 server/data/codex-provider-sessions.json
 server/data/edit-proposals/
+server/data/browser-profile/
 
 # Local browser QA screenshots and temporary viewport captures.
 .playwright-cli/

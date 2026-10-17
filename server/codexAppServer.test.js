@@ -79,7 +79,10 @@ test('Codex app-server streams a reply, routes structured tools, caps actions, a
     const threadStart = firstLog.find((message) => message.method === 'thread/start');
     assert.equal(threadStart.params.sandbox, 'read-only');
     assert.deepEqual(threadStart.params.runtimeWorkspaceRoots, [temporary]);
-    assert.equal(threadStart.params.dynamicTools[0].tools.length, 11);
+    assert.equal(threadStart.params.dynamicTools[0].tools.length, 15);
+    assert.deepEqual(threadStart.params.dynamicTools[0].tools.map((tool) => tool.name).filter((name) => name.startsWith('browser') || name === 'open_url'), [
+      'open_url', 'browser_read_page', 'browser_click', 'browser_fill', 'browser_close',
+    ]);
     const toolReplies = firstLog.filter((message) => message.id >= 1000 && message.result);
     assert.equal(toolReplies.length, 4);
     assert.equal(toolReplies[3].result.success, false);

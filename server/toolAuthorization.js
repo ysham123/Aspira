@@ -2,6 +2,7 @@ export function toolAuthorizationError(tool, prompt, readContinuation) {
   const rawText = String(prompt || '').trim();
   const text = rawText.toLowerCase();
   const informationalQuestion = /^(?:how (?:do|can|would) i|what (?:is|does|should)|why (?:should|would|does)|should i|explain how)\b/.test(text);
+  const directPageQuestion = tool === 'browser.read_page' && /^what(?:'s| is)\s+(?:on|in|shown|written|displayed)\s+(?:the\s+)?(?:page|website|site|browser|tab|article|inbox)\b/.test(text);
   const namesWorkspaceFile = /(?:^|[\s`'"(])(?:[\w.-]+\/)*[\w.-]+\.(?:md|mdx|txt|json|ts|tsx|js|jsx|css|html|py|yml|yaml|toml|xml|sh|sql|swift|go|rs)\b/i.test(text);
   const hasWorkspaceIntent = namesWorkspaceFile || /\b(workspace|repository|repo|codebase|project|folder|file|files|source|git|branch|diff|code)\b/.test(text) || (tool === 'workspace.read_file' && Boolean(readContinuation));
   if (tool.startsWith('workspace.') && !hasWorkspaceIntent) {
@@ -22,8 +23,20 @@ export function toolAuthorizationError(tool, prompt, readContinuation) {
   if (tool === 'app.open' && !/\b(open|launch|start)\b/.test(text)) {
     return 'Opening an app requires an explicit request to open or launch it.';
   }
-  if (tool === 'browser.open_url' && !/\b(open|visit|go to|browse to)\b/.test(text)) {
+  if (tool === 'browser.open_url' && (informationalQuestion || !/\b(open|visit|go to|browse to|navigate to)\b/.test(text))) {
     return 'Opening a URL requires an explicit request to open or visit it.';
+  }
+  if (tool === 'browser.read_page' && ((informationalQuestion && !directPageQuestion) || !/\b(read|inspect|summari[sz]e|analy[sz]e|describe|extract|find|check|what(?:'s| is))\b/.test(text) || !/\b(page|website|site|browser|tab|article|inbox)\b/.test(text))) {
+    return 'Reading a browser page requires an explicit request to inspect or read a page, site, tab, article, or inbox.';
+  }
+  if (tool === 'browser.click' && (informationalQuestion || !/\b(click|select|follow|choose)\b/.test(text))) {
+    return 'Clicking a browser control requires an explicit request to click, select, or follow a named page control.';
+  }
+  if (tool === 'browser.fill' && (informationalQuestion || /^what can i\b/.test(text) || !/\b(fill|type|enter|write)\b/.test(text) || !/\b(field|input|form|search|box|browser|page|site|website)\b/.test(text))) {
+    return 'Filling a browser field requires an explicit request to type, enter, or fill a value into a page field.';
+  }
+  if (tool === 'browser.close' && (informationalQuestion || !/\b(close|quit|shut)\b/.test(text))) {
+    return 'Closing Aspira Browser requires an explicit request to close it.';
   }
   if (tool === 'web.search' && !/\b(search|look up|latest|current|news|research|browse)\b/.test(text)) {
     return 'Public web search requires an explicit search, research, or current-information request.';
