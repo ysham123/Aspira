@@ -15,6 +15,7 @@ import { FileEditStore } from './fileEdits.js';
 import { runCodexAppServerTurn } from './codexAppServer.js';
 import { extractReminderRequest, reminderAppleScriptRequest } from './reminderActions.js';
 import { extractNoteRequest, noteAppleScriptRequest } from './noteActions.js';
+import { mailDraftAppleScriptRequest } from './mailActions.js';
 
 const execFileAsync = promisify(execFile);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -777,6 +778,21 @@ async function executeAgentTool(tool, args = {}, signal) {
         };
       }
 
+      case 'mail_draft': {
+        const draft = mailDraftAppleScriptRequest(args);
+        const { stdout } = await execFileAsync('osascript', ['-e', draft.script, '--', ...draft.args], {
+          env: CHILD_ENV, timeout: 12_000, maxBuffer: 16 * 1024,
+        });
+        return {
+          id: `act-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          tool: 'mail.draft',
+          title: 'Opened an email draft in Mail',
+          status: 'success',
+          output: `Opened a draft${draft.args[0] ? ` addressed to ${draft.args[0]}` : ' with the recipient left blank'} for review. Aspira did not send it.${stdout.trim() ? ` Mail confirmed subject: ${stdout.trim()}.` : ''}`,
+          durationMs: Date.now() - start,
+        };
+      }
+
       case 'open_url': {
         const rawUrl = String(args.url || 'https://news.ycombinator.com');
         const safeUrl = new URL(rawUrl.startsWith('http') ? rawUrl : `https://${rawUrl}`);
@@ -1006,6 +1022,7 @@ function dispatchActionTitle(tool, args = {}) {
     'memory.save': 'Save requested memory',
     'reminders.create': `Create reminder: ${String(args.title || 'Reminder').slice(0, 80)}`,
     'notes.create': `Create note: ${String(args.title || 'Note').slice(0, 80)}`,
+    'mail.draft': `Open email draft: ${String(args.subject || 'Email').slice(0, 80)}`,
     shell_exec: String(args.command || '').startsWith('git') ? 'Read Git status' : 'Run read-only command',
     fs_list: 'List workspace files', fs_search: 'Search workspace files',
     fs_read: resource ? `Read ${resource}` : 'Read workspace file',
@@ -1032,6 +1049,7 @@ const MODEL_ACTION_TOOLS = `Available Aspira tools:
 - memory.save {content: string, category?: "goal"|"task"|"preference"|"insight"}: save context only when the user explicitly asks Aspira to remember it.
 - reminders.create {title: string, notes?: string, dueAt?: string, dueOn?: string}: create a reminder in the macOS default Reminders list. Use only when explicitly asked to add a reminder, task, or to-do. If a date and time are specified, provide dueAt as ISO-8601 with a timezone offset. For an all-day date, provide dueOn as YYYY-MM-DD. Aspira cannot create a reminder without macOS permission.
 - notes.create {title: string, body: string}: create a note in the macOS Notes default folder. Use only when the user asks to create, write, or save a note. Aspira passes note text as data and cannot create a note without macOS permission.
+- mail.draft {to?: string, subject: string, body: string}: open a composed email in Mail for the user to review. Use only when explicitly asked to draft, compose, or write an email. Use a valid email address for to, or leave it blank if none was provided. Aspira does not send email.
 
 To request a tool, return exactly one JSON object and no prose:
 {"type":"aspira_tool_call","tool":"workspace.git_status","arguments":{}}
@@ -1149,6 +1167,16 @@ async function executeModelToolCall(toolCall, userPrompt, leadAgent, signal, rea
         return makeToolFailure(tool, 'Creating a note requires an explicit request to create, write, or save one.');
       }
       return executeAgentTool('notes_create', { title, body }, signal);
+    }
+    case 'mail.draft': {
+      const subject = String(args.subject || '').trim();
+      const body = String(args.body || '').trim();
+      const to = String(args.to || '').trim();
+      if (!subject || !body) return makeToolFailure(tool, 'An email subject and body are required.');
+      if (!/\b(?:draft|compose|write)\s+(?:me\s+)?(?:an?\s+)?email\b/.test(prompt.toLowerCase())) {
+        return makeToolFailure(tool, 'Opening an email draft requires an explicit request to draft, compose, or write an email.');
+      }
+      return executeAgentTool('mail_draft', { to, subject, body }, signal);
     }
     default:
       return makeToolFailure(tool, 'That tool is not available in Aspira.');

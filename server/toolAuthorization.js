@@ -37,5 +37,8 @@ export function toolAuthorizationError(tool, prompt, readContinuation) {
   if (tool === 'notes.create' && (informationalQuestion || !/\b(?:create|write|save)\s+(?:a\s+)?note\b/.test(text))) {
     return 'Creating a note requires an explicit request to create, write, or save one.';
   }
+  if (tool === 'mail.draft' && (informationalQuestion || !/\b(?:draft|compose|write)\s+(?:me\s+)?(?:an?\s+)?email\b/.test(text))) {
+    return 'Opening an email draft requires an explicit request to draft, compose, or write an email.';
+  }
   return null;
 }
