@@ -14,7 +14,9 @@ export function modelConversationContext(turns: ConversationTurn[]): Conversatio
       { role: 'user' as const, text: turn.userText },
       {
         role: 'assistant' as const,
-        speaker: turn.result.modelStreams?.[0]?.codeName || 'Aspira',
+        speaker: turn.result.synthesisProviderId
+          ? turn.result.modelStreams?.find((stream) => stream.modelId === turn.result.synthesisProviderId)?.codeName || 'Aspira'
+          : turn.result.modelStreams?.[0]?.codeName || 'Aspira',
         text: `${turn.result.synthesizedOutput}${receipts.length ? `\n\n[Recorded action receipts for this turn]\n${receipts.join('\n')}` : ''}`,
       },
     ];

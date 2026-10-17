@@ -46,6 +46,8 @@ export function normalizeConversationTurn(value: unknown): ConversationTurn | nu
     result: {
       ...result,
       id: result.id || `result-${turn.id}`, timestamp: result.timestamp || turn.timestamp || '',
+      synthesisStatus: result.synthesisStatus === 'complete' || result.synthesisStatus === 'unavailable' ? result.synthesisStatus : undefined,
+      synthesisProviderId: typeof result.synthesisProviderId === 'string' ? result.synthesisProviderId : undefined,
       prompt: result.prompt || turn.userText, capabilityId: result.capabilityId || 'conversation',
       capabilityName: result.capabilityName || 'Conversation', synergyMode: result.synergyMode || 'fusion',
       executiveHeadline: result.executiveHeadline || 'Response', spokenReply: result.spokenReply || '',

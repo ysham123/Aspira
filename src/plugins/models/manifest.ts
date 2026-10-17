@@ -240,6 +240,8 @@ export interface SubscriptionStatus {
 
 export interface SynergyExecutionResult {
   completionState?: 'stopped' | 'interrupted';
+  synthesisStatus?: 'complete' | 'unavailable';
+  synthesisProviderId?: ModelId;
   id: string;
   timestamp: string;
   prompt: string;

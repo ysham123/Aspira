@@ -357,7 +357,9 @@ export const App: React.FC = () => {
       const cap = selectedCapability;
       if (!cleanPrompt || executionInProgressRef.current) return;
       executionInProgressRef.current = true;
-      const activeList = models.filter((model) => awakeModelIds.includes(model.id));
+      const activeList = awakeModelIds
+        .map((modelId) => models.find((model) => model.id === modelId))
+        .filter((model): model is ModelPluginManifest => Boolean(model));
       let progressTurn = createPendingTurn(displayedPrompt, modality, activeList);
       const conversationId = activeConversationId || createConversationId();
       if (!activeConversationId) {
@@ -776,7 +778,7 @@ export const App: React.FC = () => {
                 <div className="mb-2 flex items-center justify-between gap-3 border-b border-slate-200 pb-2">
                   <div>
                     <p className="text-xs font-semibold text-slate-800">Choose your agents</p>
-                    <p className="mt-0.5 text-[10px] leading-4 text-slate-500">The first selected agent can use tools; additional agents give their own perspective.</p>
+                    <p className="mt-0.5 text-[10px] leading-4 text-slate-500">The first agent you select can use tools. With multiple agents, Aspira shares their replies with the first available selected agent for one combined answer. This makes one extra model request and may use plan quota or API credits.</p>
                   </div>
 
                 </div>
