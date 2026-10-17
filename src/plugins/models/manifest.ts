@@ -74,9 +74,9 @@ export const BUILTIN_MODEL_PLUGINS: ModelPluginManifest[] = [
   {
     id: 'claude',
     codeName: 'Claude',
-    family: 'Claude Code CLI',
+    family: 'Anthropic Claude',
     vendor: 'Anthropic',
-    tagline: 'Claude subscription through Claude Code in planning mode.',
+    tagline: 'Use an Anthropic API key in Aspira, or open Claude in its official app.',
     color: 'terracotta',
     accentHex: '#D97757',
     glowRgb: '217, 119, 87',

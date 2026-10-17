@@ -21,6 +21,8 @@ interface ConversationWorkspaceProps {
   activeTaskLabel: string;
   onRunPrompt: (prompt: string) => void;
   onOpenConnections: () => void;
+  onProviderHandoff?: (modelId: string, prompt: string) => Promise<string>;
+  handoffModelIds?: string[];
   welcomeComposer?: React.ReactNode;
   onPreviewResult?: (title: string, content: string) => void;
   onRequestAgentReview?: (reply: string) => void;
@@ -30,10 +32,12 @@ interface ConversationWorkspaceProps {
 export const ConversationWorkspace: React.FC<ConversationWorkspaceProps> = ({
   models, awakeModelIds, conversationTurns, pendingTurn,
   onEditProposalUpdate, onEditOperation, isExecuting, activeTaskLabel,
-  onRunPrompt, onOpenConnections, onPreviewResult, onRequestAgentReview, welcomeComposer,
+  onRunPrompt, onOpenConnections, onProviderHandoff, handoffModelIds = [], onPreviewResult, onRequestAgentReview, welcomeComposer,
 }) => {
   const [expandedTurnId, setExpandedTurnId] = useState<string | null>(null);
   const [showJumpToLatest, setShowJumpToLatest] = useState(false);
+  const [handoffStatus, setHandoffStatus] = useState<Record<string, string>>({});
+  const [pendingHandoffKey, setPendingHandoffKey] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const followLatestRef = useRef(true);
   const firstTurnRef = useRef(conversationTurns[0]?.id);
@@ -100,6 +104,24 @@ export const ConversationWorkspace: React.FC<ConversationWorkspaceProps> = ({
     );
   };
 
+  const handoffToProvider = async (turnId: string, modelId: string, prompt: string) => {
+    if (!onProviderHandoff || prompt.length > 8000) return;
+    const key = `${turnId}:${modelId}`;
+    setPendingHandoffKey(key);
+    setHandoffStatus((previous) => ({ ...previous, [key]: '' }));
+    try {
+      const message = await onProviderHandoff(modelId, prompt);
+      setHandoffStatus((previous) => ({ ...previous, [key]: message }));
+    } catch (error) {
+      setHandoffStatus((previous) => ({
+        ...previous,
+        [key]: error instanceof Error ? error.message : 'The provider app could not be opened.',
+      }));
+    } finally {
+      setPendingHandoffKey(null);
+    }
+  };
+
   return (
     <div className="conversation-workspace">
       <div ref={scrollRef} onScroll={updateScrollPosition} className="conversation-scroll custom-scrollbar" aria-label="Conversation">
@@ -143,8 +165,23 @@ export const ConversationWorkspace: React.FC<ConversationWorkspaceProps> = ({
                     {onRequestAgentReview && reply && finished && hasResult && <button type="button" disabled={isExecuting} onClick={() => onRequestAgentReview(reply)}><MessageCirclePlus aria-hidden="true" />Ask another agent</button>}
                     {turn.result.spokenReply && <button type="button" onClick={() => soundEngine.speak(turn.result.spokenReply)}><Volume2 aria-hidden="true" />Listen</button>}
                     {turn.result.modelStreams.length > 1 && <button type="button" onClick={() => setExpandedTurnId(showPerspectives ? null : turn.id)} aria-expanded={showPerspectives}><ChevronDown aria-hidden="true" />{showPerspectives ? 'Hide' : 'View'} contributions</button>}
+                    {onProviderHandoff && finished && turn.result.modelStreams.filter((stream) => stream.source === 'UNAVAILABLE' && handoffModelIds.includes(stream.modelId)).map((stream) => {
+                      const key = `${turn.id}:${stream.modelId}`;
+                      return (
+                        <button key={key} type="button" disabled={isExecuting || pendingHandoffKey !== null || turn.userText.length > 8000}
+                          title={turn.userText.length > 8000 ? 'App handoff supports prompts up to 8,000 characters.' : `Copy this prompt and open ${stream.codeName}.`}
+                          onClick={() => void handoffToProvider(turn.id, stream.modelId, turn.userText)}>
+                          <ArrowUpRight aria-hidden="true" />{pendingHandoffKey === key ? 'Opening…' : `Open in ${stream.codeName}`}
+                        </button>
+                      );
+                    })}
                     {!hasResult && finished && <><button type="button" disabled={isExecuting} onClick={() => onRunPrompt(turn.userText)}>Try again</button><button type="button" onClick={onOpenConnections}>Choose another agent</button></>}
                   </div>
+                  {turn.result.modelStreams.filter((stream) => handoffStatus[`${turn.id}:${stream.modelId}`]).map((stream) => (
+                    <p key={`${turn.id}:${stream.modelId}`} className="conversation-handoff-status" role="status" aria-live="polite">
+                      {handoffStatus[`${turn.id}:${stream.modelId}`]}
+                    </p>
+                  ))}
                   {showPerspectives && (
                     <div className="conversation-contributions">
                       {turn.result.modelStreams.map((stream) => (

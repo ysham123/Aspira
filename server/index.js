@@ -95,6 +95,7 @@ export function detectSubscriptions() {
     '/opt/homebrew/bin/grok',
     '/usr/local/bin/grok',
   ]);
+  const grokDesktopApp = firstExistingPath(['/Applications/Grok.app']);
 
   // 4. ARGON / GEMINI via the Antigravity CLI (Google's supported successor).
   const antigravityCli = firstExistingPath([
@@ -132,7 +133,7 @@ export function detectSubscriptions() {
       modelId: 'grok',
       providerName: 'Grok Build CLI',
       cliPath: grokCli,
-      desktopAppPath: null,
+      desktopAppPath: grokDesktopApp,
       methodLabel: grokCli
         ? 'Grok Build CLI found · sign-in checked on first request'
         : 'No supported CLI detected',
@@ -686,16 +687,13 @@ async function executeAgentTool(tool, args = {}, signal) {
       }
 
       case 'subscription_desktop_handoff': {
-        const appMap = {
-          gpt: 'ChatGPT',
-          claude: 'Claude',
-          argon: 'Gemini',
-          grok: 'Safari',
-        };
-        const targetApp = String(args.app || appMap[args.modelId] || 'ChatGPT').replace(
-          /[^a-zA-Z0-9 ._-]/g,
-          ''
-        );
+        const modelId = String(args.modelId || '');
+        const appMap = { gpt: 'ChatGPT', claude: 'Claude', argon: 'Antigravity', grok: 'Grok' };
+        const urlMap = { gpt: 'https://chatgpt.com', claude: 'https://claude.ai', argon: 'https://gemini.google.com', grok: 'https://grok.com' };
+        const provider = detectSubscriptions()[modelId];
+        const desktopAppPath = provider?.desktopAppPath;
+        const targetApp = String(args.app || (desktopAppPath ? path.basename(desktopAppPath, '.app') : appMap[modelId]) || 'ChatGPT')
+          .replace(/[^a-zA-Z0-9 ._-]/g, '');
         const promptText = String(args.prompt || 'Hello from Aspira');
 
         // Copy prompt to macOS clipboard via pbcopy and activate the subscription desktop app
@@ -706,10 +704,8 @@ async function executeAgentTool(tool, args = {}, signal) {
           pb.on('close', resolve);
         });
 
-        if (args.modelId === 'grok' && !fs.existsSync('/Applications/Grok.app')) {
-          await execFileAsync('open', ['https://grok.com'], { env: CHILD_ENV, timeout: 5000 });
-        } else {
-          await execFileAsync('open', ['-a', targetApp], { env: CHILD_ENV, timeout: 5000 });
+        if (desktopAppPath) {
+          await execFileAsync('open', ['-a', desktopAppPath], { env: CHILD_ENV, timeout: 5000 });
           // Attempt polite System Events paste if Accessibility is granted
           try {
             const script = `tell application "${targetApp}" to activate\ndelay 0.4\ntell application "System Events" to keystroke "v" using command down`;
@@ -717,14 +713,18 @@ async function executeAgentTool(tool, args = {}, signal) {
           } catch {
             // Accessibility optional — prompt is already on clipboard!
           }
+        } else {
+          await execFileAsync('open', [urlMap[modelId]], { env: CHILD_ENV, timeout: 5000 });
         }
 
         return {
           id: `act-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
           tool: 'subscription_desktop_handoff',
-          title: `Opened ${targetApp}.app`,
+          title: desktopAppPath ? `Opened ${targetApp}.app` : `Opened ${targetApp} in your browser`,
           status: 'success',
-          output: `Copied the prompt to the clipboard and attempted to paste it into ${targetApp}.app. Review it there and submit it when ready. If it was not pasted, use ⌘V.`,
+          output: desktopAppPath
+            ? `Copied the prompt to the clipboard and attempted to paste it into ${targetApp}.app. Review it there and submit it when ready. If it was not pasted, use ⌘V.`
+            : `Copied the prompt to the clipboard and opened ${targetApp}. Paste it with ⌘V, review it, and submit it there.`,
           durationMs: Date.now() - start,
         };
       }

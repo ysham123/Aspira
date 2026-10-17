@@ -667,6 +667,17 @@ export const App: React.FC = () => {
     setPreviewResult(null);
     window.requestAnimationFrame(() => commandInputRef.current?.focus());
   };
+  const handleProviderHandoff = useCallback(async (modelId: string, prompt: string) => {
+    const response = await fetch('/api/subscriptions/desktop-handoff', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ modelId, prompt }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data?.error || data?.message || 'The provider app could not be opened.');
+    if (data?.result?.status !== 'success') throw new Error(data?.result?.output || 'The provider handoff did not complete.');
+    return String(data.result.output || data.result.title || 'The provider app opened.');
+  }, []);
   const cancelVoiceRecording = useCallback(() => {
     voiceRecordingCancelledRef.current = true;
     voiceCaptureGenerationRef.current += 1;
@@ -1083,6 +1094,8 @@ export const App: React.FC = () => {
           onOpenConnections={() => openAgentSettings()}
           onPreviewResult={(title, content) => setPreviewResult({title, content})}
           onRequestAgentReview={requestAgentReview}
+          onProviderHandoff={handleProviderHandoff}
+          handoffModelIds={models.filter((model) => ['gpt', 'claude', 'argon', 'grok'].includes(model.id)).map((model) => model.id)}
           welcomeComposer={isNewConversation ? composer : undefined}
         />
       </main>

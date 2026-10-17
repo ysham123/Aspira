@@ -41,6 +41,7 @@
 .conversation-response-tools > button > svg { width: 14px; height: 14px; stroke-width: 1.5; }
 .conversation-response-tools > button:hover { color: #a9412b; }
 .conversation-response-tools > button:disabled { opacity: .4; cursor: default; }
+.conversation-handoff-status { margin: 8px 0 0; color: #74776a; font-size: 12px; line-height: 1.5; }
 .conversation-contributions { display: flex; flex-direction: column; gap: 24px; margin-top: 22px; border-left: 2px solid #e4ddd2; padding: 0 0 0 20px; }
 .conversation-contributions h3 { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 0 0 10px; color: #484940; font-size: 14px; font-weight: 550; }
 .conversation-contributions h3 > span { color: #99958a; font-size: 12px; font-weight: 400; }

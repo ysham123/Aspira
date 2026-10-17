@@ -25,6 +25,7 @@ Aspira opens to a conversation, with recent conversations and **Your agents** in
 - **Open result** displays a received answer alongside the conversation on wide screens, or in a full-screen preview on smaller screens. It is a reading view of the response, not a file explorer or document editor.
 - **Needs you** collects recorded edit proposals, interruptions, failed actions, and unavailable-agent replies across saved conversations. Historical notices can be dismissed without deleting their conversations; pending changes remain until resolved.
 - **Voice** opens a compact recording panel at the composer. Recording begins only after **Record a message**. Close or cancel recording to discard it; **Stop & send** transcribes and submits it.
+- When a provider cannot reply inside Aspira, **Open in [provider]** copies that turn's prompt and opens the provider's official app or site. Aspira may paste it into the app; review it there and submit it yourself. Aspira never presses Send.
 
 There is no Workbench, source browser, terminal panel, or telemetry dashboard in the interface. Existing bounded local tools still work through explicit conversation requests. Agent settings are available from a sidebar agent or **Settings**.
 
