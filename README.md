@@ -29,14 +29,23 @@ Aspira brings supported model subscriptions, direct model APIs, built-in browser
 
 ### Run Aspira
 
+Clone the repository, or choose **Code → Download ZIP** on GitHub and unzip it. To clone with Git:
+
 ```sh
 git clone https://github.com/ysham123/Aspira.git
 cd Aspira
-npm install
+npm ci
 npm run dev
 ```
 
-Open [http://127.0.0.1:5173](http://127.0.0.1:5173). `npm run dev` starts the local web app and API. Both bind to loopback on your Mac. Choose a provider in **Settings → Connections**, then start a conversation.
+For the ZIP download, open a terminal in the extracted project folder and run:
+
+```sh
+npm ci
+npm run dev
+```
+
+Open [http://127.0.0.1:5173](http://127.0.0.1:5173). `npm run dev` starts the local web app and API. Both bind to loopback on your Mac. Choose a provider in **Settings → Your agents**, then start a conversation. The source download does not include model weights; optional voice models download into the browser cache the first time you use voice.
 
 To open the studio in a frameless browser window, leave the development server running and open a second terminal:
 

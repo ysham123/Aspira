@@ -82,6 +82,9 @@ export async function runCodexAppServerTurn({
   let completionResolve;
   let completionReject;
   const completion = new Promise((resolve, reject) => { completionResolve = resolve; completionReject = reject; });
+  // Startup RPCs can fail before the turn reaches `await completion`. Mark
+  // early child-exit rejections as handled while preserving them for that await.
+  void completion.catch(() => {});
   const pending = new Map();
   const executedActions = [];
   const maxToolCalls = 3;
@@ -245,7 +248,9 @@ export async function runCodexAppServerTurn({
   try {
     await rpc('initialize', {
       clientInfo: { name: 'aspira', title: 'Aspira', version: '1.0.0' },
-      capabilities: { experimentalApi: false },
+      // Aspira uses runtimeWorkspaceRoots and dynamicTools, both gated by the
+      // app-server experimental API capability.
+      capabilities: { experimentalApi: true },
     });
     write({ method: 'initialized' });
     const tools = [{

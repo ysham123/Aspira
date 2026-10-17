@@ -36,7 +36,9 @@ process.stdin.on('data', (chunk) => {
     const message = JSON.parse(line);
     log(message);
     if (message.method === 'initialize') send({ id: message.id, result: {} });
-    else if (message.method === 'thread/start' || message.method === 'thread/resume') {
+    else if (message.method === 'thread/start' && process.env.MOCK_FAIL_THREAD_START === '1') {
+      send({ id: message.id, error: { code: -32600, message: 'Mock thread start error.' } });
+    } else if (message.method === 'thread/start' || message.method === 'thread/resume') {
       send({ id: message.id, result: { thread: { id: message.params.threadId || threadId } } });
     } else if (message.method === 'turn/start') {
       send({ id: message.id, result: { turn: { id: 'turn-mock' } } });
@@ -76,6 +78,8 @@ test('Codex app-server streams a reply, routes structured tools, caps actions, a
     assert.equal(fs.statSync(sessionFile).mode & 0o777, 0o600);
 
     const firstLog = readLog(logFile);
+    const initialize = firstLog.find((message) => message.method === 'initialize');
+    assert.equal(initialize.params.capabilities.experimentalApi, true);
     const threadStart = firstLog.find((message) => message.method === 'thread/start');
     assert.equal(threadStart.params.sandbox, 'read-only');
     assert.deepEqual(threadStart.params.runtimeWorkspaceRoots, [temporary]);
@@ -99,6 +103,25 @@ test('Codex app-server streams a reply, routes structured tools, caps actions, a
     const deniedReply = log.filter((message) => message.id >= 1000 && message.result).at(-1);
     assert.equal(deniedReply.result.success, false);
     assert.match(deniedReply.result.contentItems[0].text, /not available for the current Aspira turn/);
+  } finally {
+    fs.rmSync(temporary, { recursive: true, force: true });
+  }
+});
+
+test('Codex app-server surfaces thread startup errors without an unhandled completion rejection', async () => {
+  const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'aspira-codex-start-error-'));
+  try {
+    const { binary, log: logFile } = createFakeCodex(temporary);
+    await assert.rejects(runCodexAppServerTurn({
+      binary,
+      sessionFile: path.join(temporary, 'data', 'sessions.json'),
+      conversationId: 'chat-start-error',
+      cwd: temporary,
+      systemPrompt: 'Answer naturally.',
+      prompt: 'Start a thread.',
+      allowActions: false,
+      env: { PATH: process.env.PATH, HOME: temporary, MOCK_LOG: logFile, MOCK_FAIL_THREAD_START: '1' },
+    }), /Mock thread start error/);
   } finally {
     fs.rmSync(temporary, { recursive: true, force: true });
   }

@@ -13,6 +13,7 @@ import { toolAuthorizationError } from './toolAuthorization.js';
 import { createWorkspaceResolver, isInsideDirectory, WORKSPACE_IGNORED_NAMES, WORKSPACE_TEXT_EXTENSIONS, isSensitiveWorkspacePath, assertReadableWorkspacePath } from './workspacePaths.js';
 import { FileEditStore } from './fileEdits.js';
 import { runCodexAppServerTurn } from './codexAppServer.js';
+import { parseAntigravityStream } from './antigravityStream.js';
 import { extractReminderRequest, reminderAppleScriptRequest } from './reminderActions.js';
 import { extractNoteRequest, noteAppleScriptRequest } from './noteActions.js';
 import { mailDraftAppleScriptRequest } from './mailActions.js';
@@ -313,16 +314,18 @@ async function runSubscriptionInference(modelId, fullPrompt, subs, signal) {
         const out = await runCliProcess(
           subs.argon.cliPath,
           [
-            '--sandbox', '--mode', 'plan', '--disable-slash-commands',
-            '--input-format', 'text', '--output-format', 'text', '--print-timeout', '90s', '-p',
+            '--sandbox', '--mode', 'plan',
+            '--input-format', 'stream-json', '--output-format', 'stream-json', '--print-timeout', '90s',
           ],
           timeoutMs,
           signal,
           SUBSCRIPTION_CHILD_ENV,
-          fullPrompt,
+          `${JSON.stringify({ event: 'user', message: { content: fullPrompt } })}\n`,
           isolatedDir
         );
-        if (out) return { text: out, badge: 'ANTIGRAVITY_CLI' };
+        const result = parseAntigravityStream(out);
+        if (result.text) return { text: result.text, badge: 'ANTIGRAVITY_CLI' };
+        error = result.error;
       } catch (err) {
         if (signal?.aborted) throw err;
         error = summarizeProviderFailure('Antigravity', err);
@@ -1939,6 +1942,7 @@ app.post('/api/dispatch', async (req, res) => {
   } = req.body || {};
   const startTime = Date.now();
   const dispatch = createDispatchResponse(req, res);
+  const subscriptions = detectSubscriptions();
   if (typeof prompt !== 'string' || !prompt.trim() || prompt.length > 32_000) {
     return dispatch.complete(400, { source: 'UNAVAILABLE', modelId, error: 'Enter a message of up to 32,000 characters.', text: null });
   }
