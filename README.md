@@ -1,12 +1,33 @@
-# Aspira
+<div align="center">
+  <img src="public/favicon.svg" width="56" height="56" alt="Aspira mark" />
+  <h1>Aspira</h1>
+  <p><strong>Your models. One conversation. Actions you can review.</strong></p>
+  <p>An open-source, macOS-first workspace for talking with the AI tools you already use.</p>
+  <p>
+    <a href="https://github.com/ysham123/Aspira/blob/main/LICENSE"><img alt="MIT license" src="https://img.shields.io/github/license/ysham123/Aspira?style=flat-square&color=6f725f"></a>
+    <img alt="macOS" src="https://img.shields.io/badge/platform-macOS-6f725f?style=flat-square">
+    <img alt="Node 20 or later" src="https://img.shields.io/badge/Node.js-20%2B-6f725f?style=flat-square">
+    <img alt="Version 1 preview" src="https://img.shields.io/badge/status-v1%20preview-b14e36?style=flat-square">
+  </p>
+</div>
 
-Aspira is an open-source personal agent workspace for macOS. It brings a conversational interface, supported provider CLIs, local tools, saved memories, and built-in private voice into one window.
+<p align="center">
+  <img src="docs/assets/aspira-studio.png" alt="Aspira's conversation-first studio with connected agents in the sidebar and a message composer in the center." width="100%" />
+</p>
 
-Aspira is an early-stage personal project. Provider access depends on the provider's own CLI, sign-in, plan, and current terms. Installing a provider's desktop app by itself does not connect its model to Aspira.
+Aspira brings supported model subscriptions, direct model APIs, built-in browser voice, and a small set of useful computer actions into one private workspace. Pick one agent or ask several for their perspectives, then keep the conversation and action receipts together.
 
-## Start Aspira
+> **Aspira is an early v1 preview.** Each provider exposes different capabilities and account rules. A model's desktop app or paid subscription does not automatically make every feature available inside Aspira. See [provider support](#connect-your-models) before you set it up.
 
-Requirements: macOS, Node.js 20 or later, npm, and Google Chrome for the optional browser-control tools.
+## Start in a few minutes
+
+### Requirements
+
+- macOS
+- Node.js 20 or later and npm
+- Google Chrome, if you plan to use the optional browser-control tools
+
+### Run Aspira
 
 ```sh
 git clone https://github.com/ysham123/Aspira.git
@@ -15,75 +36,108 @@ npm install
 npm run dev
 ```
 
-Open [http://127.0.0.1:5173](http://127.0.0.1:5173). The local Express server listens on `127.0.0.1:3001`. Aspira does not listen to the microphone on startup. Choose a model, connect it in **Settings**, then type a prompt. Voice recording is opt-in.
+Open [http://127.0.0.1:5173](http://127.0.0.1:5173). `npm run dev` starts the local web app and API. Both bind to loopback on your Mac. Choose a provider in **Settings → Connections**, then start a conversation.
 
-## One conversation, your agents together
+To open the studio in a frameless browser window, leave the development server running and open a second terminal:
 
-Aspira opens to a conversation, with recent conversations and **Your agents** in the sidebar. Choose who replies from the composer; your choice is remembered in this browser. On mobile, the navigation button opens the same conversations and agents.
+```sh
+npm run desktop
+```
 
-- **Ask another agent** prepares a review or continuation of an existing answer. Review the shared answer, choose the responding agents, and send when ready. This uses the existing provider conversations; it does not imply autonomous delegation or background jobs.
-- When you select multiple agents, Aspira gives you one combined conversational answer and keeps each original reply under **View contributions**. It sends those replies to the first available selected agent for one additional synthesis request. The composer discloses this because API usage may incur credits and subscription usage may count against your plan. If synthesis is unavailable, Aspira shows the individual replies instead.
-- **Open result** displays a received answer alongside the conversation on wide screens, or in a full-screen preview on smaller screens. It is a reading view of the response, not a file explorer or document editor.
-- **Needs you** collects recorded edit proposals, interruptions, failed actions, and unavailable-agent replies across saved conversations. Historical notices can be dismissed without deleting their conversations; pending changes remain until resolved.
-- **Voice** opens a compact recording panel at the composer. Recording begins only after **Record a message**. Close or cancel recording to discard it; **Stop & send** transcribes and submits it.
-- When a provider cannot reply inside Aspira, **Open in [provider]** copies that turn's prompt and opens the provider's official app or site. Aspira may paste it into the app; review it there and submit it yourself. Aspira never presses Send.
+## What you can do
 
-There is no Workbench, source browser, terminal panel, or telemetry dashboard in the interface. Existing bounded local tools still work through explicit conversation requests. Agent settings are available from a sidebar agent or **Settings**.
+- **Bring providers into one conversation.** Select one agent or several. Each selected agent returns its own answer; Aspira can ask the lead agent for one additional synthesis and keeps the original contributions available. That extra model request can use provider quota or API credits.
+- **Ask for practical actions.** Depending on the provider path, an agent can open supported Mac apps, check Git or basic system status, search and read project files, create a new file, or prepare an existing-file edit for review.
+- **Review changes before they land.** File edits appear as diffs. Apply checks that the reviewed version is still current; Undo is available while the file still matches the applied result.
+- **Use everyday Mac apps.** Ask Aspira to create a Reminders item or a Notes note, or open an unsent email draft for you to review.
+- **Work with public web pages.** Open a site in Aspira's separate Chrome profile, ask an agent to read it, click a named safe control, or fill a non-secret field. Sign in manually in that browser profile.
+- **Speak when you want to.** Aspira includes opt-in English transcription and speech playback in the browser. Recording starts only after you press the voice control; there is no always-listening wake word or separate speech service to connect.
+- **Pick up where a turn stopped.** Aspira saves conversation drafts and can recover received replies and action receipts after a reload. It does not resume provider work in the background.
 
-## Connect a model
+### Try a conversation
 
-Aspira uses each provider through the integration it supports. A CLI being installed does not mean every feature from that provider's own app is available inside Aspira.
+With a connected provider selected, try:
 
-| Provider | Integration | What Aspira can use |
-| --- | --- | --- |
-| Google models | Antigravity CLI (`agy`) | A headless, sandboxed plan-mode reply. The CLI's own account handles sign-in. |
-| Anthropic | Claude Code (`claude`) | Subscription conversations open in Claude Code. Add an Anthropic API key to receive Claude replies inside Aspira. |
-| OpenAI | Codex CLI app-server (`codex`) | Uses the signed-in Codex session, a resumable thread for each Aspira conversation, streamed replies, and structured Aspira actions. Codex runs read-only; file changes still go through Aspira's review card. |
-| xAI | Grok Build (`grok`) | A single headless plan-mode reply in a temporary directory, with provider-native tools disabled. |
+```text
+Read README.md and explain how to start the app.
+Remind me to pick up milk tomorrow.
+Create a note called Shopping with apples and eggs.
+Draft an email about the trip and leave it open for review.
+Open example.com and summarize the page.
+Click the Pricing link on this page.
+```
 
-The **Connections** screen distinguishes provider sign-in from API keys. Codex reports its local sign-in status; Antigravity and Grok show CLI availability because Aspira does not have a separate local sign-in check for them. Claude Code is shown as an app handoff, not an in-Aspira subscription connection. Aspira does not read credential files, expose account details, or verify plan tier. When it finds a signed-in provider, Aspira selects that provider for the first conversation; you can switch or add models from the composer.
+For an existing project file, ask for a reviewed edit:
 
-You can also add an OpenAI-compatible endpoint in **Settings → Advanced**. For example, an Ollama server can run locally at `http://127.0.0.1:11434/v1`. API keys entered in Aspira are separate from subscription CLIs. Aspira does not silently substitute a different model or use an API key from the shell environment when the selected provider is unavailable.
+```text
+In notes.md, replace "Status: draft" with "Status: ready" and prepare the edit for review.
+```
 
-Antigravity and Grok run in fresh temporary workspaces with their provider-native tools disabled. Codex is different: its app-server runs a persistent thread from the Aspira workspace in a read-only sandbox. Aspira registers structured tools on that thread and checks each request against the user's message and its action rules; unsupported approval requests are declined. API-key and compatible-endpoint requests are separate integrations. Per-reply badges identify the path as a provider CLI, Codex app-server, direct API, local Ollama, or unavailable; they do not imply a particular account plan.
+Aspira returns a diff and waits for you to choose **Apply change** or **Discard**. It does not overwrite the file just because an agent suggested an edit.
 
-## What works today
+## Connect your models
 
-The selected lead model can request tools from Aspira's server-validated action set, then use each real result in its next response. Try `Read README.md and explain how to start the app`, `Run git status and tell me whether there are changes`, `Check my Mac memory and battery`, `Open Calculator`, `Remind me to pick up milk`, `Create a note called Shopping with apples and eggs`, `Draft an email about the trip`, `Open example.com and summarize its page`, `Click the Pricing link on this page`, `Type shoes in the search field`, or `Create a file called notes.md with ...`. Tools can list, search, and read workspace text/source files in numbered pages; create a new file; inspect Git status or basic system status; create an item in Reminders or Notes; open a reviewable email draft; open an allowlisted Mac app or a URL; inspect and interact with a visible web page; search the public web; and save a memory when you explicitly ask. Aspira allows up to three tool actions per provider turn. With no model selected, a small intent parser still handles supported local requests.
+Aspira uses the integration each provider permits. A CLI being installed only confirms that the command is available; it does not confirm a plan tier or guarantee sign-in. Provider subscriptions and product terms can change.
 
-For an existing file, try `In notes.md, replace "Status: draft" with "Status: ready" and prepare the edit for review`. The agent prepares an exact replacement and a diff without changing the file. Review the inline card, then choose **Apply change** or **Discard**. Apply checks that the file still matches the reviewed version; **Undo this edit** is available only while the file still matches the applied result. Each operation gets its own receipt, which is included in follow-up replies. Proposals survive app restarts and conversation reloads.
+| Provider | Subscription path in Aspira | Current boundary | Official setup |
+| --- | --- | --- | --- |
+| **Google** | Antigravity CLI (`agy`) | Headless plan-mode replies; Google CLI handles sign-in. Aspira checks CLI availability, not subscription status. | [Install and authenticate](https://www.antigravity.google/docs/cli/install/) |
+| **OpenAI** | Codex CLI app-server (`codex`) | Uses the signed-in Codex session, streams replies, resumes a thread per Aspira conversation, and can request Aspira's structured actions. The Codex workspace runs read-only; file edits still need your review. | [Codex CLI](https://github.com/openai/codex) · [App-server overview](https://developers.openai.com/blog/codex-as-a-platform) |
+| **Anthropic** | Claude Code (`claude`) | Subscription conversations open in Claude Code. For Claude replies inside Aspira, add your own Anthropic API key. | [Install and sign in](https://docs.anthropic.com/en/docs/claude-code/getting-started) |
+| **xAI** | Grok Build CLI (`grok`) | One headless plan-mode reply in a temporary workspace; Grok's provider-native tools are disabled. Aspira checks CLI availability, not account or plan status. | [Install and get started](https://docs.x.ai/build/overview) · [CLI reference](https://docs.x.ai/build/cli/reference) |
 
-This is a bounded action set, not arbitrary computer control. Aspira does not send emails, submit browser forms, activate high-impact web controls, run arbitrary shell commands, apply existing-file edits without review, or run playbooks on a schedule. Browser control uses Google Chrome in a separate Aspira profile; sign in to websites there manually. Aspira returns the visible page text to the selected model when you ask it to read a page. The profile, cookies, and local browser state stay under ignored `server/data/browser-profile/`; page text and your prompt are sent to the selected provider for that turn. Aspira blocks local/private-network addresses, strips query strings from URLs it returns to models, and refuses password, payment, recovery, and secret fields. Creating Notes or Reminders items and opening Mail drafts require macOS Automation permission. Workspace reads and edits exclude hidden, generated, dependency, local-data, and likely credential paths. File creation is limited to new files of at most 200 KB in an existing workspace folder; reviewed edits support existing UTF-8 text/source files of at most 200 KB. Terminal execution remains an exact read-only command allowlist. While a provider is responding, **Stop** cancels the request and terminates the provider CLI; a local action that already started may still finish.
+You can also configure an explicit provider API key or an OpenAI-compatible endpoint in **Settings → Advanced**. Those are separate from subscription access. An optional Ollama-compatible endpoint can connect a local model; Aspira does not silently switch providers or use a key from your shell environment.
 
-Your message appears as soon as you send it. The live turn shows provider states, action starts, and completed receipts as they arrive. Codex app-server replies stream text as it is produced; other provider replies currently appear when complete. When multiple models are selected, an early reply is readable while the other models continue. **Stop** keeps your message, replies already received, and completed action receipts in the conversation; actions without a completion receipt are identified as unfinished. Follow-up prompts include bounded excerpts of completed receipts, so the next reply can reason about work that already ran. File-read receipts show exactly which lines were returned and offer **Read next part** for the latest read. You can also say “read the rest,” “read it again,” or “show lines 90–95” without repeating the filename. These follow-ups refer only to the last successfully read file; they do not enable other actions. Continuation checks the file revision and asks for a fresh read if it changed.
+When a subscription cannot answer inside Aspira, use **Open in [provider]** to copy the prompt and open that provider's app or site. Review it there and submit it yourself. Aspira does not press Send.
 
-## Local data
+## Actions and safety
 
-Saved memories, user-created playbooks, reviewed edit proposals, browser profile data, and Codex conversation links live in `server/data/` and are ignored by Git. They remain on this Mac. Edit proposals retain the before/after file contents for Apply, restart recovery, and Undo in private local files; they are not encrypted. Codex conversation content is also retained by the signed-in Codex app-server according to its own local settings. Memories are added only when you ask Aspira to save one. Aspira keeps up to 24 conversations in this browser's local storage so you can search, reopen, and delete them; this data is not synced or encrypted. When you use a provider, Aspira sends your prompt, a small recent conversation window, and up to eight saved memory notes as context. If the model reads a workspace file, browser page, or runs another tool, Aspira sends that tool's bounded result to the same provider so it can answer.
+The selected lead agent can request actions from Aspira's bounded tool set. The server checks the request against what you asked and returns the actual result to the conversation. Turns are limited to three action calls.
 
-Active conversational turns and unsent drafts are also saved in this tab's session storage. Reloading the same tab restores received replies and action receipts and marks an unfinished response as interrupted. It does not rerun actions or continue the provider request in the background. Drafts are kept separately for each conversation, including a new chat with no sent message. Recovery checkpoints are cleared only after the corresponding turn is saved to chat history; they and drafts are scoped to this tab's browser session, rather than synced across tabs or devices. Storage failures appear beside the composer.
+Aspira can:
 
-When you explicitly ask Aspira to search the web, it sends the search query to DuckDuckGo and returns up to five result titles, snippets, and links. If search returns no readable results or fails, Aspira reports that instead of substituting unrelated stories.
+- read, search, and list eligible project text files; create a new file; prepare a reviewed exact edit;
+- check Git status and basic Mac system status;
+- open an allowlisted Mac app or a public web address;
+- read a browser page when you ask, click a visible control by its exact accessible name, or fill a visible non-secret field;
+- create Notes and Reminders items, open an unsent Mail draft, search the public web, and save a memory when you ask.
 
-## Built-in voice
+Aspira does **not** run arbitrary shell commands, send email, submit browser forms, click high-impact web controls, overwrite existing files without review, or execute routines on a schedule. Browser tools use a separate Chrome profile; Aspira blocks local/private-network HTTP and WebSocket addresses and refuses password, payment, recovery, and secret fields. Page text is sent to your selected provider only when you ask Aspira to read that page. Opening a page, clicking a control, or filling a field returns a compact receipt without echoing the page text or field value.
 
-Voice input and spoken replies run in the browser using Kokoro-82M and Whisper Tiny through Transformers.js. The voice runtime is included with Aspira; there is no separate service, endpoint, or account to configure. Model files download from Hugging Face on first use and are cached by the browser. Speech audio stays in the browser, while the recognized transcript is sent to the provider you selected when you submit the voice message. Voice input starts only after you press the microphone button. Open **Settings → Voice** to preview the included voice.
+## Voice
 
-## Optional passphrase lock
+Voice is part of the app, not a local service you need to install or connect. Aspira runs Whisper Tiny English transcription and Kokoro-82M speech generation in a browser worker. Their model files download from Hugging Face the first time you use voice, then stay cached by your browser. Audio processing stays in the browser; when you send a voice message, its transcript goes to your selected agent like typed text.
 
-The passphrase lock is off by default. It only hides the workspace in the current browser and is not device authentication or a security boundary. Passkey phrases are stored in browser local storage.
+Voice is **press-to-record**, not continuous or full-duplex conversation. Open **Voice**, choose **Record a message**, then choose **Stop & send** when you are done. The optional passphrase lock is a convenience screen for this browser, not device authentication.
+
+## Privacy and local data
+
+- The web app and Express API listen on `127.0.0.1`; Aspira is not a hosted service.
+- Conversations are stored in this browser's local storage. They are not synced or encrypted.
+- Memories, routines, edit proposals, Codex thread links, and the Aspira Chrome profile live under `server/data/` and are ignored by Git. Local files are not encrypted.
+- Provider requests include your prompt, a bounded recent conversation history, and up to eight saved memory notes. If you ask an agent to use a tool, its bounded result is sent to that same provider so it can respond.
+- API keys configured in Aspira are stored in this browser's local storage. Do not treat the passphrase lock or browser storage as a secrets vault.
 
 ## Development
 
 ```sh
-npm run build
+npm test
 npx tsc --noEmit
+npm run build
+```
+
+To run the services separately instead of `npm run dev`, use two terminals:
+
+```sh
 npm run server
+```
+
+```sh
 npm run client
 ```
 
-Aspira's local tools and the web interface communicate through the Express API. Provider conversations use the selected provider CLI or a configured API endpoint. API keys entered for optional direct endpoints are stored in this browser's local storage. Do not use the passphrase lock or browser storage as a secrets vault.
+See [the architecture notes](docs/ARCHITECTURE.md) for provider flow, tool boundaries, conversation recovery, and file-edit behavior. Issues and pull requests are welcome.
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+Aspira is released under the [MIT License](LICENSE).
