@@ -8,6 +8,8 @@ dist/
 # User-created data stays on this Mac, not in the public source repository.
 server/data/memory.json
 server/data/routines.json
+server/data/codex-provider-sessions.json
+server/data/edit-proposals/
 
 # Local browser QA screenshots and temporary viewport captures.
 .playwright-cli/

@@ -2,6 +2,7 @@ import type { AgentActionExecution } from './manifest';
 
 export type DispatchActivityEvent =
   | { type: 'status'; phase: 'thinking' | 'acting'; title: string; actionId?: string }
+  | { type: 'delta'; modelId: string; delta: string }
   | { type: 'action'; action: AgentActionExecution };
 
 export async function readDispatchResponse<T>(
@@ -37,7 +38,9 @@ export async function readDispatchResponse<T>(
         if (event.type === 'result' && event.data && typeof event.data === 'object') {
           return event.data as T;
         }
-        if (event.type === 'status' && ['thinking', 'acting'].includes(event.phase) && typeof event.title === 'string') {
+        if (event.type === 'delta' && typeof event.modelId === 'string' && typeof event.delta === 'string') {
+          onActivity?.(event as DispatchActivityEvent);
+        } else if (event.type === 'status' && ['thinking', 'acting'].includes(event.phase) && typeof event.title === 'string') {
           onActivity?.(event as DispatchActivityEvent);
         } else if (event.type === 'action' && event.action && typeof event.action.id === 'string') {
           onActivity?.(event as DispatchActivityEvent);

@@ -10,10 +10,14 @@ import { createDispatchResponse } from './dispatchResponse.js';
 import { createFileReadPage } from './fileReadPage.js';
 import { contextualReadArguments, readContinuationForPrompt } from './workspaceReadContext.js';
 import { toolAuthorizationError } from './toolAuthorization.js';
+import { createWorkspaceResolver, isInsideDirectory, WORKSPACE_IGNORED_NAMES, WORKSPACE_TEXT_EXTENSIONS, isSensitiveWorkspacePath, assertReadableWorkspacePath } from './workspacePaths.js';
+import { FileEditStore } from './fileEdits.js';
+import { runCodexAppServerTurn } from './codexAppServer.js';
 
 const execFileAsync = promisify(execFile);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '..');
+const resolveWorkspacePath = createWorkspaceResolver(rootDir);
 const dataDir = path.join(__dirname, 'data');
 const homeDir = os.homedir();
 
@@ -118,11 +122,11 @@ export function detectSubscriptions() {
       cliPath: claudeCli,
       desktopAppPath: claudeDesktopApp,
       methodLabel: claudeCli
-        ? 'Claude Code CLI found · sign-in status checked locally'
+        ? 'Claude Code available · subscription chat stays in Claude; add an API key to use Claude in Aspira'
         : claudeDesktopApp
         ? 'Claude desktop app found · install Claude Code CLI to connect inference'
         : 'Not connected',
-      loginCommand: claudeCli ? `${claudeCli} auth login` : 'open -a "Claude"',
+      loginCommand: claudeCli ? claudeCli : 'open -a "Claude"',
     },
     grok: {
       modelId: 'grok',
@@ -319,44 +323,10 @@ async function runSubscriptionInference(modelId, fullPrompt, subs, signal) {
       }
     }
 
-    // 2. CLAUDE SUBSCRIPTION (via ~/.local/bin/claude -p)
-    if (modelId === 'claude' && subs.claude?.cliPath) {
-      try {
-        try {
-        const status = await runCliStatus(subs.claude.cliPath, ['auth', 'status', '--json'], 7000, signal, SUBSCRIPTION_CHILD_ENV);
-          const auth = JSON.parse(status.stdout || '{}');
-          if (auth.loggedIn === false) {
-            return { error: 'Claude Code is signed out. Use Settings → Connections → Open CLI sign-in, then retry.' };
-          }
-        } catch (err) {
-          if (signal?.aborted) throw err;
-          // Continue to a real request; report its result if the status check is unavailable.
-        }
-        const out = await runCliProcess(
-          subs.claude.cliPath,
-          [
-            '-p', '--input-format', 'text', '--output-format', 'text',
-            '--system-prompt', 'You are Claude responding inside Aspira. Follow the instructions in the user message and answer naturally and honestly.',
-            '--tools', '', '--disallowedTools', 'mcp__*',
-            '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}',
-            '--safe-mode', '--no-session-persistence', '--permission-mode', 'plan', '--max-turns', '1',
-          ],
-          timeoutMs,
-          signal,
-          SUBSCRIPTION_CHILD_ENV,
-          fullPrompt,
-          isolatedDir
-        );
-        if (out) {
-          return { text: out, badge: 'CLAUDE_CODE_CLI' };
-        }
-      } catch (err) {
-        if (signal?.aborted) throw err;
-        error = summarizeProviderFailure('Claude Code', err);
-      }
-    }
+    // Anthropic requires third-party products to use API credentials. Keep
+    // Claude subscription sessions inside the official Claude products.
 
-    // 3. GROK SUBSCRIPTION (via ~/.grok/bin/grok -p)
+    // 2. GROK SUBSCRIPTION (via Grok Build CLI)
     if (modelId === 'grok' && subs.grok?.cliPath) {
       try {
         fs.writeFileSync(promptFile, fullPrompt, { mode: 0o600, flag: 'wx' });
@@ -531,59 +501,6 @@ function saveRoutines(routines) {
 // ============================================================================
 // 3. LOCAL ACTION EXECUTION
 // ============================================================================
-function isInsideDirectory(parent, candidate) {
-  const relative = path.relative(parent, candidate);
-  return relative === '' || (!relative.startsWith(`..${path.sep}`) && relative !== '..' && !path.isAbsolute(relative));
-}
-
-function resolveWorkspacePath(input) {
-  const relPath = String(input || '').trim();
-  if (!relPath || path.isAbsolute(relPath)) throw new Error('Use a relative path inside the Aspira workspace.');
-  const fullPath = path.resolve(rootDir, relPath);
-  const realRoot = fs.realpathSync(rootDir);
-  if (!isInsideDirectory(rootDir, fullPath)) throw new Error('Path traversal outside the workspace is not permitted.');
-
-  let existingAncestor = fullPath;
-  while (!fs.existsSync(existingAncestor)) {
-    const parent = path.dirname(existingAncestor);
-    if (parent === existingAncestor) throw new Error('Could not resolve a safe workspace path.');
-    existingAncestor = parent;
-  }
-  const realAncestor = fs.realpathSync(existingAncestor);
-  if (!isInsideDirectory(realRoot, realAncestor)) throw new Error('Symlink paths outside the workspace are not permitted.');
-  const resolvedTarget = fs.existsSync(fullPath)
-    ? fs.realpathSync(fullPath)
-    : path.resolve(realAncestor, path.relative(existingAncestor, fullPath));
-  if (!isInsideDirectory(realRoot, resolvedTarget)) {
-    throw new Error('Symlink paths outside the workspace are not permitted.');
-  }
-  return { fullPath, relPath, safeRelPath: path.relative(realRoot, resolvedTarget) };
-}
-
-const WORKSPACE_IGNORED_NAMES = new Set([
-  '.git', 'node_modules', 'dist', 'build', 'coverage', '.next', '.venv', 'venv',
-]);
-const WORKSPACE_TEXT_EXTENSIONS = new Set([
-  '.md', '.mdx', '.txt', '.json', '.ts', '.tsx', '.js', '.jsx', '.css', '.html',
-  '.py', '.yml', '.yaml', '.toml', '.xml', '.sh', '.sql', '.swift', '.go', '.rs',
-]);
-
-function isSensitiveWorkspacePath(relPath) {
-  return /(^|[\\/])(?:\.env(?:\.[^\\/]*)?|\.ssh|\.gnupg|credentials?(?:\.[^\\/]*)?|secrets?(?:\.[^\\/]*)?|id_rsa|id_ed25519)(?:[\\/]|$)|\.(?:pem|p12|pfx|key)$/i.test(relPath);
-}
-
-function assertReadableWorkspacePath(relPath) {
-  if (isSensitiveWorkspacePath(relPath)) {
-    throw new Error('This path is excluded from agent file access because it may contain credentials.');
-  }
-  const segments = relPath.split(/[\\/]+/).filter((segment) => segment && segment !== '.');
-  if (
-    segments.some((segment) => segment.startsWith('.') || WORKSPACE_IGNORED_NAMES.has(segment)) ||
-    /^server[\\/]data(?:[\\/]|$)/i.test(relPath)
-  ) {
-    throw new Error('Hidden, generated, dependency, and private local-data paths are excluded from agent file access.');
-  }
-}
 
 function listWorkspaceFiles(relativeDirectory = '.', limit = 160) {
   const { fullPath, relPath, safeRelPath } = resolveWorkspacePath(relativeDirectory || '.');
@@ -940,6 +857,17 @@ async function executeAgentTool(tool, args = {}, signal) {
         };
       }
 
+      case 'fs_propose_edit': {
+        signal?.throwIfAborted();
+        const { proposal } = fileEdits.propose(args);
+        return {
+          id: `act-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          tool, title: `Prepared edit proposal for ${proposal.path}`, status: 'success',
+          output: `Prepared proposal ${proposal.id} for ${proposal.path}. No file has been changed. The user can review and apply the diff in Aspira.\n\n${proposal.patch}`,
+          editProposal: proposal, durationMs: Date.now() - start,
+        };
+      }
+
       case 'fs_list': {
         const output = listWorkspaceFiles(args.path || '.', args.limit);
         return {
@@ -1038,6 +966,7 @@ function dispatchActionTitle(tool, args = {}) {
     'workspace.search_text': 'Search workspace files',
     'workspace.read_file': resource ? `Read ${resource}` : 'Read workspace file',
     'workspace.create_file': resource ? `Create ${resource}` : 'Create workspace file',
+    'workspace.propose_edit': resource ? `Prepare edit for ${resource}` : 'Prepare file edit',
     'system.status': 'Read system status',
     'app.open': `Open ${String(args.app || 'app')}`,
     'browser.open_url': 'Open URL in browser',
@@ -1061,6 +990,7 @@ const MODEL_ACTION_TOOLS = `Available Aspira tools:
 - workspace.search_text {query: string}: search readable source and documentation files.
 - workspace.read_file {path: string, startLine?: number, startColumn?: number, endLine?: number, maxLines?: number, expectedRevision?: string}: read a numbered page of a workspace text file. Defaults to line 1, up to 80 lines and 6,000 content characters; maxLines is capped at 200. The result gives the exact next cursor and file revision. Use those values for another page; never imply unread parts were read. Credential files remain blocked.
 - workspace.create_file {path: string, content: string}: create a new file only; existing files cannot be overwritten.
+- workspace.propose_edit {path: string, oldText: string, newText: string, expectedRevision?: string}: prepare one exact replacement in an existing workspace text file, with a diff for user review. oldText must match exactly once (use surrounding text); an empty oldText is allowed only for an empty file. Use the revision returned by a recent read when available. The file is NOT changed by this tool. Only the user's Apply control can write it; do not claim the edit was applied.
 - system.status {}: read basic Mac CPU, memory, battery, and detected provider CLI status.
 - app.open {app: string}: open one of Safari, Notes, Calendar, Calculator, Terminal, Finder, Mail, Messages, Reminders, Music, Preview, Activity Monitor, System Settings, Cursor, ChatGPT, Claude, Gemini, Ollama, Spotify, or Xcode.
 - browser.open_url {url: string}: open a public HTTP(S) URL in the default browser.
@@ -1069,7 +999,7 @@ const MODEL_ACTION_TOOLS = `Available Aspira tools:
 
 To request a tool, return exactly one JSON object and no prose:
 {"type":"aspira_tool_call","tool":"workspace.git_status","arguments":{}}
-Use a tool only when it materially helps the request. Do not claim it ran until the app returns its result. Never request credentials, hidden files, arbitrary shell commands, or edits to existing files. After a tool result, either request one more tool or answer naturally.`;
+Use a tool only when it materially helps the request. Do not claim it ran until the app returns its result. Never request credentials, hidden files, or arbitrary shell commands. Existing-file changes must use workspace.propose_edit; explain that its diff is ready for review, and only claim a write when an applied-edit receipt is present. After a tool result, either request one more tool or answer naturally.`;
 
 function parseModelToolCall(text) {
   let candidate = String(text || '').trim();
@@ -1132,6 +1062,8 @@ async function executeModelToolCall(toolCall, userPrompt, leadAgent, signal, rea
         content: String(args.content || ''),
       }, signal);
     }
+    case 'workspace.propose_edit':
+      return executeAgentTool('fs_propose_edit', { path: args.path, oldText: args.oldText, newText: args.newText, expectedRevision: args.expectedRevision }, signal);
     case 'system.status':
       return executeAgentTool('system_status', {}, signal);
     case 'app.open': {
@@ -1298,6 +1230,8 @@ async function requestProviderCompletion({
   return {
     error: lastError || (subscriptions[modelId]?.cliPath
       ? `${modelId} CLI did not return a response. Check its sign-in and connection, then retry.`
+      : modelId === 'claude' && !apiKeys.claude
+      ? 'Claude subscription chat stays in Claude Code. Add an Anthropic API key if you want to use Claude in Aspira.'
       : `${modelId} is not connected. Sign in to its supported CLI or configure a provider in Settings.`),
   };
 }
@@ -1444,8 +1378,19 @@ async function detectAndRunNaturalActions(prompt, leadAgent = 'argon', { signal,
   return actions;
 }
 
+const fileEdits = new FileEditStore(rootDir, path.join(dataDir, 'edit-proposals'), redactLikelySecrets);
 const app = express();
 app.use(express.json({ limit: '5mb' }));
+
+app.get('/api/file-edits/:id', (req, res) => {
+  try { res.json(fileEdits.get(req.params.id)); }
+  catch (error) { res.status(error.statusCode || 400).json({ error: error.message || 'Could not load this edit proposal.' }); }
+});
+
+app.post('/api/file-edits/:id/:operation', (req, res) => {
+  try { res.json(fileEdits.operate(req.params.id, req.params.operation, req.body || {})); }
+  catch (error) { res.status(error.statusCode || 400).json({ error: error.message || 'Could not complete this edit operation.' }); }
+});
 
 // ============================================================================
 // ENDPOINTS: SUBSCRIPTIONS, TELEMETRY, MEMORY, ROUTINES, ACTION EXECUTION
@@ -1476,7 +1421,7 @@ app.post('/api/subscriptions/login', async (req, res) => {
       const loginArgs = modelId === 'argon'
         ? []
         : modelId === 'claude'
-        ? ['auth', 'login']
+        ? []
         : ['login'];
       const shellQuote = (value) => `'${String(value).replace(/'/g, `'\\''`)}'`;
       const cmd = [sub.cliPath, ...loginArgs].map(shellQuote).join(' ');
@@ -1670,6 +1615,8 @@ app.get('/api/fs-graph', (_req, res) => {
       }
       const fullPath = path.join(dirPath, entry.name);
       const relPath = path.relative(rootDir, fullPath);
+      if (entry.isSymbolicLink()) continue;
+      try { assertReadableWorkspacePath(relPath); } catch { continue; }
       const id = relPath.replace(/\\/g, '/');
 
       if (entry.isDirectory()) {
@@ -1686,6 +1633,7 @@ app.get('/api/fs-graph', (_req, res) => {
         }
         scanDir(fullPath, id, depth + 1);
       } else {
+        if (!WORKSPACE_TEXT_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) continue;
         let content = '';
         let lines = 10;
         try {
@@ -1799,6 +1747,7 @@ app.post('/api/dispatch', async (req, res) => {
 
   const {
     modelId,
+    conversationId,
     prompt,
     systemPrompt,
     apiKeys = {},
@@ -1888,6 +1837,49 @@ app.post('/api/dispatch', async (req, res) => {
   const maxToolCalls = 3;
 
   try {
+    // Codex app-server keeps a native thread per Aspira conversation and sends
+    // structured tool calls through Aspira's existing authorization layer.
+    if (modelId === 'gpt' && !apiKeys.gpt && subscriptions.gpt?.cliPath) {
+      dispatch.emit({ type: 'status', phase: 'thinking', title: 'Connecting to your Codex session' });
+      const codexResult = await runCodexAppServerTurn({
+        binary: subscriptions.gpt.cliPath,
+        sessionFile: path.join(dataDir, 'codex-provider-sessions.json'),
+        conversationId: conversationId || `turn-${Date.now()}`,
+        cwd: rootDir,
+        systemPrompt: fullSystemPrompt.replace(MODEL_ACTION_TOOLS, '').trim(),
+        prompt,
+        historyContext: recentHistoryText,
+        allowActions: Boolean(executeActions),
+        env: SUBSCRIPTION_CHILD_ENV,
+        signal: requestAbort.signal,
+        executeTool: ({ tool, arguments: toolArguments }) => executeModelToolCall(
+          { tool, arguments: toolArguments },
+          prompt,
+          modelId,
+          requestAbort.signal,
+          readContinuation,
+        ),
+        onStatus: (title) => dispatch.emit({ type: 'status', phase: 'thinking', title }),
+        onActionStart: (title) => dispatch.emit({ type: 'status', phase: 'acting', title }),
+        onDelta: (delta) => dispatch.emit({ type: 'delta', modelId, delta }),
+        onAction: (action) => {
+          executedActions.push(action);
+          dispatch.emit({ type: 'action', action });
+        },
+      });
+      if (requestAbort.signal.aborted) return;
+      return dispatch.complete(200, {
+        source: 'PROVIDER_CLI',
+        providerBadge: 'CODEX_APP_SERVER',
+        modelId,
+        text: codexResult.text || null,
+        error: codexResult.text ? undefined : 'Codex completed the turn without a text response.',
+        executedActions,
+        memories: loadMemories(),
+        latencyMs: Date.now() - startTime,
+      });
+    }
+
     while (!requestAbort.signal.aborted) {
       const toolResultContext = toolResults.length
         ? `\n\n[ASPIRA TOOL RESULTS]\n${toolResults.map((action, index) =>

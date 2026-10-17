@@ -40,7 +40,7 @@ export function PendingConversationTurn({ turn }: { turn: PendingTurn }) {
                 <summary>
                   {action.status === 'success' ? <CheckCircle2 aria-hidden="true" /> : <X aria-hidden="true" />}
                   <span>{action.title}</span>
-                  <span className="aspira-live-receipt-state">{action.status === 'success' ? 'Completed' : action.status === 'blocked' ? 'Blocked' : 'Needs attention'}</span>
+                  <span className="aspira-live-receipt-state">{action.editProposal ? 'Prepared for review' : action.status === 'success' ? 'Completed' : action.status === 'blocked' ? 'Blocked' : 'Needs attention'}</span>
                   <ChevronDown aria-hidden="true" />
                 </summary>
                 <pre>{action.output || 'No output was returned.'}</pre>
@@ -59,6 +59,12 @@ export function PendingConversationTurn({ turn }: { turn: PendingTurn }) {
           <section key={response.modelId} className="aspira-live-reply" aria-label={`${response.codeName} response`}>
             <p className="aspira-live-reply-name">{response.codeName}</p>
             <MarkdownMessage content={response.keyInsight} className="aspira-answer-markdown" />
+          </section>
+        ))}
+        {Object.entries(turn.deltas || {}).map(([modelId, text]) => (
+          <section key={modelId} className="aspira-live-reply" aria-label={`${modelId} response in progress`}>
+            <p className="aspira-live-reply-name">{modelId.toUpperCase()} · responding</p>
+            <MarkdownMessage content={text} className="aspira-answer-markdown" />
           </section>
         ))}
       </div>

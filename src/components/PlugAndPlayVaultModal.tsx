@@ -24,6 +24,7 @@ import {
 
 interface PlugAndPlayVaultModalProps {
   open: boolean;
+  initialModelId?: string;
   onClose: () => void;
   models: ModelPluginManifest[];
   initialSubscriptions: Record<string, SubscriptionStatus>;
@@ -68,6 +69,7 @@ const OSS_MODEL_PRESETS = [
 
 export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
   open,
+  initialModelId,
   onClose,
   models,
   initialSubscriptions,
@@ -142,6 +144,15 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
       refreshSubscriptions();
     }
   }, [open]);
+
+  useEffect(() => {
+    if (!open || !initialModelId) return;
+    setActiveTab('subscriptions');
+    const frame = window.requestAnimationFrame(() => {
+      document.getElementById(`aspira-provider-${initialModelId}`)?.scrollIntoView({ block: 'nearest' });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [open, initialModelId]);
 
   useEffect(() => {
     if (!open) return;
@@ -257,11 +268,11 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
   const sessionPhrase = passkeyProfiles[0]?.phrase || '';
   const providerIds = ['claude', 'gpt', 'grok', 'argon'] as const;
   const signedInProviderCount = providerIds.filter((id) =>
-    Boolean(subscriptions[id]?.cliPath) && subscriptions[id]?.authStatus === 'signed_in'
+    id !== 'claude' && Boolean(subscriptions[id]?.cliPath) && subscriptions[id]?.authStatus === 'signed_in'
   ).length;
   const savedApiKeyCount = providerIds.filter((id) => Boolean(apiKeys[id])).length;
   const configuredProviderCount = providerIds.filter((id) =>
-    Boolean(apiKeys[id]) || (Boolean(subscriptions[id]?.cliPath) && subscriptions[id]?.authStatus === 'signed_in')
+    Boolean(apiKeys[id]) || (id !== 'claude' && Boolean(subscriptions[id]?.cliPath) && subscriptions[id]?.authStatus === 'signed_in')
   ).length;
   const connectionSummary = subscriptionScanState === 'checking'
     ? 'Checking local sign-ins'
@@ -273,7 +284,9 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
 
   const openApiKeyEditor = (id: string) => {
     setShowByokSection(true);
-    setLoginStatusMsg(`${models.find((model) => model.id === id)?.codeName || subscriptions[id]?.providerName || 'This provider'} has no supported CLI. Add an API key below to use it in Aspira.`);
+    setLoginStatusMsg(id === 'claude'
+      ? 'Claude subscription sign-in stays in Claude Code. Add an Anthropic API key below to use Claude in Aspira.'
+      : `${models.find((model) => model.id === id)?.codeName || subscriptions[id]?.providerName || 'This provider'} has no supported CLI. Add an API key below to use it in Aspira.`);
     window.requestAnimationFrame(() => document.getElementById(`api-key-${id}`)?.focus());
   };
 
@@ -309,12 +322,12 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
               <Layers className="w-4 h-4" />
             </div>
             <div>
-              <p className="aspira-vault-eyebrow">ASPIRA · WORKSPACE</p>
+              <p className="aspira-vault-eyebrow">ASPIRA</p>
               <h2 id="connections-dialog-title" className="text-lg font-semibold text-white tracking-tight">
-                Connections & settings
+                Your agents & settings
               </h2>
               <p className="text-xs text-slate-400">
-                Manage the models and preferences available in your studio.
+                Choose your agents and make Aspira feel like yours.
               </p>
             </div>
           </div>
@@ -332,13 +345,13 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
 
         <div className="aspira-vault-content-layout">
           <aside className="aspira-vault-sidebar" aria-label="Settings navigation">
-            <p className="aspira-vault-sidebar-heading">PREFERENCES</p>
+            <p className="aspira-vault-sidebar-heading">SETTINGS</p>
             <nav className="aspira-vault-tabs" role="tablist" aria-label="Settings sections" aria-orientation="vertical">
             {[
-              { id: 'subscriptions', label: 'Connections', icon: CheckCircle2 },
-              { id: 'models', label: 'Models', icon: Layers },
+              { id: 'subscriptions', label: 'Your agents', icon: CheckCircle2 },
+              { id: 'models', label: 'Advanced', icon: Layers },
               { id: 'voice', label: 'Voice', icon: Volume2 },
-              { id: 'passkeys', label: 'Passkey lock', icon: Lock },
+              { id: 'passkeys', label: 'Privacy', icon: Lock },
             ].map((tab) => {
               const Icon = tab.icon;
               const active = activeTab === tab.id;
@@ -387,10 +400,10 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
             <div className="space-y-6">
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <div>
-                  <p className="aspira-vault-section-kicker">CONNECTIONS</p>
-                  <h3 className="text-xl font-semibold text-white">Connect your AI providers</h3>
+                  <p className="aspira-vault-section-kicker">YOUR AGENTS</p>
+                  <h3 className="text-xl font-semibold text-white">Bring your agents together</h3>
                   <p className="aspira-vault-intro-copy text-xs text-slate-400 mt-0.5">
-                    Sign in through a supported local CLI, or add a direct API key. A provider app subscription or desktop sign-in alone does not connect an account to Aspira.
+                    Connect a supported provider sign-in or add an API key. Claude subscription conversations stay in Claude Code; add an API key to use Claude inside Aspira.
                   </p>
                 </div>
                 <div className="aspira-vault-header-actions">
@@ -415,7 +428,7 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
 
               {subscriptionScanState === 'checking' && (
                 <p className="aspira-vault-scan-progress text-xs text-slate-400" role="status" aria-live="polite">
-                  Checking local provider CLIs. Sign-in is shown only when the CLI exposes it.
+                  Checking supported provider sign-ins. This may take a moment.
                 </p>
               )}
 
@@ -447,7 +460,7 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
                   <div className="aspira-vault-empty-icon"><KeyRound className="h-4 w-4" aria-hidden="true" /></div>
                   <div>
                     <p className="aspira-vault-empty-title">No verified connection yet</p>
-                    <p className="aspira-vault-empty-copy">A paid plan in a provider app does not grant local access by itself. A detected CLI may still need sign-in; connect one or add an API key, which Aspira will check on your first reply.</p>
+                    <p className="aspira-vault-empty-copy">Choose an agent below to connect. A desktop app sign-in alone does not grant Aspira access. API keys are checked when you request your first reply.</p>
                   </div>
                 </div>
               )}
@@ -459,7 +472,8 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
                   const model = models.find((m) => m.id === id);
                   const cliAvailable = Boolean(sub?.cliPath);
                   const hasSavedApiKey = Boolean(apiKeys[id]);
-                  const canUseInStudio = hasSavedApiKey || (cliAvailable && sub?.authStatus === 'signed_in');
+                  const isClaudeHandoff = id === 'claude' && cliAvailable && !hasSavedApiKey;
+                  const canUseInConversation = hasSavedApiKey || (!isClaudeHandoff && cliAvailable && sub?.authStatus === 'signed_in');
                   const connectionLabel = hasSavedApiKey
                     ? 'API key saved'
                     : !sub
@@ -472,6 +486,8 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
                       : 'Not checked'
                     : !cliAvailable
                     ? 'CLI not found'
+                    : sub.authStatus === 'signed_in' && isClaudeHandoff
+                    ? 'Use in Claude Code'
                     : sub.authStatus === 'signed_in'
                     ? 'Signed in'
                     : sub.authStatus === 'signed_out'
@@ -520,7 +536,8 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
                   return (
                     <div
                       key={id}
-                      className="aspira-provider-card p-4 rounded-2xl bg-white/[0.03] border border-white/[0.08] flex flex-col justify-between gap-3"
+                      id={`aspira-provider-${id}`}
+                      className={`aspira-provider-card ${initialModelId === id ? 'is-selected-agent' : ''} p-4 rounded-2xl bg-white/[0.03] border border-white/[0.08] flex flex-col justify-between gap-3`}
                       data-state={connectionState}
                     >
                       <div>
@@ -530,7 +547,7 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
                               {(model?.codeName || id).slice(0, 1)}
                             </span>
                             <div className="aspira-provider-names">
-                              <span className="aspira-provider-name">{model?.codeName || id}</span>
+                              <span className="aspira-provider-name">{id === 'argon' ? 'Gemini' : model?.codeName || id}</span>
                               <span className="aspira-provider-family">{sub?.providerName || model?.family || 'Provider connection'}</span>
                             </div>
                           </div>
@@ -550,7 +567,7 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
                       </div>
 
                       <div className="flex items-center gap-2 pt-1">
-                        {canUseInStudio ? (
+                        {canUseInConversation ? (
                           <button
                             type="button"
                             onClick={() => {
@@ -560,7 +577,7 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
                             className="aspira-connection-action is-primary flex-1 py-2 px-3 rounded-xl bg-indigo-500/20 hover:bg-indigo-500/30 border border-indigo-400/30 text-indigo-200 text-xs font-medium flex items-center justify-center gap-1.5 transition-all"
                           >
                             <CheckCircle2 className="w-3.5 h-3.5" />
-                            {awakeModelIds.includes(id) ? 'Return to Studio' : 'Use in Studio'}
+                            {awakeModelIds.includes(id) ? 'Return to conversation' : 'Use in conversation'}
                           </button>
                         ) : cliAvailable ? (
                           <button
@@ -569,7 +586,7 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
                             className="aspira-connection-action is-primary flex-1 py-2 px-3 rounded-xl bg-indigo-500/20 hover:bg-indigo-500/30 border border-indigo-400/30 text-indigo-200 text-xs font-medium flex items-center justify-center gap-1.5 transition-all"
                           >
                             <ExternalLink className="w-3.5 h-3.5" />
-                            {connectionLabel === 'Sign-in required' ? 'Sign in in Terminal' : 'Open CLI in Terminal'}
+                            {id === 'claude' ? 'Open Claude Code' : connectionLabel === 'Sign-in required' ? 'Sign in' : 'Open sign-in'}
                           </button>
                         ) : (
                           <button
@@ -615,7 +632,7 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
                   <form id="aspira-byok-fields" onSubmit={handleSaveKeys} className="aspira-byok-form space-y-3 pt-4 mt-3 border-t border-white/[0.06]">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       {[
-                        { id: 'argon', label: 'Argon · Google Gemini API Key', placeholder: 'AIzaSy...' },
+                        { id: 'argon', label: 'Gemini · Google API Key', placeholder: 'AIzaSy...' },
                         { id: 'claude', label: 'Claude · Anthropic API Key', placeholder: 'sk-ant-...' },
                         { id: 'grok', label: 'Grok · xAI API Key', placeholder: 'xai-...' },
                         { id: 'gpt', label: 'GPT · OpenAI API Key', placeholder: 'sk-proj-...' },
@@ -676,7 +693,7 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
             <div className="space-y-6">
               <div>
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-3">
-                  Configured model connections ({models.length})
+                  Agent connections ({models.length})
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {models.map((m) => (
@@ -693,7 +710,7 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
                           <span className="text-sm font-semibold text-white">{m.codeName}</span>
                           <span className="text-[11px] font-mono text-slate-400">{m.family}</span>
                         </div>
-                        <p className="text-xs text-slate-300 leading-relaxed">{m.tagline}</p>
+                        <p className="text-xs text-slate-300 leading-relaxed">{m.endpointConfig ? `Custom model · ${m.endpointConfig.apiModelId}` : 'Connection status and sign-in are available in Your agents.'}</p>
                       </div>
                       <span className="text-[10px] font-mono px-2.5 py-1 rounded-full bg-white/[0.05] text-slate-300 shrink-0">
                         {m.vendor}
@@ -847,7 +864,7 @@ export const PlugAndPlayVaultModal: React.FC<PlugAndPlayVaultModalProps> = ({
                   <span className={`absolute top-1 h-4 w-4 rounded-full bg-white transition ${passkeyLockEnabled ? 'left-6' : 'left-1'}`} />
                 </button>
               </div>
-              <p className="text-xs leading-5 text-slate-500">This passphrase only hides the workspace in the current browser. It is not an account password or device security.</p>
+              <p className="text-xs leading-5 text-slate-500">This passphrase only hides your conversations in the current browser. It is not an account password or device security.</p>
               {passkeyProfiles.map((profile) => (
                 <div
                   key={profile.id}

@@ -1,5 +1,6 @@
 import type { ConversationTurn, SynergyExecutionResult } from './manifest';
 import { normalizeWorkspaceFileRead } from './fileReadContext';
+import { normalizeFileEditProposal } from './fileEditProposals';
 
 export const CONVERSATION_HISTORY_STORAGE_KEY = 'aspira_conversations_v1';
 export const MAX_SAVED_CONVERSATIONS = 24;
@@ -31,6 +32,7 @@ export function normalizeConversationTurn(value: unknown): ConversationTurn | nu
       ...stream,
       codeName: typeof stream.codeName === 'string' ? stream.codeName : stream.modelId,
       role: stream.role || '', badgeLabel: stream.badgeLabel || '', uniqueNuance: stream.uniqueNuance || '',
+      providerBadge: typeof stream.providerBadge === 'string' ? stream.providerBadge : undefined,
       source: sources.includes(stream.source) ? stream.source : 'UNAVAILABLE' as const,
       latencyMs: Number.isFinite(stream.latencyMs) ? stream.latencyMs : 0,
       ttftMs: Number.isFinite(stream.ttftMs) ? stream.ttftMs : 0,
@@ -50,9 +52,10 @@ export function normalizeConversationTurn(value: unknown): ConversationTurn | nu
       consensusScore: Number.isFinite(result.consensusScore) ? result.consensusScore : null,
       participatingModels: Array.isArray(result.participatingModels) ? result.participatingModels : [],
       executedActions: actions.map((action) => {
-        const { fileRead: rawFileRead, ...base } = action;
+        const { fileRead: rawFileRead, editProposal: rawProposal, ...base } = action;
         const fileRead = normalizeWorkspaceFileRead(rawFileRead);
-        return { ...base, ...(fileRead ? { fileRead } : {}), durationMs: Number.isFinite(action.durationMs) ? action.durationMs : 0 };
+        const editProposal = normalizeFileEditProposal(rawProposal);
+        return { ...base, ...(fileRead ? { fileRead } : {}), ...(editProposal ? { editProposal } : {}), durationMs: Number.isFinite(action.durationMs) ? action.durationMs : 0 };
       }),
       modelStreams: streams,
       followUpSuggestions: Array.isArray(result.followUpSuggestions) ? result.followUpSuggestions : [],

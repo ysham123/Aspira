@@ -1,0 +1,31 @@
+.aspira-edit-card { overflow: hidden; margin: .65rem 0; padding: 1rem; border: 1px solid #dfd9eb; border-radius: 1rem; background: #fcfbfe; color: #514a5c; }
+.aspira-edit-heading { display: flex; align-items: center; gap: .65rem; }
+.aspira-edit-heading > svg { width: 1.1rem; height: 1.1rem; color: #82709c; flex-shrink: 0; }
+.aspira-edit-name { min-width: 0; display: grid; gap: .15rem; }
+.aspira-edit-name > span { text-transform: uppercase; letter-spacing: .1em; font-size: .58rem; color: #96909f; }
+.aspira-edit-name strong { overflow-wrap: anywhere; font-size: .8rem; font-weight: 600; }
+.aspira-edit-state { margin-left: auto; flex-shrink: 0; border-radius: 1rem; padding: .3rem .55rem; background: #eee9f6; font-size: .6rem; color: #75628e; }
+.is-applied .aspira-edit-state, .is-reverted .aspira-edit-state { background: #e9f2ed; color: #5f806e; }
+.is-conflict .aspira-edit-state { background: #f8efe0; color: #9b7b4b; }
+.aspira-edit-summary { display: flex; gap: .75rem; margin: .9rem 0; font-size: .65rem; }
+.aspira-edit-summary span:first-child { color: #54806b; }
+.aspira-edit-summary span:last-child { color: #a46c6a; }
+.aspira-edit-diff summary { cursor: pointer; font-size: .7rem; font-weight: 500; padding: .3rem 0 .65rem; }
+.aspira-edit-diff pre { overflow: auto; max-height: 22rem; padding: .75rem 0; border: 1px solid #e7e2eb; border-radius: .6rem; background: #fff; font-size: .68rem; line-height: 1.7; tab-size: 2; }
+.aspira-edit-diff code { display: block; min-width: max-content; }
+.aspira-edit-diff code > span { display: block; padding: 0 .85rem; }
+.aspira-edit-diff .is-added { background: #edf7ef; color: #3d7554; }
+.aspira-edit-diff .is-removed { background: #fbefee; color: #a15c5b; }
+.aspira-edit-diff .is-header { color: #9182a3; background: #f8f6fa; }
+.aspira-edit-note, .aspira-edit-error { margin: .8rem 0; font-size: .7rem; line-height: 1.6; }
+.aspira-edit-note { color: #87808f; }
+.aspira-edit-error { color: #a36b57; }
+.aspira-edit-controls { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; padding-top: .5rem; }
+.aspira-edit-controls button { display: inline-flex; align-items: center; justify-content: center; gap: .4rem; min-height: 2.25rem; padding: .45rem .65rem; border-radius: .6rem; font-size: .67rem; color: #766984; background: #f0ecf5; cursor: pointer; }
+.aspira-edit-controls button > svg { width: .8rem; height: .8rem; }
+.aspira-edit-controls .aspira-edit-refresh { margin-right: auto; background: transparent; color: #99909f; }
+.aspira-edit-controls .aspira-edit-apply { background: #62516f; color: #fff; }
+.aspira-edit-controls button:hover { filter: brightness(.97); }
+.aspira-edit-controls button:disabled { opacity: .4; cursor: default; }
+.aspira-edit-controls button:focus-visible, .aspira-edit-diff summary:focus-visible { outline: 2px solid #ac9bbb; outline-offset: 3px; }
+@media (max-width: 480px) { .aspira-edit-card { padding: .75rem; } .aspira-edit-heading { flex-wrap: wrap; } .aspira-edit-state { margin-left: 1.7rem; } .aspira-edit-controls .aspira-edit-refresh { flex-basis: 100%; justify-content: flex-start; } }

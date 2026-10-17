@@ -1,0 +1,125 @@
+/* A continuous conversation, with results and activity kept in context. */
+.conversation-workspace { position: relative; display: flex; flex: 1; flex-direction: column; width: 100%; height: 100%; min-width: 0; min-height: 0; color: #242522; background: #faf9f6; }
+.conversation-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
+.conversation-content { width: min(100%, 824px); min-height: 100%; margin: 0 auto; padding: 36px 32px 32px; }
+.conversation-welcome { display: flex; min-height: min(620px, 68vh); flex-direction: column; justify-content: center; align-items: flex-start; padding: 20px 0 36px; }
+.conversation-welcome-symbol, .conversation-assistant-symbol { display: inline-flex; align-items: baseline; font-family: Georgia, 'Times New Roman', serif; font-style: italic; color: #a9412b; line-height: 1; }
+.conversation-welcome-symbol { margin-bottom: 24px; font-size: 45px; letter-spacing: -.1em; }
+.conversation-welcome-symbol > span, .conversation-assistant-symbol > span { padding-left: 1px; font-style: normal; }
+.conversation-welcome h1 { max-width: 610px; margin: 0; color: #242522; font-size: 40px; font-weight: 500; letter-spacing: -.045em; line-height: 1.17; text-wrap: balance; }
+.conversation-welcome > p { max-width: 510px; margin: 20px 0 0; color: #777771; font-size: 16px; line-height: 1.65; }
+.conversation-connect { display: inline-flex; align-items: center; gap: 8px; margin-top: 22px; color: #a9412b; font-size: 14px; font-weight: 550; cursor: pointer; }
+.conversation-connect > svg { width: 15px; height: 15px; }
+.conversation-starters { display: grid; width: 100%; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 40px; }
+.conversation-starter { position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 18px; min-height: 134px; border: 1px solid #e7e4dd; border-radius: 14px; padding: 18px 15px; background: #f7f6f2; text-align: left; cursor: pointer; transition: background .15s, border-color .15s; }
+.conversation-starter > svg { width: 20px; height: 20px; color: #8c8176; stroke-width: 1.5; }
+.conversation-starter > span { display: flex; flex-direction: column; gap: 5px; }
+.conversation-starter strong { color: #44453f; font-size: 13px; font-weight: 550; line-height: 1.4; }
+.conversation-starter > span > span { color: #898982; font-size: 12px; line-height: 1.4; }
+.conversation-starter > svg.conversation-starter-arrow { position: absolute; top: 19px; right: 14px; width: 14px; height: 14px; color: #aaa79e; }
+.conversation-starter:hover { border-color: #d7c9bc; background: #f1eee7; }
+.conversation-turn { display: flex; flex-direction: column; gap: 22px; padding-bottom: 38px; }
+.conversation-turn + .conversation-turn { border-top: 1px solid #ece9e2; padding-top: 32px; }
+.conversation-message-byline { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; color: #96958d; font-size: 12px; line-height: 1.5; }
+.conversation-message-byline strong { color: #3e4039; font-size: 14px; font-weight: 600; }
+.conversation-message-byline time { margin-left: auto; font-size: 11px; color: #aaa79e; }
+.conversation-user { padding: 0; }
+.conversation-user > p { margin: 0; font-size: 17px; line-height: 1.65; color: #32342d; white-space: pre-wrap; overflow-wrap: anywhere; }
+.conversation-assistant { min-width: 0; }
+.conversation-assistant-byline { margin-bottom: 15px; }
+.conversation-assistant-byline > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.conversation-assistant-symbol { width: 23px; font-size: 24px; letter-spacing: -.1em; }
+.aspira-shell .conversation-workspace .aspira-markdown.conversation-answer, .aspira-shell .conversation-workspace .aspira-markdown.conversation-contribution { --aspira-copy-ink: #242522; --aspira-copy-body: #44453f; --aspira-copy-muted: #808078; display: flex; flex-direction: column; max-width: 100%; gap: 15px; color: #44453f; font-size: 16px; line-height: 1.65; }
+.aspira-shell .conversation-workspace .aspira-markdown.conversation-answer > p, .aspira-shell .conversation-workspace .aspira-markdown.conversation-answer > ul, .aspira-shell .conversation-workspace .aspira-markdown.conversation-answer > ol, .aspira-shell .conversation-workspace .aspira-markdown.conversation-contribution > p { margin: 0; color: inherit; font-size: inherit; line-height: 1.65; }
+.aspira-shell .conversation-workspace .aspira-markdown a { color: #a9412b; text-decoration-color: #d7b6a8; }
+.aspira-shell .conversation-workspace .aspira-markdown strong { color: #30322b; }
+.aspira-shell .conversation-workspace .aspira-markdown li::marker { color: #9d8b7c; }
+.aspira-shell .conversation-workspace .aspira-markdown blockquote { border-color: #d4b39e; border-radius: 0; background: #f2efe8; }
+.aspira-shell .conversation-workspace .aspira-inline-code { border-color: #e5e0d7; background: #f0ede6; color: #6c594d; }
+.conversation-response-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; margin-top: 18px; }
+.conversation-response-tools > button { display: inline-flex; min-height: 32px; align-items: center; gap: 6px; border-radius: 6px; padding: 3px 0; color: #89877e; font-size: 12px; cursor: pointer; }
+.conversation-response-tools > button > svg { width: 14px; height: 14px; stroke-width: 1.5; }
+.conversation-response-tools > button:hover { color: #a9412b; }
+.conversation-response-tools > button:disabled { opacity: .4; cursor: default; }
+.conversation-contributions { display: flex; flex-direction: column; gap: 24px; margin-top: 22px; border-left: 2px solid #e4ddd2; padding: 0 0 0 20px; }
+.conversation-contributions h3 { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 0 0 10px; color: #484940; font-size: 14px; font-weight: 550; }
+.conversation-contributions h3 > span { color: #99958a; font-size: 12px; font-weight: 400; }
+.conversation-followups { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; border-top: 1px solid #ece9e2; margin-top: 21px; padding-top: 12px; }
+.conversation-followups > button { display: flex; align-items: center; gap: 8px; min-height: 34px; color: #79786f; font-size: 13px; text-align: left; cursor: pointer; }
+.conversation-followups > button > svg { flex-shrink: 0; width: 13px; height: 13px; }
+.conversation-followups > button:hover { color: #a9412b; }
+.conversation-followups > button:disabled { opacity: .4; cursor: default; }
+.conversation-activity { border: 1px solid #e5e2da; border-radius: 10px; background: #f5f3ee; color: #858177; }
+.conversation-activity > summary { display: flex; align-items: center; gap: 9px; min-height: 43px; list-style: none; padding: 9px 13px; font-size: 12px; cursor: pointer; }
+.conversation-activity > summary::-webkit-details-marker { display: none; }
+.conversation-activity > summary > svg { width: 14px; height: 14px; flex-shrink: 0; stroke-width: 1.6; }
+.conversation-activity > summary > svg:first-child { color: #788b6e; }
+.conversation-activity > summary > svg:last-child { margin-left: auto; }
+.conversation-activity[open] > summary { border-bottom: 1px solid #e8e3da; }
+.conversation-activity[open] > summary > svg:last-child { transform: rotate(180deg); }
+.conversation-activity > div { padding: 0 13px; }
+.conversation-activity-item { padding: 12px 0; }
+.conversation-activity-item + .conversation-activity-item { border-top: 1px solid #e5e1d9; }
+.conversation-activity-label { display: flex; align-items: center; gap: 8px; color: #66685d; font-size: 12px; overflow-wrap: anywhere; }
+.conversation-activity-label > svg { width: 14px; height: 14px; flex-shrink: 0; color: #7a8a6c; }
+.is-error .conversation-activity-label > svg, .is-blocked .conversation-activity-label > svg { color: #a86a43; }
+.conversation-activity-status { margin-left: auto; color: #969084; font-size: 11px; white-space: nowrap; }
+.conversation-file-range { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 10px 0 0; color: #938b7e; font-size: 12px; }
+.conversation-file-range > button { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; color: #a9412b; cursor: pointer; }
+.conversation-file-range > button > svg { width: 13px; height: 13px; }
+.conversation-file-range > button:disabled { opacity: .4; cursor: default; }
+.conversation-action-output summary { display: flex; align-items: center; gap: 7px; width: fit-content; margin-top: 9px; color: #918b80; list-style: none; font-size: 12px; cursor: pointer; }
+.conversation-action-output summary::-webkit-details-marker { display: none; }
+.conversation-action-output summary > svg { width: 12px; height: 12px; }
+.conversation-action-output pre { max-height: 300px; overflow: auto; margin: 10px 0 0; border: 1px solid #e5dfd4; border-radius: 6px; padding: 12px; background: #faf9f6; color: #746c61; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.6 ui-monospace, SFMono-Regular, monospace; }
+.conversation-working { display: flex; align-items: center; gap: 12px; padding: 20px 0; color: #8a8377; font-size: 14px; }
+.conversation-working > span { width: 7px; height: 7px; border-radius: 50%; background: #ad6650; animation: conversation-breathe 1.6s ease-in-out infinite; }
+.conversation-jump { position: absolute; left: 50%; bottom: 12px; display: flex; min-height: 36px; align-items: center; gap: 7px; transform: translateX(-50%); border: 1px solid #e0d9cd; border-radius: 20px; padding: 0 13px; background: #faf9f6; color: #7d7467; box-shadow: 0 3px 10px #3025190a; font-size: 12px; cursor: pointer; }
+.conversation-jump > svg { width: 14px; height: 14px; }
+.conversation-workspace button:focus-visible, .conversation-workspace summary:focus-visible { outline: 2px solid #b66d55; outline-offset: 4px; }
+/* Preserve streamed work, with the same readable hierarchy as completed replies. */
+.aspira-shell .conversation-workspace .aspira-turn { width: 100%; gap: 22px; padding: 0 0 30px; }
+.aspira-shell .conversation-workspace .aspira-user-turn { display: block; }
+.aspira-shell .conversation-workspace .aspira-user-message { max-width: 100%; border: 0; border-radius: 0; padding: 0; background: transparent; box-shadow: none; }
+.aspira-shell .conversation-workspace .aspira-user-meta { font-size: 12px; color: #a29b8e; }
+.aspira-shell .conversation-workspace .aspira-user-author { color: #3e4039; font-size: 14px; }
+.aspira-shell .conversation-workspace .aspira-user-copy { color: #32342d; font-size: 17px; line-height: 1.65; }
+.aspira-shell .conversation-workspace .aspira-response-card { border: 0; border-radius: 0; background: transparent; box-shadow: none; padding: 0; }
+.aspira-shell .conversation-workspace .aspira-assistant-mark { border-color: #e7dbcc; background: #f2e9dd; color: #a9412b; }
+.aspira-shell .conversation-workspace .aspira-assistant-name { font-size: 14px; color: #3e4039; }
+.aspira-shell .conversation-workspace .aspira-answer-summary { font-size: 12px; color: #a09788; }
+.aspira-shell .conversation-workspace .aspira-live-agent { border: 0; background: #f3f0e9; font-size: 12px; color: #8a8171; }
+.aspira-shell .conversation-workspace .aspira-live-receipt, .aspira-shell .conversation-workspace .aspira-live-running-action { border-color: #e4ded2; background: #f5f2ec; color: #8a8171; }
+.aspira-shell .conversation-workspace .aspira-live-receipt summary { font-size: 12px; }
+.aspira-shell .conversation-workspace .aspira-live-receipt-state { font-size: 11px; }
+.aspira-shell .conversation-workspace .aspira-markdown.aspira-answer-markdown { color: #44453f; font-size: 16px; line-height: 1.65; }
+.aspira-shell .conversation-workspace .aspira-markdown.aspira-answer-markdown > p { font-size: inherit; color: inherit; }
+.aspira-shell .conversation-workspace .aspira-edit-card { border-color: #e2d9ca; background: #f7f4ee; color: #746957; }
+.aspira-shell .conversation-workspace .aspira-edit-name > span { color: #a09381; font-size: 12px; text-transform: none; letter-spacing: 0; }
+.aspira-shell .conversation-workspace .aspira-edit-name strong { font-size: 14px; }
+.aspira-shell .conversation-workspace .aspira-edit-state { background: #eee4d5; color: #917252; font-size: 11px; }
+.aspira-shell .conversation-workspace .aspira-edit-heading > svg { color: #9f7b59; }
+.aspira-shell .conversation-workspace .aspira-edit-diff summary { font-size: 12px; }
+.aspira-shell .conversation-workspace .aspira-edit-controls button { color: #8a7057; background: #eee6da; font-size: 12px; }
+.aspira-shell .conversation-workspace .aspira-edit-controls .aspira-edit-apply { color: #fff; background: #a9412b; }
+.aspira-shell .conversation-workspace .aspira-edit-note, .aspira-shell .conversation-workspace .aspira-edit-error { font-size: 12px; }
+@keyframes conversation-breathe { 50% { opacity: .35; } }
+@media (max-width: 1000px) { .conversation-content { padding-inline: 24px; } .conversation-starters { gap: 8px; } .conversation-starter { padding-inline: 12px; } }
+@media (max-width: 640px) {
+  .conversation-content { padding: 22px 20px 24px; }
+  .conversation-welcome { min-height: auto; padding: 45px 0 22px; }
+  .conversation-welcome-symbol { margin-bottom: 20px; font-size: 38px; }
+  .conversation-welcome h1 { font-size: 34px; }
+  .conversation-welcome > p { font-size: 15px; margin-top: 16px; }
+  .conversation-starters { grid-template-columns: 1fr; gap: 0; margin-top: 28px; border-top: 1px solid #e5e0d7; }
+  .conversation-starter { flex-direction: row; align-items: center; min-height: 72px; gap: 14px; border: 0; border-bottom: 1px solid #e5e0d7; border-radius: 0; padding: 14px 0; background: transparent; }
+  .conversation-starter > span { gap: 2px; }
+  .conversation-starter > svg.conversation-starter-arrow { position: static; margin-left: auto; }
+  .conversation-starter:hover { background: transparent; }
+  .conversation-message-byline time { display: none; }
+  .conversation-turn { gap: 20px; }
+  .conversation-user > p { font-size: 16px; }
+  .conversation-response-tools { gap: 5px 16px; }
+  .conversation-activity-status { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { .conversation-working > span { animation: none; } .conversation-starter { transition: none; } }

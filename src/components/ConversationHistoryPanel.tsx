@@ -70,12 +70,6 @@ export const ConversationHistoryPanel: React.FC<ConversationHistoryPanelProps> =
   return (
     <section className="aspira-history-content" aria-label="Conversation history">
       <div className="aspira-history-heading">
-        <div className="aspira-history-heading-label">
-          <h2>Recent chats</h2>
-          <span className="aspira-history-count" aria-label={`${visibleCount} ${query ? 'matches' : 'saved conversations'}`}>
-            {visibleCount}
-          </span>
-        </div>
         <button
           type="button"
           className="aspira-new-chat-button"
@@ -83,7 +77,7 @@ export const ConversationHistoryPanel: React.FC<ConversationHistoryPanelProps> =
           disabled={isExecuting}
         >
           <Plus aria-hidden="true" />
-          <span>New chat</span>
+          <span>New conversation</span>
         </button>
       </div>
 
@@ -111,6 +105,13 @@ export const ConversationHistoryPanel: React.FC<ConversationHistoryPanelProps> =
         )}
       </label>
 
+        <div className="aspira-history-heading-label">
+          <h2>Recent</h2>
+          <span className="aspira-history-count" aria-label={`${visibleCount} ${query ? 'matches' : 'saved conversations'}`}>
+            {visibleCount}
+          </span>
+        </div>
+
       <ul className="aspira-history-list" aria-label={query ? 'Matching conversations' : 'Recent conversations'}>
         {filteredConversations.length === 0 ? (
           <li className="aspira-history-empty" aria-live="polite" aria-atomic="true">
@@ -122,7 +123,7 @@ export const ConversationHistoryPanel: React.FC<ConversationHistoryPanelProps> =
               <span>
                 {query
                   ? `Nothing found for “${searchTerm.trim()}”. Clear the search field to see all conversations.`
-                  : 'Start a chat and your recent work will be saved here.'}
+                  : 'Your conversations will appear here as you go.'}
               </span>
             </span>
           </li>
@@ -171,7 +172,7 @@ export const ConversationHistoryPanel: React.FC<ConversationHistoryPanelProps> =
         <Database aria-hidden="true" />
         <span>
           {persistenceError
-            ? 'Couldn’t save this chat. Delete an older chat to free space.'
+            ? 'Couldn’t save this conversation. Delete an older conversation to free space.'
             : 'Saved in this browser'}
         </span>
       </p>

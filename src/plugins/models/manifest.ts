@@ -61,7 +61,7 @@ export const DEFAULT_PASSKEY_PROFILES: PasskeyProfile[] = [
 export const BUILTIN_MODEL_PLUGINS: ModelPluginManifest[] = [
   {
     id: 'argon',
-    codeName: 'Argon',
+    codeName: 'Gemini',
     family: 'Antigravity CLI',
     vendor: 'Google',
     tagline: 'Google account inference through Antigravity CLI.',
@@ -169,9 +169,27 @@ export interface AgentActionExecution {
   status: 'success' | 'error' | 'blocked';
   output: string;
   durationMs: number;
+  timingKnown?: boolean;
   memoryItem?: LivingMemoryItem;
   fileRead?: WorkspaceFileRead;
+  editProposal?: FileEditProposal;
   stepLabel?: string;
+}
+
+export interface FileEditProposal {
+  id: string;
+  path: string;
+  state: 'proposed' | 'applied' | 'discarded' | 'conflict' | 'reverted';
+  createdAt: string;
+  beforeRevision: string;
+  afterRevision: string;
+  patch: string;
+  addedLines: number;
+  removedLines: number;
+  previewRedacted: boolean;
+  canApply: boolean;
+  canUndo: boolean;
+  currentMatchesExpected: boolean;
 }
 
 export interface WorkspaceFileRead {
@@ -245,6 +263,7 @@ export interface SynergyExecutionResult {
     ttftMs: number;
     tokensPerSec: number;
     source: 'PROVIDER_CLI' | 'SUBSCRIPTION_OAUTH' | 'LIVE_API' | 'LOCAL_OLLAMA' | 'UNAVAILABLE'; // Keep the former label readable in saved chats.
+    providerBadge?: string;
     keyInsight: string;
     uniqueNuance: string;
     confidence: number;

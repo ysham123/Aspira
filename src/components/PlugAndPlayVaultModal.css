@@ -1,1113 +1,173 @@
 .aspira-vault-overlay {
   z-index: 80;
   padding: 28px;
-  background: rgba(29, 31, 38, 0.38);
-  backdrop-filter: blur(14px) saturate(112%);
-  -webkit-backdrop-filter: blur(14px) saturate(112%);
-  animation: aspira-vault-overlay-in 180ms ease-out both;
+  background: rgba(36, 37, 34, .28);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  animation: aspira-vault-overlay-in 160ms ease-out both;
 }
-
 .aspira-shell .aspira-vault-dialog {
-  width: min(1040px, calc(100vw - 56px));
-  max-height: min(860px, calc(100dvh - 56px));
   display: flex;
+  width: min(1000px, calc(100vw - 56px));
+  max-height: min(820px, calc(100dvh - 56px));
   flex-direction: column;
   overflow: hidden;
-  color: #24252b;
-  background: #fbfaf8;
-  border: 1px solid rgba(38, 39, 47, 0.14);
-  border-radius: 26px;
-  box-shadow: 0 32px 90px -38px rgba(18, 19, 27, 0.42), 0 2px 8px rgba(18, 19, 27, 0.08);
+  color: #242522;
+  background: #FAF9F6;
+  border: 1px solid #E4E4DD;
+  border-radius: 20px;
+  box-shadow: 0 24px 80px -24px rgba(36, 37, 34, .24);
 }
-
-.aspira-shell .aspira-vault-dialog [class*="text-white"] {
-  color: #24252b;
-}
-
-.aspira-shell .aspira-vault-dialog [class*="text-slate-200"],
-.aspira-shell .aspira-vault-dialog [class*="text-slate-300"] {
-  color: #555761;
-}
-
-.aspira-shell .aspira-vault-dialog [class*="text-slate-400"] {
-  color: #6f717a;
-}
-
-.aspira-shell .aspira-vault-dialog [class*="text-slate-500"],
-.aspira-shell .aspira-vault-dialog [class*="text-slate-600"] {
-  color: #858791;
-}
-
+.aspira-shell .aspira-vault-dialog [class*="text-white"] { color: #242522; }
+.aspira-shell .aspira-vault-dialog [class*="text-slate-"] { color: #6E706A; }
+.aspira-shell .aspira-vault-dialog [class*="text-xs"],
+.aspira-shell .aspira-vault-dialog [class*="text-[11px]"],
+.aspira-shell .aspira-vault-dialog [class*="text-[10px]"] { font-size: 13px; line-height: 1.55; }
 .aspira-shell .aspira-vault-header {
+  display: flex;
   flex: 0 0 auto;
   gap: 16px;
-  min-height: 96px;
-  padding: 20px 26px;
-  background: rgba(255, 255, 255, 0.8);
-  border-bottom: 1px solid rgba(38, 39, 47, 0.09);
+  min-height: 100px;
+  padding: 23px 28px;
+  background: #FAF9F6;
+  border-bottom: 1px solid #E4E4DD;
 }
-
-.aspira-vault-header > div:first-child {
-  min-width: 0;
-  align-items: center;
-  gap: 14px;
-}
-
-.aspira-vault-brand-mark {
-  flex: 0 0 40px;
-  color: #655bb8;
-  background: linear-gradient(145deg, #f1effd, #e9e6fa);
-  border: 1px solid #dedaf5;
-  border-radius: 13px;
-}
-
-.aspira-vault-eyebrow,
-.aspira-vault-sidebar-heading,
-.aspira-vault-section-kicker {
-  margin: 0 0 4px;
-  color: #85808f;
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  line-height: 1.3;
-}
-
-.aspira-vault-header h2 {
-  margin: 0;
-  font-size: 17px;
-  line-height: 1.35;
-}
-
-.aspira-vault-header p:last-child {
-  margin: 2px 0 0;
-  max-width: 540px;
-  font-size: 11px;
-  line-height: 1.45;
-}
-
-.aspira-shell .aspira-vault-close {
-  flex: 0 0 40px;
-  min-width: 40px;
-  min-height: 40px;
-  color: #777985;
-  background: #f4f3f0;
-  border: 1px solid rgba(38, 39, 47, 0.09);
-  border-radius: 12px;
-  transition: background 150ms ease, color 150ms ease, border-color 150ms ease;
-}
-
-.aspira-shell .aspira-vault-close:hover {
-  color: #25262b;
-  background: #ebe9e5;
-  border-color: rgba(38, 39, 47, 0.16);
-}
-
-.aspira-vault-content-layout {
-  display: grid;
-  grid-template-columns: 202px minmax(0, 1fr);
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.aspira-vault-sidebar {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  padding: 23px 13px 18px;
-  background: #f5f4f1;
-  border-right: 1px solid rgba(38, 39, 47, 0.08);
-}
-
-.aspira-vault-sidebar-heading {
-  margin: 0 10px 10px;
-  color: #92929a;
-  font-size: 9px;
-}
-
-.aspira-vault-tabs {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  min-width: 0;
-}
-
-.aspira-shell .aspira-vault-tab {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  min-height: 42px;
-  padding: 0 10px;
-  color: #656771;
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 11px;
-  text-align: left;
-  font-size: 12px;
-  font-weight: 550;
-  transition: background 150ms ease, color 150ms ease, border-color 150ms ease;
-}
-
-.aspira-shell .aspira-vault-tab:hover {
-  color: #30313a;
-  background: rgba(255, 255, 255, 0.72);
-}
-
-.aspira-shell .aspira-vault-tab.is-active {
-  color: #36334c;
-  background: #fff;
-  border-color: rgba(69, 64, 122, 0.12);
-  box-shadow: 0 1px 2px rgba(32, 33, 42, 0.035);
-}
-
-.aspira-vault-tab-icon {
-  flex: 0 0 auto;
-  color: #83848c;
-  transition: color 150ms ease;
-}
-
-.aspira-vault-tab.is-active .aspira-vault-tab-icon {
-  color: #665db8;
-}
-
-.aspira-vault-nav-count {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  margin-left: auto;
-  color: #3a7968;
-  background: #e7f2ed;
-  border-radius: 999px;
-  font-size: 10px;
-  font-variant-numeric: tabular-nums;
-}
-
-.aspira-vault-sidebar-note {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  margin: auto 8px 0;
-  padding-top: 16px;
-  color: #888992;
-  font-size: 10px;
-  line-height: 1.5;
-}
-
-.aspira-vault-sidebar-note svg {
-  flex: 0 0 auto;
-  margin-top: 1px;
-  color: #8b87aa;
-}
-
-.aspira-shell .aspira-vault-body {
-  min-width: 0;
-  padding: 30px 34px;
-  overflow: auto;
-  overscroll-behavior: contain;
-  background: #fbfaf8;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(114, 115, 126, 0.35) transparent;
-}
-
-.aspira-vault-body:focus-visible {
-  outline: 2px solid rgba(101, 91, 184, 0.55);
-  outline-offset: -3px;
-}
-
-.aspira-vault-body h3 {
-  margin: 1px 0 4px;
-  color: #25262b;
-  font-size: 19px;
-  letter-spacing: -0.025em;
-  line-height: 1.25;
-}
-
-.aspira-vault-body h4 {
-  color: #303139;
-  font-size: 14px;
-  letter-spacing: -0.01em;
-}
-
-.aspira-vault-body > div > div:first-child p:not(.aspira-vault-section-kicker) {
-  max-width: 660px;
-  line-height: 1.55;
-}
-
-.aspira-vault-section-kicker {
-  margin-bottom: 5px;
-  color: #7771a5;
-}
-
-.aspira-vault-intro-copy {
-  max-width: 610px;
-  margin-top: 7px;
-}
-
-.aspira-vault-header-actions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.aspira-vault-connection-summary {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  min-height: 32px;
-  color: #696a73;
-  font-size: 11px;
-  font-weight: 550;
-  white-space: nowrap;
-}
-
-.aspira-vault-connection-summary.is-error {
-  color: #8a5d2d;
-}
-
-.aspira-vault-summary-dot {
-  width: 7px;
-  height: 7px;
-  background: #c3c4ca;
-  border-radius: 99px;
-}
-
-.aspira-vault-summary-dot.is-ready {
-  background: #4e9a7e;
-  box-shadow: 0 0 0 3px rgba(78, 154, 126, 0.12);
-}
-
-.aspira-vault-summary-dot.is-configured {
-  background: #776fc2;
-  box-shadow: 0 0 0 3px rgba(119, 111, 194, 0.12);
-}
-
-.aspira-vault-summary-dot.is-checking {
-  background: #766dcc;
-  animation: aspira-vault-pulse 1.2s ease-in-out infinite;
-}
-
-.aspira-shell .aspira-vault-refresh-button {
-  min-height: 34px;
-  color: #4b4b55;
-  background: #fff;
-  border: 1px solid rgba(38, 39, 47, 0.13);
-  border-radius: 10px;
+.aspira-vault-header > div:first-child { min-width: 0; gap: 14px; }
+.aspira-vault-brand-mark { flex: 0 0 40px; color: #A9412B; background: #EFE7DF; border-radius: 12px; }
+.aspira-vault-eyebrow, .aspira-vault-sidebar-heading, .aspira-vault-section-kicker {
+  margin: 0 0 5px;
+  color: #6E706A;
   font-size: 11px;
   font-weight: 600;
-  transition: border-color 140ms ease, background 140ms ease, transform 140ms ease;
-}
-
-.aspira-vault-refresh-button:hover:not(:disabled) {
-  background: #f7f6f3;
-  border-color: rgba(38, 39, 47, 0.23);
-  transform: translateY(-1px);
-}
-
-.aspira-vault-refresh-button svg {
-  color: #6c63b9;
-}
-
-.aspira-vault-scan-progress,
-.aspira-vault-feedback,
-.aspira-connection-scan-error {
-  border-radius: 11px;
-}
-
-.aspira-vault-scan-progress {
-  margin: 0;
-  padding: 9px 12px;
-  color: #625c9e;
-  background: #f2f0fb;
-  border: 1px solid #e4e0f7;
-}
-
-.aspira-vault-feedback {
-  gap: 12px;
-  color: #504a80;
-  background: #f3f1fb;
-  border-color: #e2def5;
-  line-height: 1.45;
-}
-
-.aspira-vault-feedback button {
-  flex: 0 0 auto;
-  min-height: 30px;
-  padding: 0 8px;
-  color: #625bb0;
-  border-radius: 7px;
-}
-
-.aspira-vault-feedback button:hover {
-  background: rgba(100, 91, 184, 0.08);
-}
-
-.aspira-shell .aspira-connection-scan-error {
-  display: flex;
-  align-items: flex-start;
-  gap: 9px;
-  padding: 11px 13px;
-  color: #7a5522;
-  background: #fbf4e9;
-  border: 1px solid #eedbbc;
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-.aspira-vault-empty-state {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  padding: 15px 16px;
-  background: linear-gradient(110deg, #f3f1fb, #f8f7fc);
-  border: 1px solid #e4e0f4;
-  border-radius: 14px;
-}
-
-.aspira-vault-empty-icon {
-  display: grid;
-  flex: 0 0 32px;
-  width: 32px;
-  height: 32px;
-  place-items: center;
-  color: #6b62b4;
-  background: #e9e6f8;
-  border-radius: 10px;
-}
-
-.aspira-vault-empty-title {
-  margin: 0 0 3px;
-  color: #333142;
-  font-size: 12px;
-  font-weight: 650;
-}
-
-.aspira-vault-empty-copy {
-  max-width: 690px;
-  margin: 0;
-  color: #666572;
-  font-size: 11px;
-  line-height: 1.55;
-}
-
-.aspira-provider-grid {
-  gap: 12px;
-}
-
-.aspira-shell .aspira-provider-card {
-  min-width: 0;
-  padding: 17px;
-  gap: 13px;
-  color: #2f3036;
-  background: linear-gradient(155deg, #fff 0%, #fdfcfb 100%);
-  border: 1px solid rgba(38, 39, 47, 0.11);
-  border-radius: 17px;
-  box-shadow: 0 2px 5px rgba(30, 31, 39, 0.025), 0 12px 28px -26px rgba(27, 29, 38, 0.24);
-  transition: border-color 150ms ease, box-shadow 150ms ease, transform 150ms ease;
-}
-
-.aspira-provider-card:hover {
-  border-color: rgba(60, 58, 80, 0.19);
-  box-shadow: 0 7px 22px -17px rgba(33, 34, 44, 0.22);
-  transform: translateY(-1px);
-}
-
-.aspira-provider-card[data-state="connected"] {
-  border-color: rgba(59, 132, 104, 0.24);
-  box-shadow: 0 2px 5px rgba(30, 31, 39, 0.025), inset 0 0 0 1px rgba(59, 132, 104, 0.025);
-}
-
-.aspira-provider-card[data-state="configured"] {
-  border-color: rgba(119, 111, 194, 0.2);
-}
-
-.aspira-provider-card-heading {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 13px;
-}
-
-.aspira-provider-identity {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-}
-
-.aspira-provider-mark {
-  display: grid;
-  flex: 0 0 34px;
-  width: 34px;
-  height: 34px;
-  place-items: center;
-  color: #fff;
-  background: color-mix(in srgb, var(--provider-accent) 86%, #222 14%);
-  border-radius: 11px;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.24);
-  font-family: ui-sans-serif, system-ui, sans-serif;
-  font-size: 15px;
-  font-weight: 700;
-  text-transform: uppercase;
-}
-
-.aspira-provider-names {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  gap: 2px;
-}
-
-.aspira-provider-name {
-  overflow: hidden;
-  color: #292a30;
-  font-size: 13px;
-  font-weight: 650;
-  line-height: 1.35;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.aspira-provider-family {
-  overflow: hidden;
-  color: #878892;
-  font-size: 10px;
-  line-height: 1.35;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.aspira-shell .aspira-connection-badge {
-  display: inline-flex;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: 6px;
-  min-height: 25px;
-  padding: 4px 9px;
-  color: #696a73;
-  background: #f5f5f3;
-  border-color: #e7e7e3;
-  border-radius: 99px;
-  font-size: 10px;
-  font-weight: 650;
-  line-height: 1.2;
-  white-space: nowrap;
-}
-
-.aspira-connection-badge::before {
-  display: none;
-}
-
-.aspira-connection-status-icon {
-  width: 12px;
-  height: 12px;
-  color: #8a8b93;
-  stroke-width: 2.2;
-}
-
-.aspira-connection-badge[data-state="connected"] {
-  color: #33745f;
-  background: #edf6f1;
-  border-color: #d9ebe2;
-}
-
-.aspira-connection-badge[data-state="connected"] .aspira-connection-status-icon {
-  color: #34745f;
-}
-
-.aspira-shell .aspira-connection-badge[data-state="configured"] {
-  color: #5f579f;
-  background: #f1effb;
-  border-color: #e1def4;
-}
-
-.aspira-connection-badge[data-state="configured"] .aspira-connection-status-icon {
-  color: #6259a6;
-}
-
-.aspira-connection-badge[data-state="attention"] {
-  color: #805b25;
-  background: #faf3e7;
-  border-color: #efe0c4;
-}
-
-.aspira-connection-badge[data-state="attention"] .aspira-connection-status-icon {
-  color: #9a6b22;
-}
-
-.aspira-connection-badge[data-state="checking"] {
-  color: #5c54a0;
-  background: #f1effb;
-  border-color: #e1def4;
-}
-
-.aspira-connection-badge[data-state="checking"]::before {
-  display: none;
-}
-
-.aspira-connection-badge[data-state="checking"] .aspira-connection-status-icon {
-  color: #6259a6;
-  animation: aspira-vault-pulse 1.2s ease-in-out infinite;
-}
-
-.aspira-connection-badge[data-state="unknown"] {
-  color: #8a5d2d;
-  background: #fbf4e9;
-  border-color: #efdfc3;
-}
-
-.aspira-connection-badge[data-state="unknown"] .aspira-connection-status-icon {
-  color: #9a6b22;
-}
-
-.aspira-provider-detail {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  min-height: 44px;
-  padding: 8px 2px 3px;
-  color: #696a73;
-  font-size: 11px;
-  line-height: 1.5;
-}
-
-.aspira-provider-access-icon {
-  flex: 0 0 auto;
-  width: 14px;
-  height: 14px;
-  margin-top: 1px;
-  color: #85828f;
-  stroke-width: 1.8;
-}
-
-.aspira-provider-card > div:last-child {
-  padding-top: 0;
-}
-
-.aspira-shell .aspira-connection-action {
-  min-height: 36px;
-  padding: 8px 10px;
-  border-radius: 10px;
-  font-size: 11px;
-  font-weight: 620;
-  line-height: 1.25;
-  transition: background 140ms ease, border-color 140ms ease, color 140ms ease, transform 140ms ease;
-}
-
-.aspira-connection-action:hover {
-  transform: translateY(-1px);
-}
-
-.aspira-shell .aspira-connection-action.is-primary {
-  color: #514a91;
-  background: #f2f0fb;
-  border: 1px solid #dfdcf4;
-}
-
-.aspira-connection-action.is-primary:hover {
-  background: #ebe8fa;
-  border-color: #d1cdf0;
-}
-
-.aspira-shell .aspira-connection-action.is-secondary {
-  color: #4d4d57;
-  background: #fff;
-  border: 1px solid rgba(38, 39, 47, 0.13);
-}
-
-.aspira-connection-action.is-secondary:hover {
-  color: #383843;
-  background: #f7f6f3;
-  border-color: rgba(38, 39, 47, 0.23);
-}
-
-.aspira-byok-card {
-  background: #f6f5f2;
-  border: 1px solid rgba(38, 39, 47, 0.09);
-  border-radius: 15px;
-}
-
-.aspira-byok-toggle {
-  min-height: 48px;
-  gap: 12px;
-  padding: 1px 2px;
-}
-
-.aspira-byok-toggle > div {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.aspira-byok-toggle > svg {
-  flex: 0 0 auto;
-  color: #777885;
-}
-
-.aspira-byok-form {
-  border-color: rgba(38, 39, 47, 0.1);
-}
-
-.aspira-key-field {
-  background: #fff;
-  border: 1px solid rgba(38, 39, 47, 0.09);
-  border-radius: 12px;
-}
-
-.aspira-vault-body label {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  color: #60616a;
-  font-size: 11px;
-  font-weight: 600;
-}
-
-.aspira-shell .aspira-vault-body input {
-  min-height: 40px;
-  color: #303139;
-  background: #fff;
-  border: 1px solid rgba(38, 39, 47, 0.15);
-  border-radius: 10px;
-  font-size: 12px;
-  transition: border-color 140ms ease, box-shadow 140ms ease, background 140ms ease;
-}
-
-.aspira-shell .aspira-vault-body input::placeholder {
-  color: #a0a1a8;
-  opacity: 1;
-}
-
-.aspira-shell .aspira-vault-body input:focus {
-  background: #fff;
-  border-color: #837bc7;
-  box-shadow: 0 0 0 3px rgba(107, 98, 185, 0.12);
-  outline: none;
-}
-
-.aspira-vault-field-hint {
-  margin-top: 1px;
-  color: #858791;
-  font-size: 10px;
-  line-height: 1.45;
-}
-
-.aspira-vault-save-success,
-.aspira-vault-save-error {
-  margin: 0;
-  align-self: center;
-  font-weight: 550;
-}
-
-.aspira-vault-save-success {
-  color: #34735e;
-}
-
-.aspira-vault-save-error {
-  color: #805b25;
-}
-
-.aspira-vault-voice-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 22px;
-  max-width: 760px;
-  margin: 18px auto;
-  padding: 30px;
-  background:
-    radial-gradient(ellipse at 0% 0%, rgba(116, 104, 199, 0.09), transparent 52%),
-    linear-gradient(145deg, #fff 0%, #f8f7f4 100%);
-  border: 1px solid rgba(38, 39, 47, 0.1);
-  border-radius: 22px;
-  box-shadow: 0 14px 38px -32px rgba(27, 29, 38, 0.22);
-}
-
-.aspira-vault-voice-heading {
-  display: flex;
-  align-items: flex-start;
-  gap: 17px;
-}
-
-.aspira-vault-voice-mark {
-  display: grid;
-  flex: 0 0 46px;
-  width: 46px;
-  height: 46px;
-  place-items: center;
-  color: #665db8;
-  background: linear-gradient(145deg, #f1effd, #e9e6fa);
-  border: 1px solid #dedaf5;
-  border-radius: 15px;
-}
-
-.aspira-vault-body .aspira-vault-voice-heading h3 {
-  margin: 2px 0 7px;
-  font-size: 22px;
-  letter-spacing: -0.035em;
-}
-
-.aspira-vault-voice-copy {
-  max-width: 560px;
-  margin: 0;
-  color: #6f7079;
-  font-size: 13px;
-  line-height: 1.65;
-}
-
-.aspira-vault-voice-status {
-  display: flex;
-  align-items: flex-start;
-  flex-wrap: wrap;
-  gap: 12px;
-  padding-top: 18px;
-  border-top: 1px solid rgba(38, 39, 47, 0.09);
-}
-
-.aspira-vault-voice-status-label {
-  flex: 0 0 auto;
-  padding: 5px 9px;
-  color: #745a2b;
-  background: #faf4e8;
-  border: 1px solid #eddfc4;
-  border-radius: 99px;
-  font-size: 10px;
-  font-weight: 650;
-  line-height: 1.3;
-}
-
-.aspira-vault-voice-status p {
-  flex: 1 1 330px;
-  margin: 3px 0 0;
-  color: #777780;
-  font-size: 12px;
-  line-height: 1.55;
-}
-
-.aspira-vault-voice-preview {
-  display: inline-flex;
-  min-height: 40px;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  margin-left: auto;
-  padding: 0 14px;
-  color: #fff;
-  background: #353340;
-  border: 1px solid rgba(44, 43, 57, 0.12);
-  border-radius: 12px;
-  font-size: 12px;
-  font-weight: 620;
-  transition: background 140ms ease, transform 140ms ease;
-}
-
-.aspira-vault-voice-preview:hover {
-  background: #4a4759;
-  transform: translateY(-1px);
-}
-
-.aspira-vault-voice-preview:focus-visible {
-  outline: 3px solid rgba(112, 102, 199, 0.42);
-  outline-offset: 2px;
-}
-
-.aspira-shell .aspira-vault-save-button {
-  min-height: 38px;
-  color: #fff;
-  background: #36343f;
-  border: 1px solid #36343f;
-  border-radius: 10px;
-  font-size: 11px;
-  font-weight: 650;
-}
-
-.aspira-vault-save-button:hover {
-  color: #fff;
-  background: #4a4756;
-}
-
-.aspira-vault-body [class*="bg-black/"] {
-  background: #f5f4f1;
-}
-
-.aspira-vault-body [class*="text-indigo-200"],
-.aspira-vault-body [class*="text-indigo-300"] {
-  color: #625bb0;
-}
-
-.aspira-vault-body [class*="text-emerald-700"] {
-  color: #33745f;
-}
-
-.aspira-vault-body [class*="text-amber-700"] {
-  color: #805b25;
-}
-
-.aspira-vault-body [class*="border-white/"] {
-  border-color: rgba(38, 39, 47, 0.09);
-}
-
-.aspira-vault-body [class*="bg-indigo-500/"] {
-  background: #f3f1fb;
-}
-
-.aspira-vault-body [class*="border-indigo-400/"] {
-  border-color: #e1def4;
-}
-
-.aspira-vault-body [class*="bg-emerald-500/"] {
-  background: #edf6f1;
-}
-
-.aspira-vault-body [class*="border-emerald-400/"] {
-  border-color: #d9ebe2;
-}
-
-.aspira-vault-body [class*="bg-amber-500/"] {
-  background: #faf3e7;
-}
-
-.aspira-vault-body [class*="border-amber-400/"] {
-  border-color: #efe0c4;
-}
-
-.aspira-vault-body [class*="bg-white/"] {
-  background: #fff;
-}
-
-.aspira-vault-body [class*="text-[10px]"],
-.aspira-vault-body [class*="text-[11px]"] {
-  line-height: 1.45;
-}
-
-.aspira-vault-dialog :focus-visible {
-  outline: 2px solid rgba(101, 91, 184, 0.6);
-  outline-offset: 2px;
-}
-
-@keyframes aspira-vault-overlay-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-@keyframes aspira-vault-pulse {
-  50% { opacity: 0.48; }
-}
-
+  letter-spacing: .055em;
+  line-height: 1.4;
+}
+.aspira-vault-header h2 { margin: 0; font-size: 19px; font-weight: 600; letter-spacing: -.03em; line-height: 1.35; }
+.aspira-vault-header p:last-child { max-width: 540px; margin: 4px 0 0; color: #6E706A; font-size: 13px; line-height: 1.5; }
+.aspira-shell .aspira-vault-close { flex: 0 0 40px; min-width: 40px; min-height: 40px; color: #6E706A; background: transparent; border: 0; border-radius: 10px; }
+.aspira-shell .aspira-vault-close:hover { color: #242522; background: #F1F0EC; }
+.aspira-vault-content-layout { display: grid; grid-template-columns: 192px minmax(0, 1fr); flex: 1 1 auto; min-height: 0; overflow: hidden; }
+.aspira-vault-sidebar { display: flex; min-width: 0; flex-direction: column; padding: 25px 12px 20px; background: #F1F0EC; border-right: 1px solid #E4E4DD; }
+.aspira-vault-sidebar-heading { margin: 0 12px 12px; font-size: 10px; }
+.aspira-vault-tabs { display: flex; min-width: 0; flex-direction: column; gap: 4px; }
+.aspira-shell .aspira-vault-tab { display: flex; width: 100%; min-height: 42px; align-items: center; gap: 10px; padding: 0 12px; border: 0; border-radius: 9px; background: transparent; color: #6E706A; text-align: left; font-size: 13px; font-weight: 500; }
+.aspira-shell .aspira-vault-tab:hover { color: #242522; background: #EAE9E3; }
+.aspira-shell .aspira-vault-tab.is-active { color: #242522; background: #FAF9F6; box-shadow: 0 1px 2px rgba(36, 37, 34, .04); }
+.aspira-vault-tab-icon { flex: 0 0 auto; width: 16px; height: 16px; color: #6E706A; }
+.aspira-vault-tab.is-active .aspira-vault-tab-icon { color: #A9412B; }
+.aspira-vault-nav-count { display: inline-flex; width: 20px; height: 20px; align-items: center; justify-content: center; margin-left: auto; border-radius: 99px; background: #E9E8E1; color: #6E706A; font-size: 11px; font-variant-numeric: tabular-nums; }
+.aspira-vault-sidebar-note { display: flex; gap: 8px; align-items: flex-start; margin: auto 10px 0; padding-top: 24px; color: #6E706A; font-size: 12px; line-height: 1.5; }
+.aspira-vault-sidebar-note svg { flex: 0 0 auto; margin-top: 2px; }
+.aspira-shell .aspira-vault-body { min-width: 0; padding: 32px; overflow: auto; overscroll-behavior: contain; background: #FAF9F6; scrollbar-width: thin; scrollbar-color: #CFD0C7 transparent; }
+.aspira-vault-body h3 { margin: 0 0 8px; color: #242522; font-size: 23px; font-weight: 550; letter-spacing: -.035em; line-height: 1.3; }
+.aspira-vault-body h4 { color: #242522; font-size: 15px; font-weight: 600; }
+.aspira-vault-section-kicker { margin-bottom: 7px; }
+.aspira-vault-intro-copy { max-width: 590px; margin-top: 8px; }
+.aspira-vault-header-actions { display: flex; width: 100%; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; }
+.aspira-vault-connection-summary { display: inline-flex; align-items: center; gap: 7px; min-height: 32px; color: #6E706A; font-size: 12px; }
+.aspira-vault-connection-summary.is-error { color: #915C26; }
+.aspira-vault-summary-dot { width: 6px; height: 6px; border-radius: 99px; background: #B5B7AE; }
+.aspira-vault-summary-dot.is-ready { background: #53755A; }
+.aspira-vault-summary-dot.is-configured { background: #A9412B; }
+.aspira-vault-summary-dot.is-checking { animation: aspira-vault-pulse 1.3s ease-in-out infinite; }
+.aspira-shell .aspira-vault-refresh-button { min-height: 34px; padding: 6px 10px; color: #6E706A; background: transparent; border: 1px solid #E4E4DD; border-radius: 8px; font-size: 12px; font-weight: 500; }
+.aspira-shell .aspira-vault-refresh-button:hover:not(:disabled) { background: #F1F0EC; color: #242522; }
+.aspira-vault-scan-progress, .aspira-vault-feedback, .aspira-shell .aspira-connection-scan-error { display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border: 1px solid #E4E4DD; border-radius: 9px; color: #6E706A; background: #F1F0EC; font-size: 13px; line-height: 1.5; }
+.aspira-vault-feedback button { flex: 0 0 auto; min-height: 30px; padding: 0 6px; color: #A9412B; }
+.aspira-shell .aspira-connection-scan-error { color: #815526; background: #F5EFE3; border-color: #E7DCC5; }
+.aspira-vault-empty-state { display: flex; align-items: flex-start; gap: 12px; padding: 16px 0; border-bottom: 1px solid #E4E4DD; }
+.aspira-vault-empty-icon { display: grid; flex: 0 0 32px; width: 32px; height: 32px; place-items: center; border-radius: 9px; color: #6E706A; background: #F1F0EC; }
+.aspira-vault-empty-title { margin: 0 0 4px; color: #242522; font-size: 14px; font-weight: 600; }
+.aspira-vault-empty-copy { max-width: 590px; margin: 0; color: #6E706A; font-size: 13px; line-height: 1.55; }
+.aspira-provider-grid { display: flex; flex-direction: column; gap: 0; border-top: 1px solid #E4E4DD; }
+.aspira-shell .aspira-provider-card { min-width: 0; padding: 21px 0; gap: 12px; color: #242522; background: transparent; border: 0; border-bottom: 1px solid #E4E4DD; border-radius: 0; box-shadow: none; scroll-margin: 18px; }
+.aspira-shell .aspira-provider-card.is-selected-agent { padding: 21px 14px; margin: 0 -14px; border-radius: 10px; background: #F1F0EC; }
+.aspira-provider-card-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.aspira-provider-identity { display: flex; align-items: center; gap: 11px; min-width: 0; }
+.aspira-provider-mark { display: grid; flex: 0 0 36px; width: 36px; height: 36px; place-items: center; color: #242522; background: #EAE9E3; border: 1px solid #E4E4DD; border-radius: 11px; font-size: 16px; font-weight: 600; text-transform: uppercase; }
+.aspira-provider-names { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
+.aspira-provider-name { overflow: hidden; color: #242522; font-size: 15px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.aspira-provider-family { overflow: hidden; color: #6E706A; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.aspira-shell .aspira-connection-badge { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 5px; min-height: 26px; padding: 4px 8px; color: #6E706A; background: #F1F0EC; border: 1px solid #E4E4DD; border-radius: 7px; font-size: 11px; font-weight: 500; line-height: 1.3; white-space: nowrap; }
+.aspira-connection-badge::before { display: none; }
+.aspira-connection-status-icon { width: 12px; height: 12px; }
+.aspira-shell .aspira-connection-badge[data-state="connected"] { color: #426649; background: #EEF2E9; border-color: #DAE3D4; }
+.aspira-shell .aspira-connection-badge[data-state="configured"] { color: #6E706A; background: #F1F0EC; border-color: #E4E4DD; }
+.aspira-shell .aspira-connection-badge[data-state="attention"], .aspira-shell .aspira-connection-badge[data-state="unknown"] { color: #815526; background: #F5EFE3; border-color: #E7DCC5; }
+.aspira-connection-badge[data-state="checking"] .aspira-connection-status-icon { animation: aspira-vault-pulse 1.3s ease-in-out infinite; }
+.aspira-provider-detail { display: flex; align-items: flex-start; gap: 8px; padding: 4px 0; color: #6E706A; font-size: 13px; line-height: 1.55; overflow-wrap: anywhere; }
+.aspira-provider-access-icon { flex: 0 0 auto; width: 14px; height: 14px; margin-top: 3px; color: #8A8C83; }
+.aspira-provider-card > div:last-child { justify-content: flex-end; padding-top: 0; }
+.aspira-shell .aspira-connection-action { flex: 0 1 auto; min-height: 36px; padding: 7px 12px; border: 1px solid #DCDDD4; border-radius: 8px; color: #242522; background: #FAF9F6; font-size: 13px; font-weight: 500; }
+.aspira-shell .aspira-connection-action:hover { background: #EBEAE4; border-color: #CFD0C7; }
+.aspira-byok-card { padding: 18px 0; border: 0; border-radius: 0; background: transparent; }
+.aspira-byok-toggle { min-height: 44px; gap: 12px; }
+.aspira-byok-toggle > div { display: flex; flex-direction: column; gap: 5px; }
+.aspira-byok-toggle > svg { flex: 0 0 auto; color: #6E706A; }
+.aspira-byok-form { border-color: #E4E4DD; }
+.aspira-key-field { background: #F1F0EC; border: 1px solid #E4E4DD; border-radius: 10px; }
+.aspira-vault-body label { display: flex; flex-direction: column; gap: 6px; color: #6E706A; font-size: 13px; font-weight: 500; }
+.aspira-shell .aspira-vault-body input { min-height: 42px; color: #242522; background: #FAF9F6; border: 1px solid #DCDDD4; border-radius: 8px; font-size: 13px; }
+.aspira-shell .aspira-vault-body input::placeholder { color: #8A8C83; opacity: 1; }
+.aspira-shell .aspira-vault-body input:focus { border-color: #A9412B; box-shadow: 0 0 0 3px rgba(169, 65, 43, .09); outline: none; }
+.aspira-vault-field-hint { margin-top: 3px; color: #6E706A; font-size: 12px; line-height: 1.5; }
+.aspira-vault-save-success, .aspira-vault-save-error { margin: 0; align-self: center; font-size: 13px; }
+.aspira-vault-save-success { color: #426649; }
+.aspira-vault-save-error { color: #815526; }
+.aspira-vault-voice-panel { display: flex; max-width: 680px; flex-direction: column; gap: 26px; padding: 8px 0; }
+.aspira-vault-voice-heading { display: flex; align-items: flex-start; gap: 16px; }
+.aspira-vault-voice-mark { display: grid; flex: 0 0 42px; width: 42px; height: 42px; place-items: center; border: 1px solid #E4E4DD; border-radius: 12px; background: #F1F0EC; color: #A9412B; }
+.aspira-vault-body .aspira-vault-voice-heading h3 { margin: 2px 0 12px; font-size: 24px; }
+.aspira-vault-voice-copy { max-width: 560px; margin: 0; color: #6E706A; font-size: 14px; line-height: 1.7; }
+.aspira-vault-voice-status { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 14px; padding-top: 24px; border-top: 1px solid #E4E4DD; }
+.aspira-vault-voice-status-label { padding: 5px 8px; border: 1px solid #E4E4DD; border-radius: 7px; color: #6E706A; background: #F1F0EC; font-size: 12px; }
+.aspira-vault-voice-status p { flex: 1 1 100%; margin: 0; color: #6E706A; font-size: 13px; line-height: 1.65; }
+.aspira-vault-voice-preview, .aspira-shell .aspira-vault-save-button { display: inline-flex; min-height: 40px; align-items: center; justify-content: center; gap: 8px; padding: 9px 14px; color: #FAF9F6; background: #242522; border: 1px solid #242522; border-radius: 9px; font-size: 13px; font-weight: 500; }
+.aspira-vault-voice-preview:hover, .aspira-shell .aspira-vault-save-button:hover { background: #42443D; }
+.aspira-vault-body [class*="bg-black/"], .aspira-vault-body [class*="bg-white/"] { background: #F1F0EC; }
+.aspira-vault-body [class*="border-white/"] { border-color: #E4E4DD; }
+.aspira-vault-body [class*="text-indigo-"] { color: #A9412B; }
+.aspira-vault-body [class*="bg-indigo-500/"] { background: #F1F0EC; }
+.aspira-vault-body [class*="border-indigo-400/"] { border-color: #E4E4DD; }
+.aspira-vault-body [role="switch"] { background: #D1D3C9; }
+.aspira-vault-body [role="switch"][aria-checked="true"] { background: #A9412B; }
+.aspira-vault-body [role="switch"] > span { background: #FAF9F6; }
+.aspira-vault-dialog :focus-visible { outline: 2px solid #A9412B; outline-offset: 3px; }
+.aspira-vault-body:focus-visible { outline-offset: -3px; }
+@keyframes aspira-vault-overlay-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes aspira-vault-pulse { 50% { opacity: .45; } }
 @media (max-width: 760px) {
-  .aspira-vault-overlay {
-    padding: 18px;
-  }
-
-  .aspira-shell .aspira-vault-dialog {
-    width: min(680px, calc(100vw - 36px));
-    max-height: calc(100dvh - 36px);
-    border-radius: 22px;
-  }
-
-  .aspira-vault-content-layout {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto minmax(0, 1fr);
-  }
-
-  .aspira-vault-sidebar {
-    padding: 12px 16px 10px;
-    border-right: 0;
-    border-bottom: 1px solid rgba(38, 39, 47, 0.08);
-  }
-
-  .aspira-vault-sidebar-heading,
-  .aspira-vault-sidebar-note {
-    display: none;
-  }
-
-  .aspira-vault-tabs {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 6px;
-  }
-
-  .aspira-shell .aspira-vault-tab {
-    justify-content: center;
-    gap: 6px;
-    min-height: 42px;
-    padding-inline: 7px;
-    font-size: 11px;
-  }
-
-  .aspira-vault-nav-count {
-    width: 17px;
-    height: 17px;
-    margin-left: 0;
-    font-size: 9px;
-  }
-
-  .aspira-shell .aspira-vault-body {
-    padding: 22px 24px;
-  }
+  .aspira-vault-overlay { padding: 16px; }
+  .aspira-shell .aspira-vault-dialog { width: calc(100vw - 32px); max-height: calc(100dvh - 32px); border-radius: 16px; }
+  .aspira-vault-content-layout { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+  .aspira-vault-sidebar { padding: 10px 14px; border-right: 0; border-bottom: 1px solid #E4E4DD; }
+  .aspira-vault-sidebar-heading, .aspira-vault-sidebar-note { display: none; }
+  .aspira-vault-tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; }
+  .aspira-shell .aspira-vault-tab { justify-content: center; gap: 6px; min-height: 42px; padding: 0 6px; font-size: 12px; }
+  .aspira-vault-nav-count { display: none; }
+  .aspira-shell .aspira-vault-body { padding: 24px; }
 }
-
 @media (max-width: 560px) {
-  .aspira-vault-overlay {
-    padding: 8px;
-  }
-
-  .aspira-shell .aspira-vault-dialog {
-    width: calc(100vw - 16px);
-    max-height: calc(100dvh - 16px);
-    border-radius: 18px;
-  }
-
-  .aspira-shell .aspira-vault-header {
-    min-height: 80px;
-    gap: 9px;
-    padding: 13px 14px;
-  }
-
-  .aspira-vault-header > div:first-child {
-    gap: 10px;
-  }
-
-  .aspira-vault-brand-mark {
-    flex-basis: 36px;
-    width: 36px;
-    height: 36px;
-  }
-
-  .aspira-vault-header h2 {
-    font-size: 15px;
-  }
-
-  .aspira-vault-header p:last-child {
-    max-width: 260px;
-    font-size: 10px;
-  }
-
-  .aspira-shell .aspira-vault-close {
-    flex-basis: 38px;
-    min-width: 38px;
-    min-height: 38px;
-  }
-
-  .aspira-vault-sidebar {
-    padding: 9px 8px;
-  }
-
-  .aspira-vault-tabs {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 4px;
-  }
-
-  .aspira-shell .aspira-vault-tab {
-    flex-direction: column;
-    gap: 3px;
-    min-height: 54px;
-    padding: 6px 2px;
-    border-radius: 10px;
-    font-size: 9px;
-    line-height: 1.1;
-  }
-
-  .aspira-vault-tab-icon {
-    width: 15px;
-    height: 15px;
-  }
-
-  .aspira-vault-nav-count {
-    position: absolute;
-    margin: -33px 0 0 34px;
-    width: 15px;
-    height: 15px;
-    font-size: 8px;
-  }
-
-  .aspira-shell .aspira-vault-body {
-    padding: 19px 16px 22px;
-  }
-
-  .aspira-vault-body h3 {
-    font-size: 18px;
-  }
-
-  .aspira-vault-body > div > div:first-child p:not(.aspira-vault-section-kicker) {
-    font-size: 11px;
-  }
-
-  .aspira-vault-intro-copy {
-    max-width: none;
-  }
-
-  .aspira-vault-voice-panel {
-    gap: 19px;
-    margin: 8px auto;
-    padding: 22px;
-    border-radius: 19px;
-  }
-
-  .aspira-vault-voice-heading {
-    gap: 13px;
-  }
-
-  .aspira-vault-body .aspira-vault-voice-heading h3 {
-    font-size: 19px;
-  }
-
-  .aspira-vault-voice-copy {
-    font-size: 12px;
-  }
-
-  .aspira-vault-voice-status {
-    flex-direction: column;
-    gap: 8px;
-  }
-
-  .aspira-vault-voice-preview {
-    width: 100%;
-    margin-left: 0;
-  }
-
-  .aspira-vault-header-actions {
-    justify-content: flex-start;
-    width: 100%;
-  }
-
-  .aspira-vault-empty-state {
-    padding: 12px;
-  }
-
-  .aspira-provider-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .aspira-provider-card-heading {
-    gap: 6px;
-  }
-
-  .aspira-connection-badge {
-    padding-inline: 7px;
-  }
-
-  .aspira-provider-detail {
-    min-height: 36px;
-  }
-
-  .aspira-vault-body .flex.items-center.justify-between.flex-wrap {
-    align-items: flex-start;
-  }
+  .aspira-vault-overlay { padding: 0; }
+  .aspira-shell .aspira-vault-dialog { width: 100vw; height: 100dvh; max-height: 100dvh; border: 0; border-radius: 0; }
+  .aspira-shell .aspira-vault-header { min-height: 92px; padding: 18px; gap: 8px; }
+  .aspira-vault-brand-mark { display: none; }
+  .aspira-vault-header h2 { font-size: 18px; }
+  .aspira-vault-header p:last-child { font-size: 12px; }
+  .aspira-vault-sidebar { padding: 8px; }
+  .aspira-shell .aspira-vault-tab { flex-direction: column; gap: 5px; min-height: 54px; padding: 6px 2px; font-size: 11px; }
+  .aspira-vault-tab-icon { width: 15px; height: 15px; }
+  .aspira-shell .aspira-vault-body { padding: 24px 20px; }
+  .aspira-vault-body h3 { font-size: 21px; }
+  .aspira-vault-voice-heading { flex-direction: column; gap: 16px; }
+  .aspira-vault-body .aspira-vault-voice-heading h3 { font-size: 23px; }
+  .aspira-vault-voice-preview { width: 100%; }
+  .aspira-provider-card-heading { gap: 8px; }
+  .aspira-provider-family { max-width: 155px; }
+  .aspira-provider-detail { padding-top: 7px; }
+  .aspira-shell .aspira-connection-action { min-height: 42px; }
+  .aspira-shell .aspira-vault-body input { max-width: 100%; font-size: 16px; }
 }
-
 @media (prefers-reduced-motion: reduce) {
-  .aspira-vault-overlay,
-  .aspira-vault-dialog *,
-  .aspira-vault-dialog *::before,
-  .aspira-vault-dialog *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    scroll-behavior: auto !important;
-    transition-duration: 0.01ms !important;
-  }
+  .aspira-vault-overlay, .aspira-vault-dialog *, .aspira-vault-dialog *::before, .aspira-vault-dialog *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
 }

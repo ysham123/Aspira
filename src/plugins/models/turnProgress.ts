@@ -4,6 +4,7 @@ export type ModelResponse = SynergyExecutionResult['modelStreams'][number];
 export type TurnProgressEvent =
   | { kind: 'status'; modelId: string; phase: 'connecting' | 'thinking' | 'acting'; message: string; actionId?: string }
   | { kind: 'action'; modelId: string; action: AgentActionExecution }
+  | { kind: 'delta'; modelId: string; delta: string }
   | { kind: 'response'; modelId: string; response: ModelResponse };
 
 export interface PendingConversationTurn {
@@ -15,6 +16,7 @@ export interface PendingConversationTurn {
   actions: AgentActionExecution[];
   runningActions: { id: string; modelId: string; title: string }[];
   responses: ModelResponse[];
+  deltas: Record<string, string>;
 }
 
 export function createPendingTurn(prompt: string, modality: ConversationTurn['inputModality'], models: ModelPluginManifest[]): PendingConversationTurn {
@@ -28,6 +30,7 @@ export function createPendingTurn(prompt: string, modality: ConversationTurn['in
     actions: [],
     runningActions: [],
     responses: [],
+    deltas: {},
   };
 }
 
@@ -39,6 +42,10 @@ export function applyTurnProgress(turn: PendingConversationTurn, event: TurnProg
       runningActions: turn.runningActions.filter((action) => action.id !== event.action.id),
     };
   }
+  if (event.kind === 'delta') {
+    const current = turn.deltas || {};
+    return { ...turn, deltas: { ...current, [event.modelId]: `${current[event.modelId] || ''}${event.delta}`.slice(-80000) } };
+  }
   if (event.kind === 'response') {
     const available = event.response.source !== 'UNAVAILABLE';
     return {
@@ -47,6 +54,7 @@ export function applyTurnProgress(turn: PendingConversationTurn, event: TurnProg
         ? { ...agent, phase: available ? 'responded' : 'unavailable', message: available ? 'Response ready' : event.response.keyInsight }
         : agent),
       responses: [...turn.responses.filter((response) => response.modelId !== event.modelId), event.response],
+      deltas: Object.fromEntries(Object.entries(turn.deltas || {}).filter(([modelId]) => modelId !== event.modelId)),
     };
   }
   return {
@@ -74,6 +82,10 @@ export function interruptedTurnResult(
     ? 'You stopped this response. Any model replies and completed action receipts received before stopping are kept here.'
     : error || 'The connection ended before the response finished. Completed work is kept here.';
   const receivedText = available.map((response) => `**${response.codeName}**\n\n${response.keyInsight}`).join('\n\n');
+  const partialText = Object.entries(turn.deltas || {})
+    .filter(([, text]) => text.trim())
+    .map(([modelId, text]) => `**${modelId.toUpperCase()} · partial reply**\n\n${text.trim()}`)
+    .join('\n\n');
   return {
     id: `result-${turn.id}`,
     timestamp: turn.timestamp,
@@ -85,7 +97,7 @@ export function interruptedTurnResult(
     consensusScore: null,
     executiveHeadline: stopped ? 'Response stopped' : 'Response interrupted',
     completionState: stopped ? 'stopped' : 'interrupted',
-    synthesizedOutput: `${notice}${unfinished}${receivedText ? `\n\n${receivedText}` : ''}`,
+    synthesizedOutput: `${notice}${unfinished}${receivedText ? `\n\n${receivedText}` : ''}${partialText ? `\n\n${partialText}` : ''}`,
     spokenReply: '',
     executedActions: turn.actions,
     followUpSuggestions: [],

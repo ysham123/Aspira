@@ -3,34 +3,33 @@ import {
   ArrowUp,
   Check,
   ChevronDown,
-  FolderGit2,
-  History,
+  Inbox,
+  PanelLeft,
+  Settings2,
   KeyRound,
   Lock,
   Mic,
-  MessageSquare,
   Sliders,
   Square,
   Sparkles,
-  Volume2,
   X,
 } from 'lucide-react';
 import {
   BUILTIN_MODEL_PLUGINS,
+  AgentActionExecution,
+  FileEditProposal,
   CAPABILITY_MATRIX,
   ConversationTurn,
   DEFAULT_PASSKEY_PROFILES,
-  LivingMemoryItem,
-  LocalPlaybook,
   ModelPluginManifest,
   PasskeyProfile,
-  SpatialMode,
-  SynergyExecutionResult,
   SubscriptionStatus,
 } from './plugins/models/manifest';
 import { runPantheonSynergy } from './plugins/models/synergyEngine';
 import { modelConversationContext } from './plugins/models/conversationContext';
 import { latestWorkspaceFileRead } from './plugins/models/fileReadContext';
+import { updateFileEditResult } from './plugins/models/fileEditProposals';
+import type { FileEditOperation, FileEditApproval, FileEditOperationResult } from './plugins/models/fileEditProposals';
 import { soundEngine } from './audio/soundEngine';
 import { applyTurnProgress, createPendingTurn, interruptedTurnResult } from './plugins/models/turnProgress';
 import type { PendingConversationTurn } from './plugins/models/turnProgress';
@@ -39,9 +38,11 @@ import {
   recoverConversationHistory, writeConversationDraft, writeTurnCheckpoint, RELOADED_TURN_NOTICE,
 } from './plugins/models/conversationRecovery';
 import type { TurnCheckpoint } from './plugins/models/conversationRecovery';
-import { SpatialModeDeck } from './components/SpatialModeDeck';
+import { ConversationWorkspace } from './components/ConversationWorkspace';
 import { ConversationHistoryPanel } from './components/ConversationHistoryPanel';
 import { PlugAndPlayVaultModal } from './components/PlugAndPlayVaultModal';
+import { AttentionDrawer, ResultPreview, deriveAttentionItems } from './components/WorkspaceSheets';
+import type { AttentionItem } from './components/WorkspaceSheets';
 import {
   createConversationId,
   MAX_SAVED_CONVERSATIONS,
@@ -77,7 +78,13 @@ export const App: React.FC = () => {
       return BUILTIN_MODEL_PLUGINS;
     }
   });
-  const [awakeModelIds, setAwakeModelIds] = useState<string[]>([]);
+  const [initialAgentSelection] = useState<string[] | null>(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('aspira_selected_agents_v1') || 'null');
+      return Array.isArray(saved) ? saved.filter((id) => typeof id === 'string' && models.some((model) => model.id === id)) : null;
+    } catch { return null; }
+  });
+  const [awakeModelIds, setAwakeModelIds] = useState<string[]>(initialAgentSelection || []);
   const [passkeyProfiles, setPasskeyProfiles] = useState<PasskeyProfile[]>(() => {
     try {
       const stored = localStorage.getItem('aspira_passkey_profiles');
@@ -110,16 +117,9 @@ export const App: React.FC = () => {
     }
   });
 
-  // 3. Studio view, current conversation, saved context, and playbooks
-  const [spatialMode, setSpatialMode] = useState<SpatialMode>('nexus');
+  // Conversation state is shared across agents; outputs open alongside it.
   const selectedCapability = CAPABILITY_MATRIX[0];
-  const [latestResult, setLatestResult] = useState<SynergyExecutionResult | null>(
-    initialConversationTurns[initialConversationTurns.length - 1]?.result ?? null
-  );
   const [conversationTurns, setConversationTurns] = useState<ConversationTurn[]>(initialConversationTurns);
-  const [memories, setMemories] = useState<LivingMemoryItem[]>([]);
-  const [memoriesLoaded, setMemoriesLoaded] = useState(false);
-  const [routines, setRoutines] = useState<LocalPlaybook[]>([]);
   const [subscriptionStatuses, setSubscriptionStatuses] = useState<Record<string, SubscriptionStatus>>({});
   const [isExecuting, setIsExecuting] = useState(false);
   const [pendingTurn, setPendingTurn] = useState<PendingConversationTurn | null>(null);
@@ -138,6 +138,16 @@ export const App: React.FC = () => {
   const [voiceStatus, setVoiceStatus] = useState('Voice input is off');
   const [vaultModalOpen, setVaultModalOpen] = useState(false);
   const [mobileHistoryOpen, setMobileHistoryOpen] = useState(false);
+  const [settingsAgentId, setSettingsAgentId] = useState<string | undefined>();
+  const [attentionOpen, setAttentionOpen] = useState(false);
+  const [dismissedAttention, setDismissedAttention] = useState<string[]>(() => {
+    try { const value = JSON.parse(localStorage.getItem('aspira_dismissed_notices_v1') || '[]'); return Array.isArray(value) ? value.filter((id) => typeof id === 'string').slice(-300) : []; } catch { return []; }
+  });
+  const [previewResult, setPreviewResult] = useState<{title: string; content: string} | null>(null);
+  const [voicePanelOpen, setVoicePanelOpen] = useState(false);
+  const [voicePreparing, setVoicePreparing] = useState(false);
+  const voiceStartingRef = useRef(false);
+  const [reviewDraft, setReviewDraft] = useState<{reply: string; mode: 'review' | 'continue'} | null>(null);
   const [historySearchTerm, setHistorySearchTerm] = useState('');
   const [historyPersistenceError, setHistoryPersistenceError] = useState(false);
   const [recoveryPersistenceError, setRecoveryPersistenceError] = useState(false);
@@ -151,10 +161,12 @@ export const App: React.FC = () => {
   savedConversationsRef.current = savedConversations;
   const abortControllerRef = useRef<AbortController | null>(null);
   const beforeNavigationRef = useRef<(() => void) | null>(null);
-  const defaultModelSelectionAppliedRef = useRef(false);
+  const defaultModelSelectionAppliedRef = useRef(initialAgentSelection !== null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const voiceStreamRef = useRef<MediaStream | null>(null);
   const voiceChunksRef = useRef<Blob[]>([]);
+  const voiceRecordingCancelledRef = useRef(false);
+  const voiceCaptureGenerationRef = useRef(0);
   const commandInputRef = useRef<HTMLTextAreaElement | null>(null);
   const mobileHistoryDialogRef = useRef<HTMLDivElement | null>(null);
   const mobileHistoryTriggerRef = useRef<HTMLButtonElement | null>(null);
@@ -175,6 +187,17 @@ export const App: React.FC = () => {
       window.removeEventListener('beforeunload', preserveBeforeLeaving);
       window.removeEventListener('pagehide', preserveBeforeLeaving);
     };
+  }, []);
+
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    const updateHeight = () => {
+      if (!viewport || viewport.scale !== 1) return;
+      document.documentElement.style.setProperty('--aspira-visible-height', `${viewport.height}px`);
+    };
+    updateHeight();
+    viewport?.addEventListener('resize', updateHeight);
+    return () => { viewport?.removeEventListener('resize', updateHeight); document.documentElement.style.removeProperty('--aspira-visible-height'); };
   }, []);
 
   useEffect(() => {
@@ -277,7 +300,7 @@ export const App: React.FC = () => {
     }
 
     const connectedModel = models.find((model) =>
-      Boolean(apiKeys[model.id]) || subscriptionStatuses[model.id]?.authStatus === 'signed_in' ||
+      Boolean(apiKeys[model.id]) || (model.id !== 'claude' && subscriptionStatuses[model.id]?.authStatus === 'signed_in') ||
       model.endpointConfig?.providerType === 'openai_compatible'
     );
     if (!connectedModel) return;
@@ -285,6 +308,11 @@ export const App: React.FC = () => {
     defaultModelSelectionAppliedRef.current = true;
     setAwakeModelIds([connectedModel.id]);
   }, [models, awakeModelIds, apiKeys, subscriptionStatuses]);
+
+  useEffect(() => {
+    if (!defaultModelSelectionAppliedRef.current) return;
+    try { localStorage.setItem('aspira_selected_agents_v1', JSON.stringify(awakeModelIds)); } catch { /* Current selection still works without storage. */ }
+  }, [awakeModelIds]);
 
   useEffect(() => {
     try {
@@ -295,23 +323,8 @@ export const App: React.FC = () => {
     }
   }, [passkeyProfiles, passkeyLockEnabled]);
 
-  // Load saved context, playbooks, and provider CLI availability.
+  // Provider availability is separate from selecting agents for a conversation.
   useEffect(() => {
-    fetch('/api/memory')
-      .then((r) => r.json())
-      .then((data) => {
-        if (Array.isArray(data?.memories)) setMemories(data.memories);
-      })
-      .catch(() => {})
-      .finally(() => setMemoriesLoaded(true));
-
-    fetch('/api/routines')
-      .then((r) => r.json())
-      .then((data) => {
-        if (Array.isArray(data?.routines)) setRoutines(data.routines);
-      })
-      .catch(() => {});
-
     fetch('/api/subscriptions')
       .then((r) => r.json())
       .then((data) => {
@@ -319,61 +332,6 @@ export const App: React.FC = () => {
       })
       .catch(() => {});
   }, []);
-
-  const handleToggleMemoryStatus = useCallback(
-    async (id: string, status: 'IN_PROGRESS' | 'COMPLETED' | 'ACTIVE') => {
-      try {
-        const res = await fetch(`/api/memory/${id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ status }),
-        });
-        if (res.ok) {
-          const data = await res.json();
-          if (Array.isArray(data?.memories)) setMemories(data.memories);
-        }
-      } catch {
-        // ignore
-      }
-    },
-    []
-  );
-
-  const handleDeleteMemory = useCallback(async (id: string) => {
-    try {
-      const res = await fetch(`/api/memory/${id}`, { method: 'DELETE' });
-      if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data?.memories)) setMemories(data.memories);
-      }
-    } catch {
-      // ignore
-    }
-  }, []);
-
-  const handleAddMemory = useCallback(
-    async (content: string, category: LivingMemoryItem['category']) => {
-      try {
-        const res = await fetch('/api/memory', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            content,
-            category,
-            status: category === 'preference' ? 'ACTIVE' : 'IN_PROGRESS',
-            sourceAgent: awakeModelIds[0] || 'argon',
-          }),
-        });
-        if (res.ok) {
-          const data = await res.json();
-          if (Array.isArray(data?.memories)) setMemories(data.memories);
-        }
-      } catch {
-        // ignore
-      }
-    },
-    [awakeModelIds]
-  );
 
   const handleUnlockPasskey = useCallback((spokenPhrase: string) => {
     const phrase = spokenPhrase.trim().toLocaleLowerCase();
@@ -386,49 +344,21 @@ export const App: React.FC = () => {
     return true;
   }, [passkeyProfiles]);
 
-  const appendLocalNotice = useCallback((prompt: string, headline: string, message: string) => {
-    const result: SynergyExecutionResult = {
-      id: `syn-local-${Date.now()}`,
-      timestamp: new Date().toLocaleTimeString(),
-      prompt,
-      capabilityId: selectedCapability.id,
-      capabilityName: selectedCapability.name,
-      synergyMode: 'fusion',
-      participatingModels: [],
-      consensusScore: null,
-      executiveHeadline: headline,
-      synthesizedOutput: message,
-      spokenReply: '',
-      executedActions: [],
-      followUpSuggestions: [],
-      attributionPills: [],
-      modelStreams: [],
-      consensusPoints: [],
-      divergentPoints: [],
-    };
-    setLatestResult(result);
-    setConversationTurns((prev) => [...prev, {
-      id: result.id,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      userText: prompt,
-      inputModality: 'routine',
-      result,
-    }]);
-  }, [selectedCapability]);
-
   // Execute a Conversational Turn & Real Host Actions across Awake Models
   const handleRunDirective = useCallback(
     async (
       promptText: string,
       modality: 'voice' | 'text' | 'routine' = 'text',
-      speakReplyAloud = true
+      speakReplyAloud = true,
+      displayText?: string
     ) => {
       const cleanPrompt = promptText.trim();
+      const displayedPrompt = displayText?.trim() || cleanPrompt;
       const cap = selectedCapability;
       if (!cleanPrompt || executionInProgressRef.current) return;
       executionInProgressRef.current = true;
       const activeList = models.filter((model) => awakeModelIds.includes(model.id));
-      let progressTurn = createPendingTurn(cleanPrompt, modality, activeList);
+      let progressTurn = createPendingTurn(displayedPrompt, modality, activeList);
       const conversationId = activeConversationId || createConversationId();
       if (!activeConversationId) {
         const draft = readConversationDraft(null);
@@ -439,7 +369,7 @@ export const App: React.FC = () => {
       let checkpoint: TurnCheckpoint = {
         conversationId,
         title: savedConversationsRef.current.find((conversation) => conversation.id === conversationId)?.title ||
-          (conversationTurnsRef.current[0]?.userText || cleanPrompt).replace(/\s+/g, ' ').slice(0, 54),
+          (conversationTurnsRef.current[0]?.userText || displayedPrompt).replace(/\s+/g, ' ').slice(0, 54),
         updatedAt: new Date().toISOString(), capability: { id: cap.id, name: cap.name },
         completedTurns: conversationTurnsRef.current, pending: progressTurn,
       };
@@ -449,9 +379,8 @@ export const App: React.FC = () => {
       };
       saveCheckpoint();
       setPendingTurn(progressTurn);
-      setSpatialMode('nexus');
 
-      const concisePrompt = cleanPrompt.replace(/\s+/g, ' ');
+      const concisePrompt = displayedPrompt.replace(/\s+/g, ' ');
       const taskLabel = concisePrompt.length > 88 ? `${concisePrompt.slice(0, 85)}…` : concisePrompt;
       const controller = new AbortController();
       abortControllerRef.current = controller;
@@ -464,11 +393,10 @@ export const App: React.FC = () => {
         navigationInterrupted = true;
         const result = interruptedTurnResult(progressTurn, cap, false, RELOADED_TURN_NOTICE);
         const interrupted: ConversationTurn = {
-          id: progressTurn.id, timestamp: progressTurn.timestamp, userText: cleanPrompt,
+          id: progressTurn.id, timestamp: progressTurn.timestamp, userText: displayedPrompt,
           inputModality: modality, result,
         };
         saveCheckpoint(interrupted);
-        setLatestResult(result);
         setConversationTurns((previous) => previous.some((turn) => turn.id === interrupted.id) ? previous : [...previous, interrupted]);
       };
       try {
@@ -482,18 +410,15 @@ export const App: React.FC = () => {
           awakeModels: activeList,
           apiKeys,
           conversationHistory: historyContext,
+          conversationId,
           fileReadContext: latestWorkspaceFileRead(conversationTurnsRef.current)?.fileRead,
           signal: controller.signal,
-          onMemoriesUpdated: (updated) => setMemories(updated),
           onProgress: (event) => {
             if (controller.signal.aborted) return;
             progressTurn = applyTurnProgress(progressTurn, event);
             saveCheckpoint();
             setPendingTurn(progressTurn);
-            if (event.kind === 'action' && event.action.memoryItem) {
-              const memory = event.action.memoryItem;
-              setMemories((previous) => [memory, ...previous.filter((item) => item.id !== memory.id)]);
-            }
+
           },
         });
         if (navigationInterrupted) return;
@@ -502,14 +427,13 @@ export const App: React.FC = () => {
         const newTurn: ConversationTurn = {
           id: progressTurn.id,
           timestamp: progressTurn.timestamp,
-          userText: cleanPrompt,
+          userText: displayedPrompt,
           inputModality: modality,
           result,
         };
 
         saveCheckpoint(newTurn);
 
-        setLatestResult(result);
         setConversationTurns((prev) => [...prev, newTurn]);
 
         if (result.spokenReply && speakReplyAloud && (modality === 'voice' || duplexVoiceRef.current)) {
@@ -519,9 +443,8 @@ export const App: React.FC = () => {
         if (navigationInterrupted) return;
         const result = interruptedTurnResult(progressTurn, cap, controller.signal.aborted,
           error instanceof Error ? error.message : 'Aspira could not complete this request.');
-        setLatestResult(result);
         const newTurn: ConversationTurn = {
-          id: progressTurn.id, timestamp: progressTurn.timestamp, userText: cleanPrompt,
+          id: progressTurn.id, timestamp: progressTurn.timestamp, userText: displayedPrompt,
           inputModality: modality, result,
         };
         saveCheckpoint(newTurn);
@@ -539,159 +462,44 @@ export const App: React.FC = () => {
     [models, awakeModelIds, apiKeys, activeConversationId]
   );
 
-  // Run a user-triggered local playbook.
-  const handleRunRoutine = useCallback(
-    async (routineId: string) => {
-      if (executionInProgressRef.current) return;
-      executionInProgressRef.current = true;
-      const routineTitle = routines.find((routine) => routine.id === routineId)?.title;
-      setActiveTaskLabel(routineTitle ? `Running ${routineTitle}` : 'Running local playbook');
-      setIsExecuting(true);
-      try {
-        const res = await fetch(`/api/routines/${routineId}/run`, { method: 'POST' });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data?.error || `The playbook returned ${res.status}.`);
-        {
-          if (Array.isArray(data?.memories)) setMemories(data.memories);
-          setRoutines((prev) =>
-            prev.map((r) => (r.id === routineId ? data.routine : r))
-          );
+  const handleEditProposalUpdate = useCallback((proposal: FileEditProposal, action?: AgentActionExecution | null) => {
+    const updateTurns = (turns: ConversationTurn[]) => {
+      let changed = false;
+      const updated = turns.map((turn) => {
+        const result = updateFileEditResult(turn.result, proposal, action);
+        if (result === turn.result) return turn;
+        changed = true; return { ...turn, result };
+      });
+      return changed ? updated : turns;
+    };
+    setConversationTurns(updateTurns);
+    setSavedConversations((conversations) => {
+      let changed = false;
+      const updated = conversations.map((conversation) => {
+        const turns = updateTurns(conversation.turns);
+        if (turns === conversation.turns) return conversation;
+        changed = true; return { ...conversation, turns, updatedAt: new Date().toISOString() };
+      });
+      return changed ? updated.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)) : conversations;
+    });
+  }, []);
 
-          const routine: LocalPlaybook = data.routine;
-          const results = data.results || [];
-          const succeededSteps = results.filter((result: any) => result.status === 'success').length;
-          const attentionSteps = results.length - succeededSteps;
-          const summaryText = results.length
-            ? `Ran **${routine.title}** across ${results.length} local steps. ${
-                attentionSteps
-                  ? `${succeededSteps} of ${results.length} succeeded; ${attentionSteps} need attention.`
-                  : `All ${results.length} steps succeeded.`
-              } Expand a step receipt below to inspect its output.`
-            : `Ran **${routine.title}**, but the local service returned no step results.`;
-
-          const syntheticResult: SynergyExecutionResult = {
-            id: `syn-routine-${Date.now()}`,
-            timestamp: new Date().toLocaleTimeString(),
-            prompt: `Run Routine: ${routine.title}`,
-            capabilityId: selectedCapability.id,
-            capabilityName: selectedCapability.name,
-            synergyMode: 'fusion',
-            participatingModels: [],
-            consensusScore: null,
-            executiveHeadline: `Local routine · ${routine.title}`,
-            synthesizedOutput: summaryText,
-            spokenReply: `The routine finished with ${results.length} steps. Review the outcomes in the conversation.`,
-            executedActions: results,
-            followUpSuggestions: [],
-            attributionPills: [],
-            modelStreams: [],
-            consensusPoints: [],
-            divergentPoints: [],
-          };
-
-          const newTurn: ConversationTurn = {
-            id: `turn-routine-${Date.now()}`,
-            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            userText: `Run local playbook: ${routine.title}`,
-            inputModality: 'routine',
-            result: syntheticResult,
-          };
-
-          setLatestResult(syntheticResult);
-          setConversationTurns((prev) => [...prev, newTurn]);
-        }
-      } catch (error) {
-        appendLocalNotice(
-          'Run local playbook',
-          'Playbook failed',
-          error instanceof Error ? error.message : 'Aspira could not run that playbook.'
-        );
-      } finally {
-        executionInProgressRef.current = false;
-        setActiveTaskLabel('');
-        setIsExecuting(false);
-      }
-    },
-    [appendLocalNotice, routines]
-  );
-
-  // Execute a Direct Single Tool Action (e.g. clicking "Open Calculator" or "Send macOS Notification")
-  const handleExecuteDirectAction = useCallback(
-    async (tool: string, args: Record<string, unknown>, label: string) => {
-      if (executionInProgressRef.current) return;
-      executionInProgressRef.current = true;
-      const conciseLabel = label.replace(/\s+/g, ' ').trim();
-      const taskLabel = conciseLabel.length > 88 ? `${conciseLabel.slice(0, 85)}…` : conciseLabel;
-      setActiveTaskLabel(`Running ${taskLabel}`);
-      setIsExecuting(true);
-      try {
-        const res = await fetch('/api/execute-action', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ tool, args }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data?.error || `The local action returned ${res.status}.`);
-        {
-          if (Array.isArray(data?.memories)) setMemories(data.memories);
-          const act = data.result;
-          const succeeded = act?.status === 'success';
-          const actionTitle = act?.title || label;
-          const isAppHandoff = tool === 'subscription_desktop_handoff';
-          const syntheticResult: SynergyExecutionResult = {
-            id: `syn-act-${Date.now()}`,
-            timestamp: new Date().toLocaleTimeString(),
-            prompt: label,
-            capabilityId: selectedCapability.id,
-            capabilityName: selectedCapability.name,
-            synergyMode: 'fusion',
-            participatingModels: [],
-            consensusScore: null,
-            executiveHeadline: succeeded ? `Local action · ${actionTitle}` : `Action failed · ${actionTitle}`,
-            synthesizedOutput: succeeded
-              ? isAppHandoff
-                ? `${actionTitle}. Review the prompt in the app and send it when ready.`
-                : `Done. ${actionTitle}. Expand the action receipt below to inspect the result.`
-              : `Could not complete ${actionTitle}. Expand the action receipt below for details.`,
-            spokenReply: succeeded
-              ? isAppHandoff
-                ? `${actionTitle}. Review the prompt and send it when ready.`
-                : `Done. ${actionTitle}.`
-              : '',
-            executedActions: [act],
-            followUpSuggestions: [],
-            attributionPills: [],
-            modelStreams: [],
-            consensusPoints: [],
-            divergentPoints: [],
-          };
-
-          setLatestResult(syntheticResult);
-          setConversationTurns((prev) => [
-            ...prev,
-            {
-              id: `turn-act-${Date.now()}`,
-              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-              userText: label,
-              inputModality: 'text',
-              result: syntheticResult,
-            },
-          ]);
-        }
-      } catch (error) {
-        appendLocalNotice(
-          label,
-          'Local action failed',
-          error instanceof Error ? error.message : 'Aspira could not reach its local action service.'
-        );
-      } finally {
-        executionInProgressRef.current = false;
-        setActiveTaskLabel('');
-        setIsExecuting(false);
-      }
-    },
-    [appendLocalNotice]
-  );
+  const handleEditOperation = useCallback(async (id: string, operation: FileEditOperation, approval: FileEditApproval): Promise<FileEditOperationResult> => {
+    if (executionInProgressRef.current) throw new Error('Wait for the current response to finish before changing a file.');
+    executionInProgressRef.current = true; setIsExecuting(true); setCanCancelRequest(false);
+    setActiveTaskLabel(operation === 'apply' ? 'Applying reviewed file change' : operation === 'undo' ? 'Undoing reviewed file change' : 'Discarding edit proposal');
+    try {
+      const response = await fetch(`/api/file-edits/${id}/${operation}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(approval),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'The edit operation could not finish.');
+      handleEditProposalUpdate(data.proposal, data.action);
+      return data;
+    } finally {
+      executionInProgressRef.current = false; setIsExecuting(false); setActiveTaskLabel('');
+    }
+  }, [handleEditProposalUpdate]);
 
   const toggleVoiceInput = useCallback(async () => {
     const currentRecorder = recorderRef.current;
@@ -702,15 +510,20 @@ export const App: React.FC = () => {
       return;
     }
 
-    if (executionInProgressRef.current) return;
+    if (executionInProgressRef.current || voiceStartingRef.current || voicePreparing) return;
     if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
       setVoiceStatus('Voice recording is not available in this browser.');
       return;
     }
 
+    voiceStartingRef.current = true;
+    setVoicePreparing(true);
+    voiceRecordingCancelledRef.current = false;
+    const captureGeneration = ++voiceCaptureGenerationRef.current;
     try {
       soundEngine.stopSpeaking();
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      if (captureGeneration !== voiceCaptureGenerationRef.current) { stream.getTracks().forEach((track) => track.stop()); return; }
       voiceStreamRef.current = stream;
       voiceChunksRef.current = [];
       const mimeType = ['audio/webm;codecs=opus', 'audio/mp4', 'audio/webm'].find((type) =>
@@ -728,14 +541,17 @@ export const App: React.FC = () => {
         stream.getTracks().forEach((track) => track.stop());
         voiceStreamRef.current = null;
         recorderRef.current = null;
+        if (captureGeneration !== voiceCaptureGenerationRef.current) return;
         if (!audioBlob.size) {
           setVoiceStatus('No audio captured. Try again.');
           return;
         }
 
         try {
+          setVoicePreparing(true);
           setVoiceStatus('Preparing Aspira voice input…');
           const transcript = await soundEngine.transcribe(audioBlob);
+          if (captureGeneration !== voiceCaptureGenerationRef.current) return;
           if (!transcript) {
             setVoiceStatus('Aspira could not transcribe this voice message. Try again.');
             return;
@@ -744,19 +560,24 @@ export const App: React.FC = () => {
           setVoiceStatus('Voice message received');
           await handleRunDirective(transcript, 'voice', true);
         } catch {
-          setVoiceStatus('Aspira could not process this voice message. Try again.');
-        }
+          if (captureGeneration === voiceCaptureGenerationRef.current) setVoiceStatus('Aspira could not process this voice message. Try again.');
+        } finally { if (captureGeneration === voiceCaptureGenerationRef.current) setVoicePreparing(false); }
       };
       recorder.start();
       setDuplexVoiceActive(true);
       setVoiceStatus('Listening · click again to send');
     } catch {
+      voiceStreamRef.current?.getTracks().forEach((track) => track.stop());
+      voiceStreamRef.current = null;
+      recorderRef.current = null;
       setDuplexVoiceActive(false);
-      setVoiceStatus('Microphone access was not granted. Voice input stays off.');
-    }
-  }, [handleRunDirective]);
+      if (!voiceRecordingCancelledRef.current) setVoiceStatus('Microphone access was not granted. Voice input stays off.');
+    } finally { voiceStartingRef.current = false; setVoicePreparing(false); }
+  }, [handleRunDirective, voicePreparing]);
 
   useEffect(() => () => {
+    voiceRecordingCancelledRef.current = true;
+    voiceCaptureGenerationRef.current += 1;
     recorderRef.current?.stop();
     voiceStreamRef.current?.getTracks().forEach((track) => track.stop());
   }, []);
@@ -774,18 +595,13 @@ export const App: React.FC = () => {
     });
   };
 
-  const switchSpatialMode = (mode: SpatialMode) => {
-    setSpatialMode(mode);
-  };
-
   const startNewConversation = () => {
     if (isExecuting) return;
+    setReviewDraft(null); setPreviewResult(null);
     setActiveConversationId(null);
     setConversationTurns([]);
-    setLatestResult(null);
     setCommandInput(readConversationDraft(null));
     setHistorySearchTerm('');
-    setSpatialMode('nexus');
     setMobileHistoryOpen(false);
     window.requestAnimationFrame(() => commandInputRef.current?.focus());
   };
@@ -794,11 +610,10 @@ export const App: React.FC = () => {
     if (isExecuting) return;
     const conversation = savedConversations.find((item) => item.id === id);
     if (!conversation) return;
+    setReviewDraft(null); setPreviewResult(null);
     setActiveConversationId(conversation.id);
     setConversationTurns(conversation.turns);
-    setLatestResult(conversation.turns[conversation.turns.length - 1]?.result ?? null);
     setCommandInput(readConversationDraft(conversation.id));
-    setSpatialMode('nexus');
     setHistorySearchTerm('');
     setMobileHistoryOpen(false);
   };
@@ -814,13 +629,13 @@ export const App: React.FC = () => {
     if (activeConversationId === id) {
       setActiveConversationId(null);
       setConversationTurns([]);
-      setLatestResult(null);
       setCommandInput(readConversationDraft(null));
     }
   };
 
   const providerStatusLabel = (modelId: string) => {
     if (apiKeys[modelId]) return 'API key saved';
+    if (modelId === 'claude' && subscriptionStatuses[modelId]?.cliPath) return 'Use in Claude Code';
     if (subscriptionStatuses[modelId]?.authStatus === 'signed_in') return 'Signed in';
     if (subscriptionStatuses[modelId]?.authStatus === 'signed_out') return 'Sign-in required';
     if (subscriptionStatuses[modelId]?.cliPath) return 'CLI found';
@@ -829,18 +644,246 @@ export const App: React.FC = () => {
     return 'Checking status';
   };
 
-  const primaryViews: { id: SpatialMode; label: string; icon: typeof MessageSquare }[] = [
-    { id: 'nexus', label: 'Studio', icon: MessageSquare },
-    { id: 'forge', label: 'Workbench', icon: FolderGit2 },
-  ];
-  const currentView = primaryViews.find((view) => view.id === spatialMode) ?? primaryViews[0];
-  const CurrentViewIcon = currentView.icon;
-  const conversationLabel = conversationTurns.length
-    ? titleForConversation(conversationTurns)
-    : 'A new conversation';
+  const conversationLabel = conversationTurns.length ? titleForConversation(conversationTurns) : 'New conversation';
+  const attentionItems = deriveAttentionItems(savedConversations, {
+    id: activeConversationId || 'current', title: conversationLabel, turns: conversationTurns,
+  }).filter((item) => item.kind === 'review' || !dismissedAttention.includes(item.id));
+  const openAgentSettings = (id?: string) => {
+    setSettingsAgentId(id);
+    setMobileHistoryOpen(false);
+    setVaultModalOpen(true);
+  };
+  const openAttentionItem = (item: AttentionItem) => {
+    if (isExecuting) return;
+    if (item.conversationId !== (activeConversationId || 'current')) selectConversation(item.conversationId);
+    setAttentionOpen(false);
+    window.requestAnimationFrame(() => {
+      document.getElementById(`conversation-turn-${item.turnId}`)?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    });
+  };
+  const requestAgentReview = (reply: string) => {
+    if (isExecuting) return;
+    setReviewDraft({ reply, mode: 'review' });
+    setPreviewResult(null);
+    window.requestAnimationFrame(() => commandInputRef.current?.focus());
+  };
+  const cancelVoiceRecording = useCallback(() => {
+    voiceRecordingCancelledRef.current = true;
+    voiceCaptureGenerationRef.current += 1;
+    recorderRef.current?.stop();
+    voiceStreamRef.current?.getTracks().forEach((track) => track.stop());
+    setDuplexVoiceActive(false);
+    setVoiceStatus('Voice input is off');
+    setVoicePreparing(false);
+  }, []);
+  useEffect(() => {
+    if (!voicePanelOpen) return;
+    const closeVoice = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.defaultPrevented || vaultModalOpen || attentionOpen || mobileHistoryOpen || previewResult) return;
+      event.preventDefault(); cancelVoiceRecording(); soundEngine.stopSpeaking(); setVoicePanelOpen(false);
+      document.querySelector<HTMLButtonElement>('.aspira-voice-control')?.focus();
+    };
+    window.addEventListener('keydown', closeVoice);
+    return () => window.removeEventListener('keydown', closeVoice);
+  }, [voicePanelOpen, vaultModalOpen, attentionOpen, mobileHistoryOpen, previewResult, cancelVoiceRecording]);
+
+  const agentList = (mobile = false) => (
+    <section className="aspira-agent-list" aria-label="Your agents">
+      <div className="aspira-agent-list-heading"><h2>Your agents</h2><button type="button" aria-label="Manage your agents" onClick={() => openAgentSettings()}><Sliders aria-hidden="true" /></button></div>
+      {models.map((model) => (
+        <button type="button" key={model.id} className="aspira-agent-row" onClick={() => openAgentSettings(model.id)}>
+          <span className="aspira-agent-avatar" aria-hidden="true">{model.codeName.slice(0, 1)}</span>
+          <span><strong>{model.codeName}</strong><small>{providerStatusLabel(model.id)}</small></span>
+          <span className={`aspira-agent-status-dot ${apiKeys[model.id] || (model.id !== 'claude' && subscriptionStatuses[model.id]?.authStatus === 'signed_in') ? 'is-connected' : ''}`} aria-hidden="true" />
+        </button>
+      ))}
+      {mobile && <button type="button" className="aspira-settings-link" onClick={() => openAgentSettings()}><Settings2 aria-hidden="true" /> Settings</button>}
+    </section>
+  );
+
+  const isNewConversation = conversationTurns.length === 0 && !isExecuting && !pendingTurn;
+  const composer = (
+      <footer className="aspira-composer-region">
+        {(historyPersistenceError || recoveryPersistenceError || draftPersistenceError) && (
+          <p className="aspira-persistence-notice" role="alert">
+            {historyPersistenceError
+              ? 'This conversation could not be saved in this browser. Free some browser storage before reloading.'
+              : recoveryPersistenceError
+              ? 'Live progress could not be saved in this tab. Keep it open until the response finishes.'
+              : 'This draft could not be saved for reload.'}
+          </p>
+        )}
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if ((!commandInput.trim() && !reviewDraft) || executionInProgressRef.current || duplexVoiceActive) return;
+            if (voicePreparing) return;
+            if (reviewDraft && !awakeModelIds.length) return;
+            const excerpt = reviewDraft?.reply.slice(0, 16000) || '';
+            const prompt = reviewDraft
+              ? `${reviewDraft.mode === 'review' ? 'Review the following prior answer. Check its reasoning and identify useful corrections.' : 'Continue from the following prior answer toward the original request.'}\n\n<prior_answer>\n${excerpt}${reviewDraft.reply.length > 16000 ? '\n[Excerpt: remaining answer omitted.]' : ''}\n</prior_answer>\n\n${commandInput.trim() ? `Additional direction: ${commandInput}` : ''}`
+              : commandInput;
+            const displayText = reviewDraft ? `${reviewDraft.mode === 'review' ? 'Review this answer' : 'Continue from this answer'}${commandInput.trim() ? `\n\n${commandInput.trim()}` : ''}` : undefined;
+            setReviewDraft(null);
+            updateCommandInput('');
+            handleRunDirective(prompt, 'text', true, displayText);
+          }}
+          className="aspira-composer"
+        >
+          {reviewDraft && <section className="aspira-review-context" aria-label="Context shared with the selected agents">
+            <div><strong>Bring another perspective</strong><button type="button" aria-label="Cancel agent handoff" onClick={() => setReviewDraft(null)}><X aria-hidden="true" /></button></div>
+            <div className="aspira-review-mode"><button type="button" aria-pressed={reviewDraft.mode === 'review'} onClick={() => setReviewDraft({...reviewDraft, mode:'review'})}>Review this answer</button><button type="button" aria-pressed={reviewDraft.mode === 'continue'} onClick={() => setReviewDraft({...reviewDraft, mode:'continue'})}>Continue from here</button></div>
+            <details><summary>Review what will be shared</summary><p>{reviewDraft.reply.slice(0,16000)}{reviewDraft.reply.length > 16000 ? '\n[Remaining answer omitted.]' : ''}</p></details>
+            <small>Choose who replies below. This answer, recent conversation, and your saved context will be included when you send.</small>
+          </section>}
+          <div className="aspira-composer-toolbar">
+            <details
+              className="aspira-provider-picker"
+              aria-label="Choose agents for this reply"
+              onKeyDown={(event) => {
+                if (event.key === 'Escape' && event.currentTarget.open) {
+                  event.preventDefault();
+                  event.currentTarget.open = false;
+                  event.currentTarget.querySelector('summary')?.focus();
+                }
+              }}
+            >
+              <summary className="aspira-provider-summary">
+                <span className="flex min-w-0 flex-col text-left">
+                  <span className="text-[10px] font-medium uppercase tracking-wide text-slate-500">With</span>
+                  <span className="max-w-[240px] truncate text-xs font-semibold text-slate-800">
+                    {awakeModelIds.length === 0
+                      ? 'Choose an agent'
+                      : awakeModelIds.length === 1
+                      ? models.find((model) => model.id === awakeModelIds[0])?.codeName || '1 model'
+                      : `${awakeModelIds.length} agents`}
+                  </span>
+                </span>
+                <ChevronDown className="h-4 w-4 shrink-0 text-slate-500" />
+              </summary>
+              <div className="aspira-provider-options" role="group" aria-label="Agents included in replies">
+                <div className="mb-2 flex items-center justify-between gap-3 border-b border-slate-200 pb-2">
+                  <div>
+                    <p className="text-xs font-semibold text-slate-800">Choose your agents</p>
+                    <p className="mt-0.5 text-[10px] leading-4 text-slate-500">The first selected agent can use tools; additional agents give their own perspective.</p>
+                  </div>
+
+                </div>
+                {models.map((model) => {
+                  const isAwake = awakeModelIds.includes(model.id);
+                  const status = providerStatusLabel(model.id);
+                  return (
+                    <button
+                      key={model.id}
+                      type="button"
+                      onClick={() => toggleModelAwake(model)}
+                      aria-pressed={isAwake}
+                      aria-label={`${model.codeName}, ${status}, ${isAwake ? 'selected' : 'not selected'}`}
+                      className={`aspira-provider-option ${isAwake ? 'is-selected' : ''}`}
+                      style={{ '--provider-accent': model.accentHex } as React.CSSProperties}
+                    >
+                      <span className="aspira-provider-indicator" aria-hidden="true">
+                        {isAwake && <Check className="h-3 w-3" />}
+                      </span>
+                      <span className="flex min-w-0 flex-1 flex-col text-left">
+                        <span className="text-xs font-semibold text-slate-800">{model.codeName}</span>
+                        <span className="text-[10px] text-slate-500">{status}</span>
+                      </span>
+                      <span className="text-[10px] text-slate-500">{isAwake ? 'On' : 'Off'}</span>
+                    </button>
+                  );
+                })}
+                <button
+                  type="button"
+                  onClick={() => openAgentSettings()}
+                  aria-haspopup="dialog"
+                  className="mt-2 w-full border-t border-slate-200 pt-2 text-left text-[11px] font-medium text-indigo-700 hover:text-indigo-900"
+                >
+                  Manage your agents
+                </button>
+              </div>
+            </details>
+          </div>
+
+          <div className="aspira-composer-inputrow">
+            <button
+              type="button"
+              onClick={() => setVoicePanelOpen((open) => !open)}
+              aria-expanded={voicePanelOpen}
+              aria-controls="aspira-voice-panel"
+              disabled={isExecuting && !duplexVoiceActive}
+              aria-label="Aspira voice input"
+              className="aspira-voice-control flex shrink-0 items-center gap-2 text-xs text-slate-600"
+              title={duplexVoiceActive
+                ? 'Open the voice panel to finish or cancel your message.'
+                : 'Open built-in voice. Recording starts only when you choose Record a message.'}
+            >
+              <Mic className={`h-4 w-4 ${duplexVoiceActive ? 'text-emerald-600' : 'text-slate-500'}`} />
+              <span className="hidden sm:inline text-[11px] font-medium">
+                Voice
+              </span>
+            </button>
+
+            <textarea
+              ref={commandInputRef}
+              rows={1}
+              value={commandInput}
+              onChange={(e) => updateCommandInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  e.currentTarget.form?.requestSubmit();
+                }
+              }}
+              placeholder={
+                liveTranscript
+                  ? `Heard: “${liveTranscript}”`
+                  : 'Message Aspira…'
+              }
+              aria-label="Message Aspira"
+              className="aspira-message-input max-h-32 min-h-10 flex-1 resize-none py-2 text-sm leading-6 placeholder:text-slate-400 focus:outline-none"
+            />
+
+            {isExecuting && canCancelRequest ? (
+              <button
+                key="stop-response"
+                type="button"
+                onClick={(event) => {
+                  event.preventDefault();
+                  abortControllerRef.current?.abort();
+                }}
+                title="Stop the agent response. A local action already started may still finish."
+                className="aspira-stop-button flex items-center gap-1.5 rounded-xl px-4 py-2 text-xs font-semibold transition"
+              >
+                <Square className="h-3 w-3 fill-current" />
+                <span>Stop</span>
+              </button>
+            ) : (
+              <button
+                key="send-message"
+                type="submit"
+                disabled={isExecuting || duplexVoiceActive || voicePreparing || (!commandInput.trim() && !reviewDraft) || Boolean(reviewDraft && !awakeModelIds.length)}
+                className="aspira-send-button flex items-center gap-1.5 rounded-xl px-4 py-2 text-xs font-semibold text-white transition disabled:opacity-50"
+              >
+                <span>{isExecuting ? 'Acting...' : 'Send'}</span>
+                <ArrowUp className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+        </form>
+        {voicePanelOpen && <section className="aspira-voice-panel" id="aspira-voice-panel" aria-label="Voice conversation">
+          <div><span><Mic aria-hidden="true" /><strong>{duplexVoiceActive ? 'Listening' : /prepar|download/i.test(voiceStatus) ? 'Preparing voice' : isAgentSpeaking ? 'Aspira is speaking' : 'Voice, built into Aspira'}</strong></span><button type="button" aria-label="Close voice panel" onClick={() => { cancelVoiceRecording(); soundEngine.stopSpeaking(); setVoicePanelOpen(false); }}><X aria-hidden="true" /></button></div>
+          <p role="status">{voiceStatus === 'Voice input is off' ? 'Record a message and hear the reply. No separate service to connect.' : voiceStatus}</p>
+          {liveTranscript && <blockquote>{liveTranscript}</blockquote>}
+          <div className="aspira-voice-panel-actions"><button type="button" className="aspira-voice-record" disabled={(isExecuting || voicePreparing) && !duplexVoiceActive} onClick={toggleVoiceInput}>{duplexVoiceActive ? <Square aria-hidden="true" /> : <Mic aria-hidden="true" />}{duplexVoiceActive ? 'Stop & send' : voicePreparing ? 'Preparing voice…' : 'Record a message'}</button>{duplexVoiceActive && <button type="button" onClick={cancelVoiceRecording}>Cancel recording</button>}{isAgentSpeaking && <button type="button" onClick={() => soundEngine.stopSpeaking()}><Square aria-hidden="true" /> Stop playback</button>}</div>
+          <small>Audio is processed in this browser. Sending a voice message shares its transcript with your selected agents.</small>
+        </section>}
+        <p className="aspira-composer-note">{awakeModelIds.length ? 'Your agents, one conversation.' : 'Choose an agent to chat. Supported local actions are also available.'}</p>
+      </footer>
+  );
 
   return (
-    <div className="aspira-shell relative flex h-screen w-screen overflow-hidden p-3 aspira-canvas-bg">
+    <div className="aspira-shell aspira-workspace relative flex h-screen w-screen overflow-hidden aspira-canvas-bg">
       {bootState === 'locked' && (
         <div className="aspira-lock-backdrop fixed inset-0 z-50 grid place-items-center bg-[#090b10]/90 p-6 backdrop-blur-xl">
           <form
@@ -880,6 +923,7 @@ export const App: React.FC = () => {
       {/* Provider and workspace settings */}
       <PlugAndPlayVaultModal
         open={vaultModalOpen}
+        initialModelId={settingsAgentId}
         onClose={() => setVaultModalOpen(false)}
         models={models}
         initialSubscriptions={subscriptionStatuses}
@@ -888,8 +932,7 @@ export const App: React.FC = () => {
         onUseModel={(modelId) => {
           defaultModelSelectionAppliedRef.current = true;
           setAwakeModelIds((prev) => prev.includes(modelId) ? prev : [...prev, modelId]);
-          setSpatialMode('nexus');
-          setVaultModalOpen(false);
+              setVaultModalOpen(false);
         }}
         onAddCustomModel={(newPlugin) => {
           const id = models.some((model) => model.id === newPlugin.id)
@@ -977,167 +1020,41 @@ export const App: React.FC = () => {
               onSelect={selectConversation}
               onDelete={deleteConversation}
             />
+            {agentList(true)}
           </div>
         </div>
       )}
 
+      <AttentionDrawer disabled={isExecuting} onDismiss={(id) => setDismissedAttention((previous) => { const next = [...new Set([...previous,id])].slice(-300); try { localStorage.setItem('aspira_dismissed_notices_v1',JSON.stringify(next)); } catch { /* Notices can still be dismissed for this session. */ } return next; })} open={attentionOpen} onClose={() => setAttentionOpen(false)} items={attentionItems} onSelect={openAttentionItem} />
       <aside className="aspira-sidebar hidden lg:flex">
         <div className="aspira-sidebar-brand">
-          <div className="aspira-brand-mark"><Sparkles className="h-4 w-4" /></div>
-          <div>
-            <div className="font-display text-sm font-semibold tracking-tight">Aspira</div>
-            <div className="mt-0.5 text-[10px] text-slate-500">Your personal AI workspace</div>
-          </div>
+          <div className="aspira-brand-mark"><Sparkles aria-hidden="true" /></div>
+          <span>Aspira</span>
         </div>
-
-        <nav className="aspira-sidebar-nav" aria-label="Workspace navigation">
-          <div className="aspira-sidebar-nav-group">
-            <p className="aspira-sidebar-label">Workspace</p>
-            {primaryViews.map((view) => {
-              const Icon = view.icon;
-              const active = spatialMode === view.id;
-              return (
-                <button
-                  key={view.id}
-                  type="button"
-                  onClick={() => switchSpatialMode(view.id)}
-                  aria-current={active ? 'page' : undefined}
-                  className={`aspira-sidebar-link ${active ? 'is-active' : ''}`}
-                >
-                  <Icon className="h-4 w-4" />
-                  <span>{view.label}</span>
-                </button>
-              );
-            })}
-          </div>
-          <div className="aspira-sidebar-nav-group">
-            <p className="aspira-sidebar-label">Manage</p>
-            <button
-              type="button"
-              onClick={() => setVaultModalOpen(true)}
-              aria-haspopup="dialog"
-              className="aspira-sidebar-link"
-            >
-              <Sliders className="h-4 w-4" />
-              <span>Connections</span>
-            </button>
-          </div>
-        </nav>
-
         <ConversationHistoryPanel
-          conversations={savedConversations}
-          activeId={activeConversationId}
-          searchTerm={historySearchTerm}
-          isExecuting={isExecuting}
-          persistenceError={historyPersistenceError}
-          onSearchChange={setHistorySearchTerm}
-          onNewChat={startNewConversation}
-          onSelect={selectConversation}
-          onDelete={deleteConversation}
+          conversations={savedConversations} activeId={activeConversationId}
+          searchTerm={historySearchTerm} isExecuting={isExecuting} persistenceError={historyPersistenceError}
+          onSearchChange={setHistorySearchTerm} onNewChat={startNewConversation}
+          onSelect={selectConversation} onDelete={deleteConversation}
         />
-
-        <div className="aspira-sidebar-footer">
-          <span className="aspira-sidebar-label">Saved context</span>
-          <span className="text-xs font-medium text-slate-700">
-            {memoriesLoaded ? `${memories.length} items` : 'Loading…'}
-          </span>
-          <span className="mt-1 text-[10px] leading-4 text-slate-500">Included with provider prompts when available.</span>
-        </div>
+        {agentList()}
+        <button type="button" className="aspira-settings-link" onClick={() => openAgentSettings()}><Settings2 aria-hidden="true" /> Settings</button>
       </aside>
 
       <div className="aspira-app-content flex min-w-0 flex-1 flex-col overflow-hidden">
-        <header className="aspira-topbar relative z-20 flex items-center justify-between gap-3 px-4 py-2">
-          <div className="flex min-w-0 items-center gap-2 sm:gap-3">
-            <div className="aspira-topbar-brand flex shrink-0 items-center gap-2 lg:hidden" role="img" aria-label="Aspira">
-              <span className="aspira-brand-mark h-8 w-8 rounded-[11px]" aria-hidden="true"><Sparkles className="h-3.5 w-3.5" /></span>
-              <span className="hidden font-display text-sm font-semibold tracking-tight min-[560px]:inline">Aspira</span>
-            </div>
-            <div className="hidden min-w-0 items-center gap-3 lg:flex">
-              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-[#6258c9]/10 bg-[#f0effb] text-[#6258c9]">
-                <CurrentViewIcon className="h-4 w-4" />
-              </span>
-              <div className="min-w-0">
-                <p className="aspira-topbar-eyebrow">{currentView.label}</p>
-                <p className="aspira-topbar-title">
-                  {spatialMode === 'nexus' ? conversationLabel : 'Local project workspace'}
-                </p>
-              </div>
-            </div>
-            <nav className="aspira-mobile-nav flex items-center gap-1 rounded-xl border border-black/[0.06] bg-white/70 p-1 lg:hidden" aria-label="Workspace navigation">
-              {primaryViews.map((view) => {
-                const Icon = view.icon;
-                const active = spatialMode === view.id;
-                return (
-                  <button
-                    key={view.id}
-                    type="button"
-                    onClick={() => switchSpatialMode(view.id)}
-                    aria-current={active ? 'page' : undefined}
-                    aria-label={view.label}
-                    title={view.label}
-                    className={`flex min-h-11 items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition ${
-                      active ? 'border-[#dedaf6] bg-[#f0effb] text-[#5148b1] shadow-sm' : 'border-transparent text-slate-500 hover:bg-[#f4f3ef] hover:text-slate-800'
-                    }`}
-                  >
-                    <Icon className="h-3.5 w-3.5" />
-                    <span className="aspira-mobile-nav-label">{view.label}</span>
-                  </button>
-                );
-              })}
-              <button
-                ref={mobileHistoryTriggerRef}
-                type="button"
-                onClick={() => setMobileHistoryOpen(true)}
-                aria-label="Recent conversations"
-                aria-haspopup="dialog"
-                title="Recent conversations"
-                className="aspira-history-trigger flex min-h-11 items-center gap-1.5 rounded-lg border border-transparent px-2.5 py-1.5 text-xs font-medium text-slate-500 transition hover:bg-[#f4f3ef] hover:text-slate-800"
-              >
-                <History className="h-3.5 w-3.5" />
-                <span className="aspira-mobile-nav-label">Chats</span>
-              </button>
-            </nav>
+        <header className="aspira-topbar">
+          <div className="aspira-conversation-heading">
+            <button ref={mobileHistoryTriggerRef} type="button" className="aspira-navigation-trigger" aria-label="Recent conversations" aria-haspopup="dialog" onClick={() => setMobileHistoryOpen(true)}><PanelLeft aria-hidden="true" /></button>
+            <span className="aspira-mobile-wordmark">Aspira<span aria-hidden="true"> / </span></span>
+            <h1>{conversationLabel}</h1>
           </div>
-
-          <div className="flex shrink-0 items-center gap-2">
-            <div className="hidden items-center gap-2 rounded-full border border-black/[0.07] bg-white/65 px-3 py-2 text-[11px] font-medium text-slate-600 xl:flex">
-              <span className={`h-1.5 w-1.5 rounded-full ${awakeModelIds.length ? 'bg-emerald-500' : 'bg-slate-300'}`} aria-hidden="true" />
-              {awakeModelIds.length === 0
-                ? 'No agents selected'
-                : `${awakeModelIds.length} agent${awakeModelIds.length === 1 ? '' : 's'} selected`}
-            </div>
-            <button
-              type="button"
-              onClick={() => setVaultModalOpen(true)}
-              aria-haspopup="dialog"
-              aria-label="Connections"
-              title="Connections"
-              className="aspira-card-interactive aspira-topbar-connections flex min-h-11 items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-medium text-slate-700 lg:hidden"
-            >
-              <Sliders className="h-3.5 w-3.5" />
-              <span className="aspira-connect-label hidden min-[560px]:inline">Connections</span>
-              <span className="aspira-connect-label min-[560px]:hidden">Connect</span>
-            </button>
-            {passkeyLockEnabled && passkeyProfiles[0]?.phrase.trim() && (
-              <button
-                onClick={() => {
-                  soundEngine.stopSpeaking();
-                  if (recorderRef.current?.state === 'recording') recorderRef.current.stop();
-                  setBootState('locked');
-                  setUnlockPhrase('');
-                  setUnlockError('');
-                }}
-                title="Lock this browser session"
-                aria-label="Lock this browser session"
-                className="aspira-card-interactive flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs text-slate-700"
-              >
-                <Lock className="h-3.5 w-3.5" />
-                <span className="aspira-lock-label">Lock</span>
-              </button>
-            )}
+          <div className="aspira-topbar-actions">
+            <button type="button" className={`aspira-attention-trigger ${attentionItems.length ? 'has-items' : ''}`} onClick={() => setAttentionOpen(true)} aria-haspopup="dialog"><Inbox aria-hidden="true" /><span>Needs you</span><span className="aspira-attention-count">{attentionItems.length}</span></button>
+            {passkeyLockEnabled && passkeyProfiles[0]?.phrase.trim() && <button type="button" className="aspira-lock-trigger" aria-label="Lock this browser session" onClick={() => { soundEngine.stopSpeaking(); cancelVoiceRecording(); setBootState('locked'); setUnlockPhrase(''); setUnlockError(''); }}><Lock aria-hidden="true" /></button>}
           </div>
         </header>
-
+        <div className={`aspira-workspace-body ${previewResult ? 'has-preview' : ''}`}>
+          <div className={`aspira-conversation-column ${isNewConversation ? 'is-new-conversation' : ''}`}>
       {/* Subtle Unlock Notification Pill */}
       {awayBriefingBanner && (
         <div className="relative z-20 mx-auto mt-2 flex items-center gap-3 px-4 py-1 rounded-full aspira-glass text-xs text-slate-200">
@@ -1152,198 +1069,29 @@ export const App: React.FC = () => {
         </div>
       )}
 
-      <main className="relative z-10 mx-auto my-4 w-full max-w-[1440px] flex-1 overflow-hidden">
-        <SpatialModeDeck
-          spatialMode={spatialMode}
+      <main className="aspira-main-conversation">
+        <ConversationWorkspace
           models={models}
           awakeModelIds={awakeModelIds}
-          synergyResult={latestResult}
           conversationTurns={conversationTurns}
           pendingTurn={pendingTurn}
-          memories={memories}
-          onToggleMemoryStatus={handleToggleMemoryStatus}
-          onDeleteMemory={handleDeleteMemory}
-          onAddMemory={handleAddMemory}
-          routines={routines}
-          onRunRoutine={handleRunRoutine}
-          onExecuteDirectAction={handleExecuteDirectAction}
+          onEditProposalUpdate={handleEditProposalUpdate}
+          onEditOperation={handleEditOperation}
           isExecuting={isExecuting}
           activeTaskLabel={activeTaskLabel}
           onRunPrompt={(prompt) => handleRunDirective(prompt, 'text', true)}
-          onOpenConnections={() => setVaultModalOpen(true)}
-          duplexVoiceActive={duplexVoiceActive}
-          onToggleDuplexVoice={toggleVoiceInput}
-          isAgentSpeaking={isAgentSpeaking}
-          liveTranscript={liveTranscript}
-          voiceStatus={voiceStatus}
+          onOpenConnections={() => openAgentSettings()}
+          onPreviewResult={(title, content) => setPreviewResult({title, content})}
+          onRequestAgentReview={requestAgentReview}
+          welcomeComposer={isNewConversation ? composer : undefined}
         />
       </main>
 
-      <footer className="relative z-20 mx-auto flex w-full max-w-[1440px] flex-col">
-        {(historyPersistenceError || recoveryPersistenceError || draftPersistenceError) && (
-          <p className="aspira-persistence-notice" role="alert">
-            {historyPersistenceError
-              ? 'This conversation could not be saved in this browser. Free some browser storage before reloading.'
-              : recoveryPersistenceError
-              ? 'Live progress could not be saved in this tab. Keep it open until the response finishes.'
-              : 'This draft could not be saved for reload.'}
-          </p>
-        )}
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (!commandInput.trim() || executionInProgressRef.current || duplexVoiceActive) return;
-            const prompt = commandInput;
-            updateCommandInput('');
-            handleRunDirective(prompt, 'text', true);
-          }}
-          className="aspira-composer flex w-full max-w-[955px] flex-col gap-2 px-3 py-2.5"
-        >
-          <div className="aspira-composer-toolbar">
-            <details
-              className="aspira-provider-picker"
-              aria-label="Choose models for this reply"
-              onKeyDown={(event) => {
-                if (event.key === 'Escape' && event.currentTarget.open) {
-                  event.preventDefault();
-                  event.currentTarget.open = false;
-                  event.currentTarget.querySelector('summary')?.focus();
-                }
-              }}
-            >
-              <summary className="aspira-provider-summary">
-                <span className="flex min-w-0 flex-col text-left">
-                  <span className="text-[10px] font-medium uppercase tracking-wide text-slate-500">Responding with</span>
-                  <span className="max-w-[240px] truncate text-xs font-semibold text-slate-800">
-                    {awakeModelIds.length === 0
-                      ? 'No model selected'
-                      : awakeModelIds.length === 1
-                      ? models.find((model) => model.id === awakeModelIds[0])?.codeName || '1 model'
-                      : `${awakeModelIds.length} models selected`}
-                  </span>
-                </span>
-                <ChevronDown className="h-4 w-4 shrink-0 text-slate-500" />
-              </summary>
-              <div className="aspira-provider-options" role="group" aria-label="Models included in replies">
-                <div className="mb-2 flex items-center justify-between gap-3 border-b border-slate-200 pb-2">
-                  <div>
-                    <p className="text-xs font-semibold text-slate-800">Choose models</p>
-                    <p className="mt-0.5 text-[10px] leading-4 text-slate-500">Choose providers for chat. Local actions remain available without one.</p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      defaultModelSelectionAppliedRef.current = true;
-                      setAwakeModelIds(models.map((model) => model.id));
-                    }}
-                    className="shrink-0 rounded-lg px-2 py-1 text-[10px] font-medium text-indigo-700 hover:bg-indigo-50"
-                  >
-                    Select all
-                  </button>
-                </div>
-                {models.map((model) => {
-                  const isAwake = awakeModelIds.includes(model.id);
-                  const status = providerStatusLabel(model.id);
-                  return (
-                    <button
-                      key={model.id}
-                      type="button"
-                      onClick={() => toggleModelAwake(model)}
-                      aria-pressed={isAwake}
-                      aria-label={`${model.codeName}, ${status}, ${isAwake ? 'selected' : 'not selected'}`}
-                      className={`aspira-provider-option ${isAwake ? 'is-selected' : ''}`}
-                      style={{ '--provider-accent': model.accentHex } as React.CSSProperties}
-                    >
-                      <span className="aspira-provider-indicator" aria-hidden="true">
-                        {isAwake && <Check className="h-3 w-3" />}
-                      </span>
-                      <span className="flex min-w-0 flex-1 flex-col text-left">
-                        <span className="text-xs font-semibold text-slate-800">{model.codeName}</span>
-                        <span className="text-[10px] text-slate-500">{status}</span>
-                      </span>
-                      <span className="text-[10px] text-slate-500">{isAwake ? 'On' : 'Off'}</span>
-                    </button>
-                  );
-                })}
-                <button
-                  type="button"
-                  onClick={() => setVaultModalOpen(true)}
-                  aria-haspopup="dialog"
-                  className="mt-2 w-full border-t border-slate-200 pt-2 text-left text-[11px] font-medium text-indigo-700 hover:text-indigo-900"
-                >
-                  Manage connections
-                </button>
-              </div>
-            </details>
-            <span className="hidden text-[10px] text-slate-500 sm:inline">Enter to send · Shift+Enter for a new line</span>
+      {!isNewConversation && composer}
+
           </div>
-
-          <div className="aspira-composer-inputrow">
-            <button
-              type="button"
-              onClick={toggleVoiceInput}
-              aria-pressed={duplexVoiceActive}
-              disabled={isExecuting && !duplexVoiceActive}
-              aria-label={duplexVoiceActive ? 'Finish and send voice message' : 'Aspira voice input'}
-              className="aspira-voice-control flex shrink-0 items-center gap-2 text-xs text-slate-600"
-              title={duplexVoiceActive
-                ? 'Finish and send your voice message.'
-                : 'Aspira voice input. Microphone access begins only after you press this control.'}
-            >
-              <Mic className={`h-4 w-4 ${duplexVoiceActive ? 'text-emerald-600' : 'text-slate-500'}`} />
-              <span className="hidden sm:inline text-[11px] font-medium">
-                {duplexVoiceActive ? 'Stop & send' : 'Voice input'}
-              </span>
-            </button>
-
-            <textarea
-              ref={commandInputRef}
-              rows={1}
-              value={commandInput}
-              onChange={(e) => updateCommandInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  e.currentTarget.form?.requestSubmit();
-                }
-              }}
-              placeholder={
-                liveTranscript
-                  ? `Heard: “${liveTranscript}”`
-                  : 'Message Aspira…'
-              }
-              aria-label="Message Aspira"
-              className="aspira-message-input max-h-32 min-h-10 flex-1 resize-none py-2 text-sm leading-6 placeholder:text-slate-400 focus:outline-none"
-            />
-
-            {isExecuting && canCancelRequest ? (
-              <button
-                key="stop-response"
-                type="button"
-                onClick={(event) => {
-                  event.preventDefault();
-                  abortControllerRef.current?.abort();
-                }}
-                title="Stop the agent response. A local action already started may still finish."
-                className="aspira-stop-button flex items-center gap-1.5 rounded-xl px-4 py-2 text-xs font-semibold transition"
-              >
-                <Square className="h-3 w-3 fill-current" />
-                <span>Stop</span>
-              </button>
-            ) : (
-              <button
-                key="send-message"
-                type="submit"
-                disabled={isExecuting || duplexVoiceActive}
-                className="aspira-send-button flex items-center gap-1.5 rounded-xl px-4 py-2 text-xs font-semibold text-white transition disabled:opacity-50"
-              >
-                <span>{isExecuting ? 'Acting...' : 'Send'}</span>
-                <ArrowUp className="h-3.5 w-3.5" />
-              </button>
-            )}
-          </div>
-        </form>
-      </footer>
+          <ResultPreview result={previewResult} onClose={() => setPreviewResult(null)} />
+        </div>
       </div>
     </div>
   );

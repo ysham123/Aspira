@@ -11,6 +11,9 @@ export function toolAuthorizationError(tool, prompt, readContinuation) {
   if (tool === 'workspace.create_file' && !/\b(create|write|save|generate|make)\b/.test(text)) {
     return 'Creating a file requires an explicit request to create or write one.';
   }
+  if (tool === 'workspace.propose_edit' && !/\b(edit|update|change|fix|replace|rewrite|add|remove|improve|correct)\b/.test(text)) {
+    return 'Preparing a file edit requires a request to change the workspace file.';
+  }
   if (tool === 'system.status' && !/\b(system|mac|macos|cpu|memory|ram|battery|power|hardware)\b/.test(text)) {
     return 'The user did not ask for local system information.';
   }

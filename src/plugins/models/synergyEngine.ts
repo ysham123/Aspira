@@ -44,6 +44,7 @@ async function fetchModelStream(
   apiKeys: Record<string, string>,
   conversationHistory: ConversationMessageContext[],
   executeActions: boolean,
+  conversationId: string,
   signal?: AbortSignal,
   onProgress?: (event: TurnProgressEvent) => void,
   fileReadContext?: WorkspaceFileRead,
@@ -54,6 +55,7 @@ async function fetchModelStream(
   memories?: LivingMemoryItem[];
   latencyMs: number;
   responseMs: number;
+  providerBadge?: string;
 }> {
   const startedAt = performance.now();
   const baseSystem =
@@ -70,6 +72,7 @@ async function fetchModelStream(
       headers: { 'Content-Type': 'application/json', Accept: 'application/x-ndjson' },
       body: JSON.stringify({
         modelId: model.id,
+        conversationId,
         prompt,
         systemPrompt: `${baseSystem} Capability focus: ${capabilityName} (${roleDesc}).`,
         apiKeys,
@@ -86,6 +89,8 @@ async function fetchModelStream(
         unfinishedAction = '';
         executedActions = [...executedActions.filter((action) => action.id !== event.action.id), event.action];
         onProgress?.({ kind: 'action', modelId: model.id, action: event.action });
+      } else if (event.type === 'delta') {
+        onProgress?.({ kind: 'delta', modelId: model.id, delta: event.delta });
       } else {
         if (event.phase === 'acting') unfinishedAction = event.title;
         onProgress?.({ kind: 'status', modelId: model.id, phase: event.phase, message: event.title, actionId: event.actionId });
@@ -98,6 +103,7 @@ async function fetchModelStream(
     return {
       source: available ? data.source : 'UNAVAILABLE',
       text: available ? data.text.trim() : data.error || `Aspira could not finish the ${model.codeName} response.`,
+      providerBadge: data.providerBadge,
       executedActions,
       memories: updatedMemories,
       latencyMs: responseMs,
@@ -125,6 +131,7 @@ export async function runPantheonSynergy(params: {
   awakeModels: ModelPluginManifest[];
   apiKeys: Record<string, string>;
   conversationHistory?: ConversationMessageContext[];
+  conversationId?: string;
   signal?: AbortSignal;
   onMemoriesUpdated?: (memories: LivingMemoryItem[]) => void;
   onProgress?: (event: TurnProgressEvent) => void;
@@ -137,6 +144,7 @@ export async function runPantheonSynergy(params: {
     awakeModels,
     apiKeys,
     conversationHistory = [],
+    conversationId = '',
     signal,
     onMemoriesUpdated,
     onProgress,
@@ -167,7 +175,7 @@ export async function runPantheonSynergy(params: {
         if (event.type === 'action') {
           partialActions.push(event.action);
           onProgress?.({ kind: 'action', modelId: 'local', action: event.action });
-        } else {
+        } else if (event.type === 'status') {
           onProgress?.({ kind: 'status', modelId: 'local', phase: event.phase, message: event.title, actionId: event.actionId });
         }
       }, signal);
@@ -222,6 +230,7 @@ export async function runPantheonSynergy(params: {
       apiKeys,
       conversationHistory,
       idx === 0, // Lead agent executes macOS/web/file/memory actions
+      conversationId,
       signal,
       onProgress,
       fileReadContext,
@@ -241,6 +250,7 @@ export async function runPantheonSynergy(params: {
       ttftMs: result.responseMs,
       tokensPerSec: 0,
       source: result.source,
+      providerBadge: result.providerBadge,
       keyInsight: result.text,
       uniqueNuance,
       executedActions: result.executedActions,
